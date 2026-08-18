@@ -2504,8 +2504,39 @@ function openGyouseiMenu(){
         <button class="wpBtn primary" style="width:100%; text-align:left; padding:12px; margin-top:8px" onclick="document.getElementById('gyouseiPanel').hidden=true; openF12Panel();">
           🏢 付表12（GH指定記載事項）<br><small style="font-weight:400">読み込み・編集・書き出し（書式完全保持）</small>
         </button>
+        <button class="wpBtn primary" style="width:100%; text-align:left; padding:12px; margin-top:8px" onclick="document.getElementById('gyouseiPanel').hidden=true; openOsakaDocsMenu();">
+          📚 届出・監査 書類/様式（大阪市）<br><small style="font-weight:400">変更届の様式一式・運営指導(監査)の事前提出資料へのリンク集</small>
+        </button>
       </div></div>`;
     p.addEventListener('click',ev=>{ if(ev.target.id==='gyouseiPanel') p.hidden=true; });
+    document.body.appendChild(p);
+  }
+  p.hidden=false;
+}
+
+/* ---- 行政AI：届出・監査 書類/様式（大阪市公式リンク集） ---- */
+function openOsakaDocsMenu(){
+  let p=document.getElementById('osakaDocsPanel');
+  if(!p){
+    p=document.createElement('div'); p.className='modal'; p.id='osakaDocsPanel';
+    const L=(u,ti,d)=>`<a class="wpBtn primary" style="display:block; text-align:left; padding:11px; text-decoration:none; margin-top:8px" href="${u}" target="_blank" rel="noopener">\U0001F517 ${ti}<br><small style="font-weight:400">${d}</small></a>`;
+    p.innerHTML=`<div class="sheet" style="max-width:470px">
+      <div class="sheetHead"><b>\U0001F4DA 届出・監査 書類/様式（大阪市）</b><span class="grow"></span>
+        <button onclick="document.getElementById('osakaDocsPanel').hidden=true">✕</button></div>
+      <div class="sheetBody">
+        <div class="wpNote">大阪市の公式ページを新しいタブで開きます。様式は随時更新されるため、提出前に必ず最新版をご確認ください。</div>
+        <div style="font-weight:700; margin:12px 0 0; color:#5c6a48">■ 変更届・各種届出（様式）</div>
+        ${L('https://www.city.osaka.lg.jp/sangyo/category/3981-2-1-0-0-0-0-0-0-0.html','指定・各種届出（様式一式）','変更届出書・付表・体制届などの様式ダウンロード')}
+        ${L('https://www.city.osaka.lg.jp/fukushi/page/0000601773.html','行政オンラインシステムでの届出方法','オンライン届出の手順・利用者登録（PDF）')}
+        ${L('https://www.city.osaka.lg.jp/fukushi/page/0000601821.html','運営規程（各事業）','各サービスの運営規程の様式・参考')}
+        <div style="font-weight:700; margin:14px 0 0; color:#5c6a48">■ 運営指導（実地指導・監査）で必要な書類</div>
+        ${L('https://www.city.osaka.lg.jp/fukushi/page/0000604361.html','運営指導等にかかる事前提出資料','監査(運営指導)で提出する書類一式')}
+        ${L('https://www.city.osaka.lg.jp/fukushi/page/0000528383.html','運営指導等について（案内）','運営指導の概要・流れ・対象')}
+        ${L('https://www.city.osaka.lg.jp/fukushi/page/0000584282.html','指導実施要領','大阪市 障がい福祉サービス事業者等 指導実施要領')}
+        ${L('https://www.city.osaka.lg.jp/sangyo/category/3981-3-1-0-0-0-0-0-0-0.html','実地指導（カテゴリ一覧）','実地指導関連ページの一覧')}
+        <div class="wpNote" style="margin-top:10px">よく使う様式ファイルは、今後この一覧に追加していけます（書類棚と同じ仕組み）。</div>
+      </div></div>`;
+    p.addEventListener('click',ev=>{ if(ev.target.id==='osakaDocsPanel') p.hidden=true; });
     document.body.appendChild(p);
   }
   p.hidden=false;
