@@ -1679,7 +1679,13 @@ document.getElementById('hkDl').addEventListener('click', async ()=>{
   .sec{ font-weight:800; margin:16px 0 4px }
   .beppyo{ page-break-before:always; margin-top:24px }
   .stamp{ text-align:right; margin-top:8px; font-size:9pt; color:#666 }
-</style></head><body>${inner}</body></html>`;
+</style><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+.pvwrap{overflow:auto; max-height:60vh; border:1px solid #ddd; border-radius:6px; background:#fff; margin-top:8px}
+.pvwrap table{border-collapse:collapse; font-size:11px}
+.pvwrap td,.pvwrap th{border:1px solid #ccc; padding:2px 5px; vertical-align:top}
+</style>
+</head><body>${inner}</body></html>`;
   const blob = new Blob([full], {type:'text/html;charset=utf-8'});
   await aiosDeliver(blob, '変更届出書_下書き.html', 'hkResult', null);
   logLine(`<b>文書AI</b>：変更届出書_下書き.html を保存`);
@@ -2514,45 +2520,71 @@ function openGyouseiMenu(){
   p.hidden=false;
 }
 
-/* ---- 行政AI：届出・監査 様式（大阪市 Word/Excel）→ 記入して印刷 ---- */
+/* ---- 行政AI：届出・監査 様式（プレビュー→ダウンロード） ---- */
 function openOsakaDocsMenu(){
   let p=document.getElementById('osakaDocsPanel');
   if(!p){
     p=document.createElement('div'); p.className='modal'; p.id='osakaDocsPanel';
-    const F=(u,ti,d)=>`<a class="wpBtn primary" style="display:block; text-align:left; padding:11px; text-decoration:none; margin-top:8px" href="${u}" target="_blank" rel="noopener">📊 ${ti}<br><small style="font-weight:400">${d}</small></a>`;
+    const PV=(u,ti,d,sh)=>`<button class="wpBtn primary" style="display:block; width:100%; text-align:left; padding:11px; margin-top:8px" onclick="previewForm('${u}','${ti}','${sh||''}')">📊 ${ti}<br><small style="font-weight:400">${d}</small></button>`;
     const P=(u,ti,d)=>`<a class="wpBtn" style="display:block; text-align:left; padding:10px; text-decoration:none; margin-top:8px; background:#eef2f7; border:1px solid #cbd5e1; color:#2b6cb0" href="${u}" target="_blank" rel="noopener">🔗 ${ti}<br><small style="font-weight:400">${d}</small></a>`;
-    const M='https://www.city.osaka.lg.jp/fukushi/cmsfiles/contents/0000604/604361/';
     p.innerHTML=`<div class="sheet" style="max-width:540px">
       <div class="sheetHead"><b>📚 届出・監査 様式（Word/Excel）</b><span class="grow"></span>
         <button onclick="document.getElementById('osakaDocsPanel').hidden=true">✕</button></div>
       <div class="sheetBody">
-        <div class="wpNote">📊 の様式を押すと <b>Excel/Word がダウンロード</b> されます。開いて記入し、そのまま印刷してください（A4様式）。様式は随時更新されるため、提出前に最新版をご確認ください。</div>
-
+        <div class="wpNote">様式を押すと <b>プレビュー</b> が開きます。内容を確認して「📥 ダウンロード」でExcel/スプレッドシートを開き、記入・印刷してください。様式は随時更新されるため最新版をご確認ください。</div>
         <div style="font-weight:700; margin:12px 0 0; color:#5c6a48">■ 運営指導（監査）で提出する様式〔おりーぶ庵(GH)〕</div>
-        ${F(M+'sinnyousiki1.xlsx','（様式1）事前提出資料 提出物確認表','Excel｜監査で提出する書類のチェック表')}
-        ${F(M+'form2.xlsx','（様式2）勤務予定・実績一覧表','Excel｜職員の勤務予定と実績')}
-        ${F(M+'form4-5.xlsx','（様式4）平均利用者数調べ（共同生活援助・GH）','Excel｜GHの平均利用者数')}
+        ${PV('docs/kansa-yoshiki1-kakuninhyo.xlsx','（様式1）事前提出資料 提出物確認表','Excel｜監査で提出する書類のチェック表')}
+        ${PV('docs/kansa-yoshiki2-kinmu.xlsx','（様式2）勤務予定・実績一覧表','Excel｜職員の勤務予定と実績')}
+        ${PV('docs/kansa-yoshiki4-gh.xlsx','（様式4）平均利用者数調べ（共同生活援助・GH）','Excel｜GHの平均利用者数')}
         ${P('https://www.city.osaka.lg.jp/fukushi/page/0000604361.html','運営指導 事前提出資料（全様式）','様式3・他サービスの様式4もこちら')}
-
-        <div style="font-weight:700; margin:14px 0 0; color:#5c6a48">■ 変更届・申請の様式（クリックでExcel→記入→印刷）</div>
-        <button class="wpBtn primary" style="display:block; width:100%; text-align:left; padding:11px; margin-top:8px" onclick="document.getElementById('osakaDocsPanel').hidden=true; openHenkouPanel();">📝 変更届（様式第3号）を作成<br><small style="font-weight:400">アプリ内で記入→印刷／Excel様式へ書き出し</small></button>
-        <button class="wpBtn primary" style="display:block; width:100%; text-align:left; padding:11px; margin-top:8px" onclick="document.getElementById('osakaDocsPanel').hidden=true; openF12Panel();">🏢 付表12（GH指定記載事項）を作成<br><small style="font-weight:400">アプリ内で記入→Excel書き出し</small></button>
-        ${F('docs/osaka-shitei-kisai-yoshiki.xlsx','付表（指定に係る記載事項）白紙様式〔事業所名入り〕','Excel｜付表13(GH)ほか一式・大阪市公式白紙。社内で記入→印刷')}
-        ${F('https://www.city.osaka.lg.jp/fukushi/cmsfiles/contents/0000601/601784/youshiki2gou.xlsx','変更届出書（様式第2号）白紙','Excel｜クリックで開いて記入→印刷')}
-        ${F('https://www.city.osaka.lg.jp/fukushi/cmsfiles/contents/0000601/601784/youshiki1gou.xlsx','指定／指定変更 申請書（様式第1号）白紙','Excel｜新規・更新・変更の申請書')}
-        ${F('https://www.city.osaka.lg.jp/fukushi/cmsfiles/contents/0000601/601784/kaikyuutodoke1.xlsx','介護給付費算定にかかる届出書（介給届・体制届）白紙','Excel｜加算体制の届出')}
-        ${P('https://www.city.osaka.lg.jp/sangyo/category/3981-2-1-0-0-0-0-0-0-0.html','指定・各種届出の様式一式','変更届出書・付表・体制届などのDL')}
-        ${P('https://www.city.osaka.lg.jp/fukushi/page/0000601784.html','申請・届出 様式集（全72種）','大阪市公式のExcel/Word様式の一覧')}
-
+        <div style="font-weight:700; margin:14px 0 0; color:#5c6a48">■ 変更届・申請の様式（プレビュー→ダウンロード→記入→印刷）</div>
+        ${PV('docs/osaka-shitei-kisai-yoshiki.xlsx','付表（指定に係る記載事項）〔事業所情報入り〕','Excel｜付表13(GH)。事業所名・所在地・電話を差込済み','付表13（GH)')}
+        ${PV('docs/henko-yoshiki2gou.xlsx','変更届出書（様式第2号）','Excel｜指定内容の変更の届出')}
+        ${PV('docs/shinsei-yoshiki1gou.xlsx','指定／指定変更 申請書（様式第1号）','Excel｜新規・更新・変更の申請')}
+        ${PV('docs/kaikyu-todoke.xlsx','介護給付費算定にかかる届出書（介給届・体制届）','Excel｜加算体制の届出')}
+        <button class="wpBtn primary" style="display:block; width:100%; text-align:left; padding:11px; margin-top:8px" onclick="document.getElementById('osakaDocsPanel').hidden=true; openHenkouPanel();">📝 変更届（様式第3号）をアプリ内で作成<br><small style="font-weight:400">画面で記入→印刷／Excel様式へ書き出し</small></button>
+        <button class="wpBtn primary" style="display:block; width:100%; text-align:left; padding:11px; margin-top:8px" onclick="document.getElementById('osakaDocsPanel').hidden=true; openF12Panel();">🏢 付表12（GH指定記載事項）をアプリ内で作成<br><small style="font-weight:400">画面で記入→Excel書き出し</small></button>
+        ${P('https://www.city.osaka.lg.jp/fukushi/page/0000601784.html','申請・届出 様式集（全72種）','大阪市公式のExcel/Word様式一覧')}
         <div style="font-weight:700; margin:14px 0 0; color:#5c6a48">■ 運営規程（各事業）の様式（Word）</div>
         ${P('https://www.city.osaka.lg.jp/fukushi/page/0000601821.html','運営規程 様式一式','共同生活援助ほか各事業のWord様式')}
-
-        <div class="wpNote" style="margin-top:10px">よく使う様式は今後この一覧に追加できます。「この様式もアプリ内で記入したい」があれば教えてください。</div>
       </div></div>`;
     p.addEventListener('click',ev=>{ if(ev.target.id==='osakaDocsPanel') p.hidden=true; });
     document.body.appendChild(p);
   }
   p.hidden=false;
+}
+
+/* ---- 様式プレビュー（SheetJSでExcelを表描画→ダウンロード） ---- */
+function ensurePreviewPanel(){
+  let p=document.getElementById('previewPanel');
+  if(!p){
+    p=document.createElement('div'); p.className='modal'; p.id='previewPanel'; p.style.zIndex='60';
+    p.innerHTML=`<div class="sheet" style="max-width:820px">
+      <div class="sheetHead"><b id="pvTitle">プレビュー</b><span class="grow"></span>
+        <a id="pvDl" href="#" download style="margin-right:8px; padding:6px 14px; background:#2b6cb0; color:#fff; border-radius:6px; text-decoration:none; font-size:13px; font-weight:700">📥 ダウンロード</a>
+        <button onclick="document.getElementById('previewPanel').hidden=true">✕</button></div>
+      <div class="sheetBody" id="pvBody"><p>読み込み中…</p></div>
+    </div>`;
+    p.addEventListener('click',ev=>{ if(ev.target.id==='previewPanel') p.hidden=true; });
+    document.body.appendChild(p);
+  }
+  return p;
+}
+async function previewForm(url, title, sheetName){
+  const p=ensurePreviewPanel(); p.hidden=false;
+  document.getElementById('pvTitle').textContent='📄 '+title;
+  const dl=document.getElementById('pvDl'); dl.href=url; dl.setAttribute('download','');
+  const body=document.getElementById('pvBody'); body.innerHTML='<p>読み込み中…（プレビューを生成しています）</p>';
+  try{
+    if(typeof XLSX==='undefined'){ body.innerHTML='<div class="wpNote">プレビュー用ライブラリを読み込めませんでした。「📥 ダウンロード」からExcelでご確認ください。</div>'; return; }
+    const buf=await (await fetch(url)).arrayBuffer();
+    const wb=XLSX.read(buf,{type:'array'});
+    let sn=(sheetName && wb.SheetNames.indexOf(sheetName)>=0)?sheetName:wb.SheetNames[0];
+    const html=XLSX.utils.sheet_to_html(wb.Sheets[sn]);
+    body.innerHTML='<div class="wpNote">下はプレビューです。記入・印刷は「📥 ダウンロード」でExcel/スプレッドシートを開いて行ってください。'+(wb.SheetNames.length>1?' 表示シート：<b>'+sn+'</b>（全'+wb.SheetNames.length+'シート）':'')+'</div><div class="pvwrap">'+html+'</div>';
+  }catch(e){
+    body.innerHTML='<div class="wpNote">プレビューを表示できませんでした。「📥 ダウンロード」からExcelでご確認ください。<br><small>'+String(e)+'</small></div>';
+  }
 }
 
 /* ---- プリンター（印刷メニュー） ---- */
