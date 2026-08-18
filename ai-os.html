@@ -2514,27 +2514,35 @@ function openGyouseiMenu(){
   p.hidden=false;
 }
 
-/* ---- 行政AI：届出・監査 書類/様式（大阪市公式リンク集） ---- */
+/* ---- 行政AI：届出・監査 様式（大阪市 Word/Excel）→ 記入して印刷 ---- */
 function openOsakaDocsMenu(){
   let p=document.getElementById('osakaDocsPanel');
   if(!p){
     p=document.createElement('div'); p.className='modal'; p.id='osakaDocsPanel';
-    const L=(u,ti,d)=>`<a class="wpBtn primary" style="display:block; text-align:left; padding:11px; text-decoration:none; margin-top:8px" href="${u}" target="_blank" rel="noopener">\U0001F517 ${ti}<br><small style="font-weight:400">${d}</small></a>`;
-    p.innerHTML=`<div class="sheet" style="max-width:470px">
-      <div class="sheetHead"><b>\U0001F4DA 届出・監査 書類/様式（大阪市）</b><span class="grow"></span>
+    const F=(u,ti,d)=>`<a class="wpBtn primary" style="display:block; text-align:left; padding:11px; text-decoration:none; margin-top:8px" href="${u}" target="_blank" rel="noopener">\U0001F4CA ${ti}<br><small style="font-weight:400">${d}</small></a>`;
+    const P=(u,ti,d)=>`<a class="wpBtn" style="display:block; text-align:left; padding:10px; text-decoration:none; margin-top:8px; background:#eef2f7; border:1px solid #cbd5e1; color:#2b6cb0" href="${u}" target="_blank" rel="noopener">\U0001F517 ${ti}<br><small style="font-weight:400">${d}</small></a>`;
+    const M='https://www.city.osaka.lg.jp/fukushi/cmsfiles/contents/0000604/604361/';
+    p.innerHTML=`<div class="sheet" style="max-width:540px">
+      <div class="sheetHead"><b>\U0001F4DA 届出・監査 様式（Word/Excel）</b><span class="grow"></span>
         <button onclick="document.getElementById('osakaDocsPanel').hidden=true">✕</button></div>
       <div class="sheetBody">
-        <div class="wpNote">大阪市の公式ページを新しいタブで開きます。様式は随時更新されるため、提出前に必ず最新版をご確認ください。</div>
-        <div style="font-weight:700; margin:12px 0 0; color:#5c6a48">■ 変更届・各種届出（様式）</div>
-        ${L('https://www.city.osaka.lg.jp/sangyo/category/3981-2-1-0-0-0-0-0-0-0.html','指定・各種届出（様式一式）','変更届出書・付表・体制届などの様式ダウンロード')}
-        ${L('https://www.city.osaka.lg.jp/fukushi/page/0000601773.html','行政オンラインシステムでの届出方法','オンライン届出の手順・利用者登録（PDF）')}
-        ${L('https://www.city.osaka.lg.jp/fukushi/page/0000601821.html','運営規程（各事業）','各サービスの運営規程の様式・参考')}
-        <div style="font-weight:700; margin:14px 0 0; color:#5c6a48">■ 運営指導（実地指導・監査）で必要な書類</div>
-        ${L('https://www.city.osaka.lg.jp/fukushi/page/0000604361.html','運営指導等にかかる事前提出資料','監査(運営指導)で提出する書類一式')}
-        ${L('https://www.city.osaka.lg.jp/fukushi/page/0000528383.html','運営指導等について（案内）','運営指導の概要・流れ・対象')}
-        ${L('https://www.city.osaka.lg.jp/fukushi/page/0000584282.html','指導実施要領','大阪市 障がい福祉サービス事業者等 指導実施要領')}
-        ${L('https://www.city.osaka.lg.jp/sangyo/category/3981-3-1-0-0-0-0-0-0-0.html','実地指導（カテゴリ一覧）','実地指導関連ページの一覧')}
-        <div class="wpNote" style="margin-top:10px">よく使う様式ファイルは、今後この一覧に追加していけます（書類棚と同じ仕組み）。</div>
+        <div class="wpNote">\U0001F4CA の様式を押すと <b>Excel/Word がダウンロード</b> されます。開いて記入し、そのまま印刷してください（A4様式）。様式は随時更新されるため、提出前に最新版をご確認ください。</div>
+
+        <div style="font-weight:700; margin:12px 0 0; color:#5c6a48">■ 運営指導（監査）で提出する様式〔おりーぶ庵(GH)〕</div>
+        ${F(M+'sinnyousiki1.xlsx','（様式1）事前提出資料 提出物確認表','Excel｜監査で提出する書類のチェック表')}
+        ${F(M+'form2.xlsx','（様式2）勤務予定・実績一覧表','Excel｜職員の勤務予定と実績')}
+        ${F(M+'form4-5.xlsx','（様式4）平均利用者数調べ（共同生活援助・GH）','Excel｜GHの平均利用者数')}
+        ${P('https://www.city.osaka.lg.jp/fukushi/page/0000604361.html','運営指導 事前提出資料（全様式）','様式3・他サービスの様式4もこちら')}
+
+        <div style="font-weight:700; margin:14px 0 0; color:#5c6a48">■ 変更届・付表（アプリ内で記入→印刷）</div>
+        <button class="wpBtn primary" style="display:block; width:100%; text-align:left; padding:11px; margin-top:8px" onclick="document.getElementById('osakaDocsPanel').hidden=true; openHenkouPanel();">\U0001F4DD 変更届（様式第3号）を作成<br><small style="font-weight:400">アプリ内で記入→印刷／Excel様式へ書き出し</small></button>
+        <button class="wpBtn primary" style="display:block; width:100%; text-align:left; padding:11px; margin-top:8px" onclick="document.getElementById('osakaDocsPanel').hidden=true; openF12Panel();">\U0001F3E2 付表12（GH指定記載事項）を作成<br><small style="font-weight:400">アプリ内で記入→Excel書き出し</small></button>
+        ${P('https://www.city.osaka.lg.jp/sangyo/category/3981-2-1-0-0-0-0-0-0-0.html','指定・各種届出の様式一式','変更届出書・付表・体制届などのDL')}
+
+        <div style="font-weight:700; margin:14px 0 0; color:#5c6a48">■ 運営規程（各事業）の様式（Word）</div>
+        ${P('https://www.city.osaka.lg.jp/fukushi/page/0000601821.html','運営規程 様式一式','共同生活援助ほか各事業のWord様式')}
+
+        <div class="wpNote" style="margin-top:10px">よく使う様式は今後この一覧に追加できます。「この様式もアプリ内で記入したい」があれば教えてください。</div>
       </div></div>`;
     p.addEventListener('click',ev=>{ if(ev.target.id==='osakaDocsPanel') p.hidden=true; });
     document.body.appendChild(p);
