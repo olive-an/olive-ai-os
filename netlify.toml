@@ -1,0 +1,9 @@
+# Netlify設定：ビルド不要の静的サイト（リポジトリ直下を公開）
+[build]
+  publish = "."
+
+# トップURLを ai-os.html へ（https://olive-ai-os.netlify.app/ だけで開けるように）
+[[redirects]]
+  from = "/"
+  to = "/ai-os.html"
+  status = 302

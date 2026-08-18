@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>おりーぶ庵 理念手帳</title>
+<style>
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0; height:100%; overflow:hidden}
+  body{
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",sans-serif;
+    background:linear-gradient(160deg,#1d3a57,#2b5d8a 55%,#1d3a57); color:#fff;
+    display:flex; flex-direction:column;
+  }
+  header{display:flex; align-items:center; gap:10px; padding:10px 14px; flex:none}
+  header b{font-size:15px; letter-spacing:1px}
+  header .sub{font-size:10px; opacity:.75}
+  header a{margin-left:auto; color:#cfe3f5; font-size:12px; text-decoration:none;
+    border:1px solid rgba(255,255,255,.35); border-radius:999px; padding:4px 12px}
+
+  /* ===== 本 ===== */
+  #stage{flex:1; position:relative; display:flex; align-items:center; justify-content:center; min-height:0; perspective:2400px}
+  #bookBox{position:relative; transform-style:preserve-3d}
+  .half{
+    position:absolute; top:0; height:100%; width:50%;
+    background-repeat:no-repeat; background-color:transparent;
+  }
+  #baseL{left:0;  border-radius:8px 0 0 8px}
+  #baseR{left:50%; border-radius:0 8px 8px 0}
+  .half.paper{background-color:#fff; box-shadow:0 14px 44px rgba(0,0,0,.45)}
+
+  /* めくれる1枚（右半分にヒンジ＝本の背） */
+  #sheet{
+    position:absolute; top:0; left:50%; width:50%; height:100%;
+    transform-origin:left center; transform-style:preserve-3d;
+    display:none; z-index:4; will-change:transform;
+  }
+  #sheet.anim{transition:transform var(--dur,650ms) cubic-bezier(.3,.15,.32,1)}
+  #sheet .face{
+    position:absolute; inset:0; backface-visibility:hidden;
+    background-repeat:no-repeat; background-color:#fff;
+    box-shadow:0 10px 34px rgba(0,0,0,.35);
+  }
+  #sheet .f{border-radius:0 8px 8px 0}
+  #sheet .b{transform:rotateY(180deg); border-radius:8px 0 0 8px}
+  /* めくり中の陰影（背側が暗くなる） */
+  #sheet .f::after, #sheet .b::after{
+    content:""; position:absolute; inset:0; opacity:0; pointer-events:none;
+    transition:opacity calc(var(--dur,650ms)/2) ease;
+  }
+  #sheet .f::after{background:linear-gradient(to right, rgba(0,0,20,.45), rgba(0,0,20,0) 55%)}
+  #sheet .b::after{background:linear-gradient(to left,  rgba(0,0,20,.45), rgba(0,0,20,0) 55%)}
+  #sheet.shade .f::after, #sheet.shade .b::after{opacity:1}
+  /* 背の折り目の影 */
+  #spineShadow{
+    position:absolute; top:0; bottom:0; left:50%; width:46px; transform:translateX(-50%);
+    background:linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,.22) 50%, rgba(0,0,0,0));
+    opacity:0; transition:opacity .3s; pointer-events:none; z-index:5;
+  }
+  #bookBox.opened #spineShadow{opacity:1}
+
+  .hint{position:absolute; top:0; bottom:0; width:20%; display:flex; align-items:center;
+    font-size:36px; color:rgba(255,255,255,0); transition:color .2s; pointer-events:none; z-index:6}
+  .hint.left{left:0; justify-content:flex-start; padding-left:4px}
+  .hint.right{right:0; justify-content:flex-end; padding-right:4px}
+  #stage:active .hint{color:rgba(255,255,255,.22)}
+
+  footer{flex:none; padding:8px 14px 14px; display:flex; align-items:center; gap:12px}
+  footer button{border:1px solid rgba(255,255,255,.4); background:rgba(255,255,255,.12); color:#fff;
+    border-radius:10px; padding:8px 14px; font-size:14px; cursor:pointer}
+  footer button:disabled{opacity:.3}
+  #pageNo{font-size:12.5px; min-width:64px; text-align:center; letter-spacing:1px}
+  #slider{flex:1; accent-color:#8fc1ea; height:26px}
+
+  #loading{position:absolute; inset:0; display:flex; flex-direction:column; gap:12px;
+    align-items:center; justify-content:center; background:rgba(20,40,60,.55); z-index:8; font-size:13px}
+  .spin{width:34px; height:34px; border:3px solid rgba(255,255,255,.25); border-top-color:#fff;
+    border-radius:50%; animation:sp 1s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  #gate{position:fixed; inset:0; z-index:10; background:linear-gradient(160deg,#1d3a57,#2b5d8a);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:20px}
+  #gate .logo{font-size:42px}
+  #gate h1{font-size:18px; margin:0; letter-spacing:2px}
+  #gate p{font-size:11.5px; opacity:.8; margin:0; text-align:center; line-height:1.6}
+  #gate input{font-size:18px; padding:10px 14px; border-radius:10px; border:none; text-align:center; letter-spacing:6px; width:180px}
+  #gate button{font-size:15px; padding:10px 26px; border-radius:10px; border:none; background:#8fc1ea; color:#123; font-weight:700; cursor:pointer}
+  #gateMsg{color:#ffd2d2; font-size:12px; height:1em}
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="logo">📖</div>
+  <h1>おりーぶ庵 理念手帳</h1>
+  <p>この手帳は職員用です。<br>合言葉（数字）を入力してください。</p>
+  <input id="gateInput" type="tel" inputmode="numeric" placeholder="****" maxlength="8">
+  <button id="gateBtn">開く</button>
+  <div id="gateMsg"></div>
+</div>
+
+<header>
+  <b>📖 理念手帳</b><span class="sub">タップ・スワイプでめくれます</span>
+  <a href="ai-os.html">AI-OSへ戻る</a>
+</header>
+
+<div id="stage">
+  <div id="bookBox">
+    <div class="half" id="baseL"></div>
+    <div class="half" id="baseR"></div>
+    <div id="sheet"><div class="face f"></div><div class="face b"></div></div>
+    <div id="spineShadow"></div>
+  </div>
+  <div class="hint left">‹</div>
+  <div class="hint right">›</div>
+  <div id="loading"><div class="spin"></div>読み込み中…</div>
+</div>
+
+<footer>
+  <button id="btnPrev">‹ 前</button>
+  <span id="pageNo">1 / 26</span>
+  <input id="slider" type="range" min="1" max="26" value="1">
+  <button id="btnNext">次 ›</button>
+</footer>
+
+<script>
+"use strict";
+/* =========================================================
+   本物の本のように「右ページが左へ折り返る」フリップビューア
+   p-01 = 表紙（片ページ）／ p-02〜p-26 = 見開き
+   ========================================================= */
+const TOTAL = 26;
+const DUR = 500; // めくり時間(ms)
+const src = n => `rinen/p-${String(n).padStart(2,'0')}.jpg`;
+
+// ---- 簡易ゲート（職員向けの目隠し） ----
+const PASS='5103';
+const gate=document.getElementById('gate');
+if(sessionStorage.getItem('rinenOK')==='1') gate.remove();
+function tryGate(){
+  if(document.getElementById('gateInput').value.trim()===PASS){
+    sessionStorage.setItem('rinenOK','1'); gate.remove();
+  }else document.getElementById('gateMsg').textContent='合言葉が違います';
+}
+document.getElementById('gateBtn').addEventListener('click',tryGate);
+document.getElementById('gateInput').addEventListener('keydown',e=>{if(e.key==='Enter')tryGate();});
+
+// ---- 要素 ----
+const stage=document.getElementById('stage');
+const box=document.getElementById('bookBox');
+const baseL=document.getElementById('baseL');
+const baseR=document.getElementById('baseR');
+const sheet=document.getElementById('sheet');
+sheet.style.setProperty('--dur', DUR+'ms'); // CSSのめくり時間をJSと同期
+const faceF=sheet.querySelector('.f');
+const faceB=sheet.querySelector('.b');
+const loading=document.getElementById('loading');
+const slider=document.getElementById('slider');
+
+let cur=1, busy=false;
+const cache={};
+function preload(n){ if(n<1||n>TOTAL||cache[n])return; const im=new Image(); im.src=src(n); cache[n]=im; }
+
+// 半ページの背景を設定（n=1は表紙で「右半分＝画像全体」）
+function setHalf(el, n, side){
+  if(n<1 || n>TOTAL || (n===1 && side==='L')){ // 表紙の左側＝何もない
+    el.style.backgroundImage='none'; el.classList.remove('paper');
+    el.style.backgroundColor='transparent';
+    if(el===faceF||el===faceB){ el.style.backgroundColor='#fff'; } // めくり面は紙のまま
+    return;
+  }
+  el.classList.add('paper');
+  el.style.backgroundImage=`url("${src(n)}")`;
+  if(n===1){ el.style.backgroundSize='100% 100%'; el.style.backgroundPosition='0 0'; }
+  else{ el.style.backgroundSize='200% 100%';
+        el.style.backgroundPosition = side==='L' ? '0 0' : '100% 0'; }
+}
+
+// ---- サイズ（見開き比率で常に固定） ----
+const RATIO = 1577/1115;
+function fit(){
+  const r=stage.getBoundingClientRect();
+  const pad=10;
+  let w=r.width-pad*2, h=r.height-pad*2;
+  if(w/h > RATIO) w=h*RATIO; else h=w/RATIO;
+  box.style.width=w+'px'; box.style.height=h+'px';
+}
+window.addEventListener('resize', fit);
+
+// ---- 表示更新 ----
+function render(){
+  setHalf(baseL, cur, 'L');
+  setHalf(baseR, cur, 'R');
+  box.classList.toggle('opened', cur>1);
+  document.getElementById('pageNo').textContent=`${cur} / ${TOTAL}`;
+  slider.value=cur;
+  document.getElementById('btnPrev').disabled=cur<=1;
+  document.getElementById('btnNext').disabled=cur>=TOTAL;
+  preload(cur+1); preload(cur-1); preload(cur+2);
+}
+
+// ---- めくり（次へ）：右ページが持ち上がり左へ倒れる ----
+function next(){
+  if(busy||cur>=TOTAL) return; busy=true;
+  const to=cur+1;
+  setHalf(faceF, cur, 'R');   // めくる紙の表＝今の右ページ
+  setHalf(faceB, to,  'L');   // めくる紙の裏＝次の左ページ
+  setHalf(baseR, to,  'R');   // 紙の下から次の右ページが現れる
+  sheet.style.display='block';
+  sheet.classList.remove('anim'); sheet.style.transform='rotateY(0deg)';
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    sheet.classList.add('anim','shade');
+    sheet.style.transform='rotateY(-180deg)';
+    setTimeout(()=>sheet.classList.remove('shade'), DUR/2);
+    setTimeout(()=>{
+      cur=to; render();
+      sheet.classList.remove('anim'); sheet.style.display='none';
+      busy=false;
+    }, DUR+30);
+  }));
+}
+
+// ---- めくり（前へ）：左ページが持ち上がり右へ戻る ----
+function prev(){
+  if(busy||cur<=1) return; busy=true;
+  const to=cur-1;
+  setHalf(faceB, cur, 'L');   // 戻す紙の裏＝今の左ページ（最初に見えている）
+  setHalf(faceF, to,  'R');   // 戻す紙の表＝前の右ページ（着地後に見える）
+  setHalf(baseL, to,  'L');   // 紙が離れると前の左ページ（表紙前は空）が現れる
+  sheet.style.display='block';
+  sheet.classList.remove('anim'); sheet.style.transform='rotateY(-180deg)';
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    sheet.classList.add('anim','shade');
+    sheet.style.transform='rotateY(0deg)';
+    setTimeout(()=>sheet.classList.remove('shade'), DUR/2);
+    setTimeout(()=>{
+      cur=to; render();
+      sheet.classList.remove('anim'); sheet.style.display='none';
+      busy=false;
+    }, DUR+30);
+  }));
+}
+
+// ---- 操作 ----
+let tx=null,ty=null;
+stage.addEventListener('touchstart',e=>{tx=e.touches[0].clientX;ty=e.touches[0].clientY;},{passive:true});
+stage.addEventListener('touchend',e=>{
+  if(tx==null)return;
+  const dx=e.changedTouches[0].clientX-tx, dy=e.changedTouches[0].clientY-ty; tx=null;
+  if(Math.abs(dx)>40&&Math.abs(dx)>Math.abs(dy)){ dx<0?next():prev(); return; }
+  if(Math.abs(dx)<12&&Math.abs(dy)<12){
+    const r=stage.getBoundingClientRect();
+    (e.changedTouches[0].clientX-r.left)<r.width*0.32?prev():next();
+  }
+},{passive:true});
+stage.addEventListener('click',e=>{
+  if('ontouchstart' in window)return;
+  const r=stage.getBoundingClientRect();
+  (e.clientX-r.left)<r.width*0.32?prev():next();
+});
+document.getElementById('btnNext').addEventListener('click',e=>{e.stopPropagation();next();});
+document.getElementById('btnPrev').addEventListener('click',e=>{e.stopPropagation();prev();});
+slider.addEventListener('input',()=>{ if(!busy){ cur=parseInt(slider.value); render(); } });
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight'||e.key===' ')next();
+  else if(e.key==='ArrowLeft')prev();
+});
+
+// ---- 初期化 ----
+const first=new Image();
+first.onload=()=>{ loading.style.display='none'; fit(); render(); };
+first.src=src(1); cache[1]=first;
+fit();
+</script>
+</body>
+</html>
