@@ -2518,7 +2518,10 @@ function openKansaMenu(){
    ========================================================================= */
 const KINMU_HOMES = /西九条|九条|酉島|新郡山|春日出|出来島/;
 const KINMU_BLOCKS = ['世話人','生活支援員','夜間支援従事者','夜間支援従事者2'];
-const KINMU_YAKAN_ONLY = ['檜原あゆみ'];  // 夜勤でも世話人8hを付けない職員（2026-08-21指示）
+// 夜勤でも世話人8hを付けない職員（氏名は公開コードに置かず、この端末のブラウザにだけ保存）
+function kmYakanOnly(){
+  return (localStorage.getItem('aiosKinmuYakanOnly')||'').split(/[、,\s]+/).map(s=>kmNorm(s)).filter(Boolean);
+}
 const KINMU_VAR = {'𠮷':'吉','𠮹':'吉','髙':'高','﨑':'崎','邉':'辺','邊':'辺'};
 function kmNorm(s){
   if(s==null) return '';
@@ -2592,7 +2595,7 @@ function kmExtract(wb){
       let v=cellV(ws,r,cN);
       if(kmIsName(v)){
         const n=kmNorm(v);
-        if(!KINMU_YAKAN_ONLY.includes(n)) add(n,'世話人',day,8);
+        if(!kmYakanOnly().includes(n)) add(n,'世話人',day,8);
         add(n,'夜間支援従事者',day,5.5); shifts++;
       }
       for(const [nc,lab] of [[cD1,'日勤①'],[cD2,'日勤②']]){
@@ -2737,6 +2740,10 @@ function openKinmuPanel(){
         </div>
         <button class="wpBtn" id="kmPick1" style="width:100%; text-align:left; padding:11px">📄 ① 支援実績のExcelを選ぶ（調整給項目追加支援実績_YYYY.M）<br><small id="kmF1" style="font-weight:400; color:#7a8b80">未選択</small></button>
         <button class="wpBtn" id="kmPick2" style="width:100%; text-align:left; padding:11px; margin-top:8px">📊 ② 勤務形態一覧表のExcelを選ぶ（ドリプロ様式）<br><small id="kmF2" style="font-weight:400; color:#7a8b80">未選択</small></button>
+        <label style="display:block; font-size:11.5px; color:#2b5d8a; font-weight:700; margin-top:10px">夜間支援のみの職員（夜勤でも世話人8hを付けない人・「、」区切り）</label>
+        <input id="kmYakanOnly" type="text" placeholder="例：山田花子、佐藤太郎"
+          style="width:100%; padding:8px; border:1px solid #cfe0ee; border-radius:8px; font-size:12px; margin:4px 0 2px">
+        <small style="color:#7a8b80; font-size:10.5px">この設定はこの端末のブラウザにだけ保存されます（公開ページには載りません）</small>
         <button class="wpBtn primary" id="kmRun" style="width:100%; padding:12px; margin-top:10px" disabled>▶ 転記を実行</button>
         <div id="kmResult" style="margin-top:10px"></div>
         <input type="file" id="kmFile1" accept=".xlsm,.xlsx" hidden>
@@ -2749,7 +2756,10 @@ function openKinmuPanel(){
     document.getElementById('kmPick2').addEventListener('click',()=>document.getElementById('kmFile2').click());
     document.getElementById('kmFile1').addEventListener('change',function(){ if(this.files[0]){ kmJissekiFile=this.files[0]; document.getElementById('kmF1').textContent=kmJissekiFile.name; } this.value=''; upd(); });
     document.getElementById('kmFile2').addEventListener('change',function(){ if(this.files[0]){ kmDoriproFile=this.files[0]; document.getElementById('kmF2').textContent=kmDoriproFile.name; } this.value=''; upd(); });
-    document.getElementById('kmRun').addEventListener('click',kinmuRun);
+    const yk=document.getElementById('kmYakanOnly');
+    yk.value=localStorage.getItem('aiosKinmuYakanOnly')||'';
+    yk.addEventListener('change',()=>localStorage.setItem('aiosKinmuYakanOnly', yk.value.trim()));
+    document.getElementById('kmRun').addEventListener('click',()=>{ localStorage.setItem('aiosKinmuYakanOnly', document.getElementById('kmYakanOnly').value.trim()); kinmuRun(); });
   }
   p.hidden=false;
 }
