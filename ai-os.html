@@ -782,7 +782,7 @@ const STAFF_OPEN = {
   gyousei:{ fn:()=>openGyouseiMenu(),  say:'行政手続きですね、お任せください！',     title:'変更届・付表12を作成する' },
   shift:  { fn:()=>openShiftPanel(),   say:'シフト集計ですね、お任せください！',     title:'シフトを集計する' },
   keikaku:{ fn:()=>openKeikakuPanel(), say:'個別支援計画書ですね、お任せください！', title:'個別支援計画書を作成する' },
-  kansa:  { fn:()=>openKansaPanel(),   say:'運営指導の準備書類をチェックしましょう！', title:'運営指導の準備書類をチェックする' },
+  kansa:  { fn:()=>openKansaMenu(),    say:'監査まわりですね、お任せください！', title:'運営指導チェック・勤務形態一覧表' },
 };
 for(const s of STAFF){
   const el = document.createElement('div');
@@ -2486,7 +2486,298 @@ function kansaPrint(){
   setTimeout(()=>window.print(), 60);
   logLine('<b>監査AI</b>：準備書類チェックリストを印刷');
 }
-/* ▲▲▲ 監査AI（運営指導チェック） ここまで ▲▲▲ */
+/* ---- 監査AIメニュー（チェックリスト／勤務形態一覧表） ---- */
+function openKansaMenu(){
+  let p=document.getElementById('kansaMenu');
+  if(!p){
+    p=document.createElement('div'); p.className='modal'; p.id='kansaMenu';
+    p.innerHTML=`<div class="sheet" style="max-width:440px">
+      <div class="sheetHead"><b>🔍 監査AI（どちらにしますか？）</b><span class="grow"></span>
+        <button onclick="document.getElementById('kansaMenu').hidden=true">✕</button></div>
+      <div class="sheetBody">
+        <button class="wpBtn primary" style="width:100%; text-align:left; padding:12px" onclick="document.getElementById('kansaMenu').hidden=true; openKansaPanel();">
+          ✅ 運営指導 当日準備書類チェック<br><small style="font-weight:400">大阪市「別紙2」51項目のチェックリスト（進捗保存・印刷）</small>
+        </button>
+        <button class="wpBtn primary" style="width:100%; text-align:left; padding:12px; margin-top:8px" onclick="document.getElementById('kansaMenu').hidden=true; openKinmuPanel();">
+          🗂 勤務形態一覧表の自動作成<br><small style="font-weight:400">支援実績（6ホーム）から夜勤・日勤・準夜勤を抽出してドリプロ様式へ転記</small>
+        </button>
+      </div></div>`;
+    p.addEventListener('click',ev=>{ if(ev.target.id==='kansaMenu') p.hidden=true; });
+    document.body.appendChild(p);
+  }
+  p.hidden=false;
+}
+
+/* =========================================================================
+   ▼▼▼ 監査AI：勤務形態一覧表の自動作成（ドリプロ様式） ▼▼▼
+   入力①：調整給項目追加支援実績（.xlsm／6ホームのシート）
+   入力②：勤務形態一覧表＋実績管理表（ドリプロ様式 .xlsx）
+   処理：夜勤→世話人8h＋夜間支援従事者5.5h（開始日）／準夜勤→夜間支援従事者2に5h
+         ／日勤①②→生活支援員に実働時間。月シートが無ければ直近月を複製して作成。
+   ★書式・数式完全保持（JSZipでセル値のみ編集）。処理は全てブラウザ内。
+   ========================================================================= */
+const KINMU_HOMES = /西九条|九条|酉島|新郡山|春日出|出来島/;
+const KINMU_BLOCKS = ['世話人','生活支援員','夜間支援従事者','夜間支援従事者2'];
+const KINMU_YAKAN_ONLY = ['檜原あゆみ'];  // 夜勤でも世話人8hを付けない職員（2026-08-21指示）
+const KINMU_VAR = {'𠮷':'吉','𠮹':'吉','髙':'高','﨑':'崎','邉':'辺','邊':'辺'};
+function kmNorm(s){
+  if(s==null) return '';
+  let t=String(s).replace(/^\d+/,'').replace(/[\s　]/g,'');
+  return Array.from(t).map(ch=>KINMU_VAR[ch]||ch).join('');
+}
+function kmIsName(v){
+  const n=kmNorm(v);
+  if(!n || ['無','休','なし','利用なし'].includes(n)) return false;
+  return /[ぁ-んァ-ヶ一-龥]/.test(n) && n.length>=2;
+}
+// --- シートXMLユーティリティ（値のみ編集・s属性保持） ---
+function kmCellRe(ref){ return new RegExp('<c r="'+ref+'"([^>]*?)(?:/>|>([\\s\\S]*?)</c>)'); }
+function kmCellVal(xml, ref, shared){
+  const m=xml.match(kmCellRe(ref)); if(!m) return null;
+  const attrs=m[1], inner=m[2]||'';
+  const t=(attrs.match(/\bt="([^"]*)"/)||[])[1];
+  const v=(inner.match(/<v>([\s\S]*?)<\/v>/)||[])[1];
+  if(t==='s'&&v!=null) return shared[+v];
+  if(t==='inlineStr'){ const it=(inner.match(/<t[^>]*>([\s\S]*?)<\/t>/)||[])[1]; return it!=null?shXmlUnesc(it):null; }
+  return v!=null?v:null;
+}
+function kmSetNum(xml, ref, num){
+  const re=kmCellRe(ref); const m=xml.match(re); if(!m) return [xml,false];
+  const attrs=m[1].replace(/\s+t="[^"]*"/,'');
+  const s=(Math.round(num*100)/100).toString();
+  return [xml.replace(re,'<c r="'+ref+'"'+attrs+'><v>'+s+'</v></c>'), true];
+}
+function kmSetStr(xml, ref, str){
+  const re=kmCellRe(ref); const m=xml.match(re); if(!m) return [xml,false];
+  const attrs=m[1].replace(/\s+t="[^"]*"/,'');
+  return [xml.replace(re,'<c r="'+ref+'"'+attrs+' t="inlineStr"><is><t xml:space="preserve">'+hkXmlEscC(str)+'</t></is></c>'), true];
+}
+function kmHasFormula(xml, ref){
+  const m=xml.match(kmCellRe(ref));
+  return !!(m && m[2] && m[2].indexOf('<f')>=0);
+}
+// 日別セル(G..AK)の「値のみ」クリア（数式セルは残す）
+function kmClearDays(xml){
+  return xml.replace(/<c r="([A-Z]+)(\d+)"([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g, (all,colL,rowS,attrs,inner)=>{
+    const col=shColIdx(colL), row=+rowS;
+    if(col>=7 && col<=37 && row>=16 && inner!=null && inner.indexOf('<f')<0){
+      return '<c r="'+colL+rowS+'"'+attrs.replace(/\s+t="[^"]*"/,'')+'/>';
+    }
+    return all;
+  });
+}
+
+// --- ① 実績(.xlsm)から抽出（SheetJS読み取り専用） ---
+function kmExtract(wb){
+  const sheets = wb.SheetNames.filter(n=>KINMU_HOMES.test(n) && /\d{6}/.test(n));
+  if(sheets.length===0) throw new Error('実績ファイルにホームのシート（例：①西九条202608）が見つかりません');
+  const ym = (sheets[0].match(/(\d{6})/)||[])[1];
+  const agg={};  // name -> block -> day -> hours
+  const warns=[];
+  const add=(n,b,d,h)=>{ ((agg[n]=agg[n]||{})[b]=agg[n][b]||{})[d]=(agg[n][b][d]||0)+h; };
+  const cellV=(ws,r,c)=>{ const x=ws[XLSX.utils.encode_cell({r,c})]; return x?x.v:null; };
+  const findHdr=(ws,label)=>{
+    for(const r of [3,2,4]) for(let c=0;c<90;c++){
+      if(String(cellV(ws,r,c)||'').trim()===label) return c;
+    }
+    return null;
+  };
+  let shifts=0;
+  for(const sn of sheets){
+    const ws=wb.Sheets[sn];
+    const cN=findHdr(ws,'夜勤'), cD1=findHdr(ws,'日勤①'), cD2=findHdr(ws,'日勤②'), cJ=findHdr(ws,'準夜勤');
+    if(cN==null||cJ==null){ warns.push(sn+'：見出し（夜勤/準夜勤）を検出できずスキップ'); continue; }
+    for(let r=5;r<=35;r++){           // 6行目=1日 … 36行目=31日
+      const day=r-4;
+      let v=cellV(ws,r,cN);
+      if(kmIsName(v)){
+        const n=kmNorm(v);
+        if(!KINMU_YAKAN_ONLY.includes(n)) add(n,'世話人',day,8);
+        add(n,'夜間支援従事者',day,5.5); shifts++;
+      }
+      for(const [nc,lab] of [[cD1,'日勤①'],[cD2,'日勤②']]){
+        if(nc==null) continue;
+        const nv=cellV(ws,r,nc);
+        if(kmIsName(nv)){
+          const hv=cellV(ws,r,nc+3);
+          if(typeof hv==='number' && hv>0){ add(kmNorm(nv),'生活支援員',day,hv); shifts++; }
+          else warns.push(`${sn} ${day}日 ${lab} ${kmNorm(nv)}：出勤・退勤時刻が未入力のため未転記`);
+        }
+      }
+      v=cellV(ws,r,cJ);
+      if(kmIsName(v)){ add(kmNorm(v),'夜間支援従事者2',day,5); shifts++; }
+    }
+  }
+  return {agg, ym, warns, shifts, homes:sheets.length};
+}
+
+// --- ② ドリプロ様式へ転記（JSZip・書式完全保持） ---
+async function kmFill(zip, agg, ym, report){
+  const wbxml0=await zip.file('xl/workbook.xml').async('string');
+  const rels0=await zip.file('xl/_rels/workbook.xml.rels').async('string');
+  const cts0=await zip.file('[Content_Types].xml').async('string');
+  let shared=[];
+  const ssf=zip.file('xl/sharedStrings.xml');
+  if(ssf){
+    const ss=await ssf.async('string');
+    shared=[...ss.matchAll(/<si>([\s\S]*?)<\/si>/g)].map(m=>
+      [...m[1].replace(/<rPh[\s\S]*?<\/rPh>/g,'').matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)]
+        .map(t=>shXmlUnesc(t[1])).join(''));
+  }
+  const target='勤務形態一覧表'+ym;
+  const sheetPathOf=(name)=>{
+    const m=wbxml0.match(new RegExp('<sheet[^>]*name="'+name+'"[^>]*r:id="(rId\\d+)"'));
+    if(!m) return null;
+    const tm=rels0.match(new RegExp('<Relationship[^>]*Id="'+m[1]+'"[^>]*Target="([^"]*)"'));
+    return tm?('xl/'+tm[1].replace(/^\//,'').replace(/^xl\//,'')):null;
+  };
+  let xml, isNew=false, newPath=null;
+  let wbxml=wbxml0, rels=rels0, cts=cts0;
+  if(sheetPathOf(target)){
+    xml=await zip.file(sheetPathOf(target)).async('string');
+    xml=kmClearDays(xml);                 // 再実行時：日別の値だけ入れ直す
+    report.push('既存の「'+target+'」シートに記入（日別欄をクリアして再転記）');
+  }else{
+    // 直近月シートを複製
+    const months=[...wbxml0.matchAll(/name="勤務形態一覧表(\d{6})"/g)].map(m=>m[1]).filter(m=>m<ym).sort();
+    if(months.length===0) throw new Error('複製元になる月シート（勤務形態一覧表YYYYMM）が見つかりません');
+    const src=months[months.length-1];
+    xml=await zip.file(sheetPathOf('勤務形態一覧表'+src)).async('string');
+    xml=kmClearDays(xml); isNew=true;
+    [xml]=kmSetNum(xml,'N2',+ym.slice(0,4));
+    [xml]=kmSetNum(xml,'T2',+ym.slice(4,6));
+    newPath='xl/worksheets/sheet_kinmu'+ym+'.xml';
+    const rid='rIdKinmu'+ym;
+    const sid=Math.max(...[...wbxml0.matchAll(/sheetId="(\d+)"/g)].map(m=>+m[1]))+1;
+    const anchor=wbxml0.match(new RegExp('<sheet[^>]*name="勤務形態一覧表'+src+'"[^>]*/>'))[0];
+    wbxml=wbxml0.replace(anchor, anchor+'<sheet name="'+target+'" sheetId="'+sid+'" r:id="'+rid+'"/>');
+    rels=rels0.replace('</Relationships>','<Relationship Id="'+rid+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet_kinmu'+ym+'.xml"/></Relationships>');
+    cts=cts0.replace('</Types>','<Override PartName="/xl/worksheets/sheet_kinmu'+ym+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>');
+    const srcRels=sheetPathOf('勤務形態一覧表'+src).replace('worksheets/','worksheets/_rels/')+'.rels';
+    if(zip.file(srcRels)) zip.file('xl/worksheets/_rels/sheet_kinmu'+ym+'.xml.rels', await zip.file(srcRels).async('string'));
+    report.push('「勤務形態一覧表'+src+'」を複製して「'+target+'」シートを作成');
+  }
+  if(/<calcPr\b/.test(wbxml) && !/fullCalcOnLoad/.test(wbxml)) wbxml=wbxml.replace(/<calcPr\b/,'<calcPr fullCalcOnLoad="1"');
+
+  // 名簿マップ（ブロック×氏名→行）
+  const nameRows={};
+  const maxRow=Math.max(...[...xml.matchAll(/<row r="(\d+)"/g)].map(m=>+m[1]));
+  for(let r=16;r<=Math.min(maxRow,400);r++){
+    const b=kmNorm(kmCellVal(xml,'B'+r,shared)||'');
+    const eRaw=kmCellVal(xml,'E'+r,shared);
+    const e=kmNorm(eRaw||'');
+    if(KINMU_BLOCKS.includes(b) && e && !String(eRaw).startsWith('=')){
+      if(!(b+'|'+e in nameRows)) nameRows[b+'|'+e]=r;
+    }
+  }
+  // ブロック範囲と空き行（E空欄・AL数式あり・G数式なし＝職員行）
+  const rowsBy={}; for(const k in nameRows){ const b=k.split('|')[0]; (rowsBy[b]=rowsBy[b]||[]).push(nameRows[k]); }
+  const order=KINMU_BLOCKS.slice().sort((a,b)=>Math.min(...rowsBy[a])-Math.min(...rowsBy[b]));
+  const bounds={};
+  order.forEach((b,i)=>{
+    const lo=Math.min(...rowsBy[b]);
+    const hi=(i+1<order.length)?Math.min(...rowsBy[order[i+1]])-2:Math.max(...rowsBy[b])+30;
+    bounds[b]=[lo,hi];
+  });
+  const used=new Set(Object.values(nameRows));
+  const findEmpty=(block)=>{
+    const [lo,hi]=bounds[block];
+    for(let r=lo;r<=hi;r++){
+      if(used.has(r)) continue;
+      if(kmCellVal(xml,'E'+r,shared)) continue;
+      if(kmHasFormula(xml,'G'+r)) continue;        // ブロック合計行は使わない
+      if(!kmHasFormula(xml,'AL'+r)) continue;      // 合計数式を持つ職員行のみ
+      const b=kmCellVal(xml,'B'+r,shared);
+      if(b==null || kmNorm(b)===block) return r;
+    }
+    return null;
+  };
+
+  let written=0; const added=[], missing=[];
+  for(const name of Object.keys(agg).sort()){
+    for(const block of Object.keys(agg[name])){
+      let r=nameRows[block+'|'+name];
+      if(r===undefined){
+        r=findEmpty(block);
+        if(r===null){ missing.push(name+'（'+block+'）：名簿に無く空き行もなし'); continue; }
+        [xml]=kmSetStr(xml,'E'+r,name);
+        [xml]=kmSetStr(xml,'C'+r,'D');
+        if(kmCellVal(xml,'B'+r,shared)==null) [xml]=kmSetStr(xml,'B'+r,block);
+        nameRows[block+'|'+name]=r; used.add(r);
+        added.push(name+' → '+block+'の空き行（'+r+'行目）に新規追加');
+      }
+      for(const day in agg[name][block]){
+        const ref=shColLetters(6+ +day)+r;
+        const [x2,ok]=kmSetNum(xml,ref,agg[name][block][day]);
+        xml=x2; if(ok) written++;
+        else missing.push(name+' '+block+' '+day+'日：セル'+ref+'が無く未転記');
+      }
+    }
+  }
+  zip.file(isNew?newPath:sheetPathOf(target), xml);
+  zip.file('xl/workbook.xml', wbxml);
+  zip.file('xl/_rels/workbook.xml.rels', rels);
+  zip.file('[Content_Types].xml', cts);
+  return {written, added, missing};
+}
+
+// --- パネル ---
+let kmJissekiFile=null, kmDoriproFile=null;
+function openKinmuPanel(){
+  let p=document.getElementById('kinmuPanel');
+  if(!p){
+    p=document.createElement('div'); p.className='modal'; p.id='kinmuPanel';
+    p.innerHTML=`<div class="sheet" style="max-width:560px">
+      <div class="sheetHead"><b>🗂 勤務形態一覧表の自動作成（ドリプロ様式）</b><span class="grow"></span>
+        <button onclick="document.getElementById('kinmuPanel').hidden=true">✕</button></div>
+      <div class="sheetBody">
+        <div class="wpNote" style="margin-bottom:10px">
+          2つのExcelを選ぶと、6ホームの夜勤・日勤・準夜勤を抽出して勤務形態一覧表の月シートに転記します。<br>
+          <b>書式・数式は完全保持。</b>処理はこの端末のブラウザ内だけで行われ、データは外部に送信されません。
+        </div>
+        <button class="wpBtn" id="kmPick1" style="width:100%; text-align:left; padding:11px">📄 ① 支援実績のExcelを選ぶ（調整給項目追加支援実績_YYYY.M）<br><small id="kmF1" style="font-weight:400; color:#7a8b80">未選択</small></button>
+        <button class="wpBtn" id="kmPick2" style="width:100%; text-align:left; padding:11px; margin-top:8px">📊 ② 勤務形態一覧表のExcelを選ぶ（ドリプロ様式）<br><small id="kmF2" style="font-weight:400; color:#7a8b80">未選択</small></button>
+        <button class="wpBtn primary" id="kmRun" style="width:100%; padding:12px; margin-top:10px" disabled>▶ 転記を実行</button>
+        <div id="kmResult" style="margin-top:10px"></div>
+        <input type="file" id="kmFile1" accept=".xlsm,.xlsx" hidden>
+        <input type="file" id="kmFile2" accept=".xlsx" hidden>
+      </div></div>`;
+    p.addEventListener('click',ev=>{ if(ev.target.id==='kinmuPanel') p.hidden=true; });
+    document.body.appendChild(p);
+    const upd=()=>{ document.getElementById('kmRun').disabled=!(kmJissekiFile&&kmDoriproFile); };
+    document.getElementById('kmPick1').addEventListener('click',()=>document.getElementById('kmFile1').click());
+    document.getElementById('kmPick2').addEventListener('click',()=>document.getElementById('kmFile2').click());
+    document.getElementById('kmFile1').addEventListener('change',function(){ if(this.files[0]){ kmJissekiFile=this.files[0]; document.getElementById('kmF1').textContent=kmJissekiFile.name; } this.value=''; upd(); });
+    document.getElementById('kmFile2').addEventListener('change',function(){ if(this.files[0]){ kmDoriproFile=this.files[0]; document.getElementById('kmF2').textContent=kmDoriproFile.name; } this.value=''; upd(); });
+    document.getElementById('kmRun').addEventListener('click',kinmuRun);
+  }
+  p.hidden=false;
+}
+async function kinmuRun(){
+  const out=document.getElementById('kmResult');
+  if(typeof XLSX==='undefined'||typeof JSZip==='undefined'){ alert('ライブラリを読み込み中です。少し待ってからお試しください。'); return; }
+  out.innerHTML='<p class="wpNote">⏳ 抽出・転記中…</p>';
+  try{
+    const wb=XLSX.read(await kmJissekiFile.arrayBuffer(),{type:'array'});
+    const ex=kmExtract(wb);
+    const zip=await JSZip.loadAsync(await kmDoriproFile.arrayBuffer());
+    const report=[];
+    const res=await kmFill(zip, ex.agg, ex.ym, report);
+    const blob=await zip.generateAsync({type:'blob', compression:'DEFLATE', mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const outName='勤務形態一覧表_'+ex.ym+'_作成済.xlsx';
+    let html=`<div class="wpNote" style="background:#eef7f0">
+      ✅ <b>${ex.ym.slice(0,4)}年${+ex.ym.slice(4,6)}月分 完了</b>：${ex.homes}ホームから${ex.shifts}勤務を抽出 → <b>${res.written}セル転記</b><br>${report.join('<br>')}</div>`;
+    if(res.added.length)  html+=`<div class="wpNote">🆕 ${res.added.join('<br>')}</div>`;
+    if(res.missing.length)html+=`<div class="wpNote" style="background:#fdf3f3">⚠ 未転記：<br>${res.missing.join('<br>')}</div>`;
+    if(ex.warns.length)   html+=`<div class="wpNote" style="background:#fbf7ec">📝 実績側の要確認：<br>${ex.warns.join('<br>')}</div>`;
+    out.innerHTML=html;
+    await aiosDeliver(blob, outName, 'kmResult', null);
+    banner('✅ 勤務形態一覧表 '+res.written+'セル転記（書式完全保持）');
+    say('監査','勤務形態一覧表ができました',2800);
+    logLine(`<b>監査AI</b>：勤務形態一覧表${ex.ym}を作成（${res.written}セル転記・書式完全保持）`);
+  }catch(e){ out.innerHTML=`<p class="wpNote" style="background:#fdf3f3">⚠ エラー：${hkEsc(e.message)}</p>`; }
+}
+/* ▲▲▲ 監査AI（運営指導チェック・勤務形態一覧表） ここまで ▲▲▲ */
 
 /* ---- 行政AIの業務メニュー（変更届・付表12 の2つが格納されている） ---- */
 function openGyouseiMenu(){
