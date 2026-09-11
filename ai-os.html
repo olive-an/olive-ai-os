@@ -31,13 +31,16 @@
   body{
     font-family:"Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
     color:var(--ink); background:#eef2e6; -webkit-text-size-adjust:100%;
+    /* ★画面全体を1画面に固定（スクロールしない） */
+    height:100dvh; display:flex; flex-direction:column; overflow:hidden;
   }
 
-  /* ===== ヘッダー ===== */
+  /* ===== ヘッダー（上部に固定） ===== */
   header{
     background:linear-gradient(180deg,var(--olive),var(--olive-d));
     color:#fff; padding:10px 16px; display:flex; align-items:center; gap:14px;
     flex-wrap:wrap;
+    position:sticky; top:0; z-index:30; flex:0 0 auto;
   }
   header .logo{font-size:20px; font-weight:800; letter-spacing:.5px}
   header .tag{font-size:11px; background:rgba(255,255,255,.18); padding:2px 8px; border-radius:999px}
@@ -50,12 +53,17 @@
   .tile span{font-size:10px; opacity:.9}
 
   .wrap{max-width:1720px; margin:0 auto; padding:12px; display:grid;
-    grid-template-columns: 1fr 300px; gap:12px}
-  @media(max-width:880px){ .wrap{grid-template-columns:1fr} }
+    grid-template-columns: 1fr 300px; gap:12px;
+    /* ★残りの高さいっぱいを使い、はみ出さない */
+    flex:1 1 auto; min-height:0; width:100%; overflow:hidden;
+  }
+  .wrap > .mapcol{display:flex; flex-direction:column; min-height:0; gap:8px}
+  @media(max-width:880px){ .wrap{grid-template-columns:1fr; padding:8px} }
 
   /* ===== フロア（会社マップ） ===== */
   .stage{
-    position:relative; width:100%; height:calc(100vh - 140px); min-height:480px; max-height:900px;
+    position:relative; width:100%;
+    flex:1 1 auto; min-height:0;            /* ★親の高さに合わせて伸縮 */
     background:
       radial-gradient(120% 90% at 50% 0%, #fbfdf7, #eef3e3 60%, #e3ebd4);
     border:1px solid var(--line); border-radius:16px; overflow:hidden;
@@ -77,6 +85,13 @@
     color:var(--olive-d); box-shadow:0 2px 4px rgba(0,0,0,.06); white-space:nowrap;
   }
   .desk{font-size:30px; margin-top:2px; filter:drop-shadow(0 2px 1px rgba(0,0,0,.15))}
+
+  /* 狭い画面：名前が二重に出て重なるので、AI社員の机は隠す（施設のゾーンは残す） */
+  @media(max-width:880px){
+    .zone-desk{display:none}
+    .plaque{font-size:11px; padding:1px 6px}
+    .desk{font-size:26px}
+  }
 
   /* 社長室 */
   .president{
@@ -105,10 +120,41 @@
   }
   .chip:hover{background:var(--olive-l)}
 
+  #chipsToggle{
+    display:none; border:1px solid var(--gold); background:#fff; color:#8a6a17;
+    border-radius:10px; padding:8px 10px; font-size:13px; cursor:pointer; font-weight:700;
+  }
+  /* 狭い画面：社長室は画面下の「指示バー」にして、マップ全体を見えるようにする */
+  @media(max-width:880px){
+    .president{
+      left:0; right:0; bottom:0; top:auto; transform:none;
+      width:100%; min-width:0; max-width:none;
+      border-width:2px 0 0 0; border-radius:14px 14px 0 0; padding:7px 10px 9px;
+    }
+    .president h2{font-size:12px; margin-bottom:4px}
+    .president p{display:none}
+    .chips{
+      max-height:0; overflow:hidden; margin-top:0;
+      transition:max-height .25s ease, margin-top .25s ease;
+    }
+    .stage.chipsOpen .chips{max-height:220px; margin-top:7px}
+    .chip{font-size:10.5px; padding:3px 8px}
+    #chipsToggle{display:inline-block}
+    /* 吹き出しはアイコンの下に出す（上だと画面外で切れるため） */
+    .staff .bubble{bottom:auto; top:100%; transform:translate(-50%,6px)}
+    .staff .bubble::after{top:auto; bottom:100%; border-top-color:transparent; border-bottom-color:#fff}
+    .staff.say .bubble{transform:translate(-50%,10px)}
+  }
+
   /* ===== AI社員 ===== */
   .staff{position:absolute; transform:translate(-50%,-50%); z-index:4;
     text-align:center; transition:filter .2s; will-change:left,top}
   .staff .avatar{font-size:42px; line-height:1; filter:drop-shadow(0 3px 2px rgba(0,0,0,.18))}
+  @media(max-width:880px){
+    .staff .avatar{font-size:30px}
+    .staff .badge{font-size:10px; padding:1px 5px}
+    .staff .state{font-size:9px}
+  }
   .staff.walking .avatar{animation:bob .45s infinite}
   @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
   .staff .badge{
@@ -144,7 +190,27 @@
   @keyframes pop{0%{transform:scale(1)}40%{transform:scale(1.35)}100%{transform:scale(1)}}
 
   /* ===== サイドパネル ===== */
-  .side{display:flex; flex-direction:column; gap:12px}
+  .side{display:flex; flex-direction:column; gap:12px; min-height:0; overflow:auto}
+  /* スマホ・iPad縦では下から出す引き出しにして、マップを1画面に収める */
+  #panelBtn{display:none}
+  @media(max-width:880px){
+    #panelBtn{
+      display:inline-flex; align-items:center; gap:4px; border:1px solid rgba(255,255,255,.35);
+      background:rgba(255,255,255,.16); color:#fff; border-radius:999px;
+      padding:5px 12px; font-size:12px; font-weight:700; cursor:pointer;
+    }
+    .side{
+      position:fixed; left:0; right:0; bottom:0; max-height:72dvh; z-index:25;
+      background:var(--paper); border-top:2px solid var(--olive);
+      border-radius:16px 16px 0 0; padding:12px 12px 18px;
+      box-shadow:0 -10px 28px rgba(0,0,0,.22);
+      transform:translateY(101%); transition:transform .26s ease;
+    }
+    body.panelOpen .side{transform:translateY(0)}
+    body.panelOpen::after{
+      content:""; position:fixed; inset:0; background:rgba(30,40,20,.35); z-index:24;
+    }
+  }
   .card{background:#fff; border:1px solid var(--line); border-radius:14px; padding:10px 12px}
   .card h3{margin:0 0 8px; font-size:12.5px; color:var(--olive-d); display:flex; gap:6px; align-items:center}
   .legend{display:flex; flex-wrap:wrap; gap:5px}
@@ -177,10 +243,16 @@
     font-size:10.5px; color:#6b7358; background:var(--olive-l);
     border:1px dashed var(--olive); border-radius:8px; padding:6px 9px; line-height:1.5
   }
-  .toolbar{display:flex; gap:6px; align-items:center; font-size:11px; color:#5c6a48}
+  .toolbar{display:flex; gap:6px; align-items:center; font-size:11px; color:#5c6a48; flex:0 0 auto}
   .toolbar button{
     border:1px solid var(--line); background:#fff; border-radius:8px;
     padding:4px 9px; cursor:pointer; font-size:11px
+  }
+  /* 狭い画面ではツールバーを1行に圧縮（説明文は隠す） */
+  @media(max-width:880px){
+    .toolbar{gap:5px; overflow-x:auto; white-space:nowrap; -webkit-overflow-scrolling:touch}
+    .toolbar > span{display:none}
+    .toolbar button{padding:5px 9px; font-size:11px; flex:0 0 auto}
   }
 
   /* ===== 業務パネル（本物の集計結果） ===== */
@@ -348,12 +420,13 @@
     <div class="tile"><b>3</b><span>本日の期限</span></div>
     <div class="tile"><b>5</b><span>未処理</span></div>
     <div class="tile"><b>92%</b><span>入居率</span></div>
+    <button id="panelBtn" title="お知らせ・完成トレイを開く">📋 パネル</button>
   </div>
 </header>
 
 <div class="wrap">
   <!-- 会社マップ -->
-  <div>
+  <div class="mapcol">
     <div class="stage" id="stage">
       <div class="banner" id="banner"></div>
 
@@ -363,6 +436,7 @@
         <p>あなたは社長です。ひとこと指示するだけ。</p>
         <div class="cmdrow">
           <input id="cmd" placeholder="例：変更届作成して" autocomplete="off">
+          <button id="chipsToggle" title="よく使う指示">☰</button>
           <button id="go">指示</button>
         </div>
         <div class="chips" id="chips"></div>
@@ -370,8 +444,8 @@
     </div>
 
     <div class="toolbar" style="margin-top:8px">
-      <button id="pause">⏸ 自律モードを止める</button>
-      <span>放っておくとAI社員が自分で動きます。</span>
+      <button id="pause">▶ AI社員を動かす</button>
+      <span>ふだんは自席で待機。押すと社内を歩き回ります。</span>
     </div>
     <div class="toolbar" style="margin-top:6px; flex-wrap:wrap">
       <button id="setDir">📁 保存先フォルダを設定</button>
@@ -712,7 +786,7 @@ const STAFF = [
 
 /* ---- 施設ゾーン（背景の飾り） ---- */
 const ZONES = [
-  ...STAFF.map(s=>({x:s.x, y:s.y, label:s.name, desk:'🖥️'})),
+  ...STAFF.map(s=>({x:s.x, y:s.y, label:s.name, desk:'🖥️', deskOnly:true})),
   {x:93, y:76, label:'プリンター', desk:'🖨️'},
   {x:92, y:9,  label:'書類棚',    desk:'🗄️'},
   {x:50, y:72, label:'会議室',    desk:'📊'},
@@ -757,12 +831,13 @@ const MEET = {x:50, y:72}; // 会議室（集合地点）
 /* ---- 状態管理 ---- */
 const S = {}; // id -> {el, x, y, tx, ty, state, moving, resolve, home}
 let busy = false;         // 業務ワークフロー実行中か
-let autonomous = true;    // 自律モード
+let autonomous = false;   // 自律モード（既定は自席で固定。ボタンで動かせる）
 
 /* ---- DOM生成：ゾーン ---- */
+const ZEL = [];   // 画面幅に応じて位置を変えるため、要素を覚えておく
 for(const z of ZONES){
   const d = document.createElement('div');
-  d.className='zone'; d.style.left=z.x+'%'; d.style.top=(z.y+7)+'%';
+  d.className='zone' + (z.deskOnly?' zone-desk':''); d.style.left=z.x+'%'; d.style.top=(z.y+7)+'%';
   d.innerHTML = `<div class="desk">${z.desk}</div><div class="plaque">${z.label}</div>`;
   if(z.label==='書類棚'){ // 書類棚はクリックで開ける（理念手帳などを格納）
     d.style.pointerEvents='auto'; d.style.cursor='pointer'; d.title='書類棚を開く';
@@ -774,6 +849,7 @@ for(const z of ZONES){
     d.addEventListener('click', ()=>openPrinterPanel());
   }
   stage.appendChild(d);
+  ZEL.push({el:d, z});
 }
 
 /* ---- DOM生成：AI社員 ---- */
@@ -804,6 +880,33 @@ for(const s of STAFF){
              bubbleEl:el.querySelector('.bubble')};
 }
 document.getElementById('t-ai').textContent = STAFF.length;
+
+/* ---- 画面幅に合わせた配置（PC＝自席／スマホ・iPad＝3列グリッド） ----
+   スマホでは社長室が下の指示バーになるので、AI社員は上半分にきれいに並べます。 */
+const NARROW_COLS = [18, 50, 82];                    // 3列
+const NARROW_ROWS = [10, 27, 44, 61];                // 4段（12名）
+const NARROW_ZONE = {'書類棚':{x:14,y:70}, '会議室':{x:50,y:70}, 'プリンター':{x:86,y:70}};
+function isNarrow(){ return window.innerWidth <= 880; }
+function layoutForWidth(){
+  const narrow = isNarrow();
+  STAFF.forEach((s,i)=>{
+    const o = S[s.id]; if(!o) return;
+    const p = narrow ? {x:NARROW_COLS[i%3], y:NARROW_ROWS[Math.floor(i/3)]} : {x:s.x, y:s.y};
+    o.home = {x:p.x, y:p.y};
+    if(!o.moving && !busy){                          // 動いていない人はその場で定位置へ
+      o.x=p.x; o.y=p.y; o.tx=p.x; o.ty=p.y;
+      o.el.style.left=p.x+'%'; o.el.style.top=p.y+'%';
+    }
+  });
+  for(const {el,z} of ZEL){
+    if(z.deskOnly) continue;                          // 机は狭い画面では非表示（CSS）
+    const p = (narrow && NARROW_ZONE[z.label]) ? NARROW_ZONE[z.label] : {x:z.x, y:z.y};
+    el.style.left=p.x+'%'; el.style.top=(p.y+7)+'%';
+  }
+}
+layoutForWidth();
+let _lrT=null;
+window.addEventListener('resize', ()=>{ clearTimeout(_lrT); _lrT=setTimeout(layoutForWidth, 150); });
 
 /* ---- 状態変更 ---- */
 function setState(id, st){
@@ -937,25 +1040,10 @@ function spotlight(id){
   const o=S[id]; o.el.classList.add('spot');
   setTimeout(()=>o.el.classList.remove('spot'),600);
 }
-/* 自律モード停止中の整列位置（iPhoneのホーム画面のようなグリッド）
-   ★社長室パネルの下端を実測して、画面の縦横比が変わっても必ずパネルの下に並ぶようにする */
-function gridPos(id){
-  const i = STAFF.findIndex(s=>s.id===id);
-  const xs = [9, 25, 41, 57, 73, 89];                // 6列×2段
-  let top = 72;
-  try{
-    const st = stage.getBoundingClientRect();
-    const pr = document.querySelector('.president').getBoundingClientRect();
-    top = ((pr.bottom - st.top) / st.height) * 100 + 8; // パネル下端の少し下
-  }catch(_e){}
-  top = Math.max(66, Math.min(top, 84));               // 66〜84%に収める
-  const pitch = Math.min(13, 94 - top);                // 2段目は最大94%まで
-  return { x: xs[i%6], y: top + Math.floor(i/6)*pitch };
-}
+/* 固定モード（ふだん）＝自席にぴたっと固定。自席は机の真上に並ぶので整列して見えます。 */
 function goHome(id){
   const o=S[id];
-  const t = autonomous ? o.home : gridPos(id);       // 停止中は自席ではなく整列位置へ
-  moveTo(id, t.x, t.y).then(()=>setState(id,'待機'));
+  moveTo(id, o.home.x, o.home.y).then(()=>setState(id,'待機'));
 }
 function alignStaff(){ for(const s of STAFF) goHome(s.id); }
 function addDoc(plan){
@@ -1036,14 +1124,29 @@ for(const c of CHIPS){
   chipBox.appendChild(b);
 }
 
-/* ---- 自律モード ON/OFF ---- */
+/* ---- AI社員を動かす／自席に固定する ---- */
+stage.classList.add('lineup');             // 既定は固定モード（状態チップを隠してすっきり）
 document.getElementById('pause').addEventListener('click', e=>{
   autonomous = !autonomous;
-  e.target.textContent = autonomous ? '⏸ 自律モードを止める' : '▶ 自律モードを動かす';
+  e.target.textContent = autonomous ? '⏹ 自席に固定する' : '▶ AI社員を動かす';
   stage.classList.toggle('lineup', !autonomous);
-  if(busy) return;                       // 業務中は終了時に自動で整列/帰席する
-  if(!autonomous){ alignStaff(); banner('🧍 整列しました'); }
-  else { for(const s of STAFF) goHome(s.id); }
+  if(busy) return;                         // 業務中は終了時に自動で帰席する
+  if(!autonomous){ alignStaff(); banner('🧍 自席に固定しました'); }
+});
+
+/* ---- スマホ・iPad：よく使う指示（チップ）の開閉 ---- */
+document.getElementById('chipsToggle').addEventListener('click', ()=>{
+  stage.classList.toggle('chipsOpen');
+});
+
+/* ---- スマホ・iPad：サイドパネルを下から出す引き出しに ---- */
+document.getElementById('panelBtn').addEventListener('click', ()=>{
+  document.body.classList.toggle('panelOpen');
+});
+document.addEventListener('click', ev=>{           // パネルの外をタップで閉じる
+  if(!document.body.classList.contains('panelOpen')) return;
+  if(ev.target.closest('.side') || ev.target.closest('#panelBtn')) return;
+  document.body.classList.remove('panelOpen');
 });
 
 /* =========================================================================
