@@ -802,6 +802,7 @@ const STAFF = [
   {id:'工房',   name:'工房AI',      face:'🛠️',  x:30, y:86, lines:['受注と納品を確認','工賃を計算します','作業実績まとめました']},
   {id:'ホーム', name:'ホーム管理AI', face:'🏠',   x:50, y:89, open:'keikaku', lines:['各ホームの空室を確認','西九条・九条…集計中','入居状況を更新しました']},
   {id:'利用者', name:'利用者AI',     face:'📇',   x:65, y:16, open:'riyou', lines:['受給者証を確認します','入居状況を照会中','利用者情報をお出しします']},
+  {id:'車両',   name:'車両AI',       face:'🚗',   x:35, y:16, open:'sharyou', lines:['車検の期限を確認します','保険の満了日をチェック中','車両台帳を更新しました']},
   {id:'看護',   name:'看護AI',      face:'🩺',   x:70, y:86, lines:['健康記録を確認します','受診予定を反映','看護記録OKです']},
   {id:'DX',     name:'DX AI',       face:'💻',   x:88, y:89, lines:['自動化できます','スプレッドと連携','処理を高速化しました']},
 ];
@@ -843,6 +844,9 @@ const PLANS = [
   {key:['シフト','勤務'], title:'シフトを集計中…', icon:'🗓️',
    output:'シフト集計表', outNote:'シフトAI・人事AI 連携', real:'shift',
    flow:['秘書','シフト','人事','シフト']},
+  {key:['車両','車検','自動車','保険'], title:'車両の期限を確認中…', icon:'🚗',
+   output:'車両台帳・期限一覧', outNote:'車両AI 連携', real:'sharyou',
+   flow:['秘書','車両']},
   {key:['看護','健康','受診'], title:'健康記録を確認中…', icon:'🩺',
    output:'看護記録サマリ', outNote:'看護AI・人事AI 連携',
    flow:['秘書','看護','人事']},
@@ -881,6 +885,7 @@ const STAFF_OPEN = {
   keikaku:{ fn:()=>openKeikakuPanel(), say:'個別支援計画書ですね、お任せください！', title:'個別支援計画書を作成する' },
   kansa:  { fn:()=>openKansaMenu(),    say:'監査まわりですね、お任せください！', title:'運営指導チェック・勤務形態一覧表' },
   riyou:  { fn:()=>openRiyouPanel(),   say:'利用者さんの受給者証ですね！', title:'受給者証データを調べる' },
+  sharyou:{ fn:()=>openSharyouPanel(), say:'車両の管理ですね、お任せください！', title:'車両台帳・車検/保険の期限' },
 };
 for(const s of STAFF){
   const el = document.createElement('div');
@@ -1071,6 +1076,7 @@ async function runWorkflow(text){
   else if(plan.real === 'keikaku'){ openKeikakuPanel(); }
   else if(plan.real === 'f12'){ openF12Panel(); }
   else if(plan.real === 'riyou'){ openRiyouPanel(); }
+  else if(plan.real === 'sharyou'){ openSharyouPanel(); }
 
   await wait(700);
 
@@ -1105,6 +1111,7 @@ function addDoc(plan){
       else if(plan.real==='keikaku') openKeikakuPanel();
       else if(plan.real==='f12') openF12Panel();
       else if(plan.real==='riyou') openRiyouPanel();
+      else if(plan.real==='sharyou') openSharyouPanel();
     }); }
   tray.prepend(d);
   while(tray.children.length>6) tray.lastChild.remove();
@@ -1157,6 +1164,7 @@ document.getElementById('cmd').addEventListener('keydown', e=>{ if(e.key==='Ente
 const CHIPS = [
   {t:'シフトを集計して', real:true},
   {t:'受給者証を調べて', real:true},
+  {t:'車検の期限を確認して', real:true},
   {t:'変更届作成して', real:true},
   {t:'個別支援計画を作成して', real:true},
   {t:'付表12を作成して', real:true},
@@ -2957,26 +2965,31 @@ const b64 = {
   enc: a => btoa(String.fromCharCode(...new Uint8Array(a))),
   dec: s => Uint8Array.from(atob(s), c=>c.charCodeAt(0)),
 };
-async function riyouSave(list, pass){
+// 合言葉で暗号化して端末内（localStorage）に保存する共通処理
+async function secSave(storeKey, data, pass){
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv   = crypto.getRandomValues(new Uint8Array(12));
   const key  = await riyouKeyFrom(pass, salt);
   const ct   = await crypto.subtle.encrypt({name:'AES-GCM', iv}, key,
-                 new TextEncoder().encode(JSON.stringify(list)));
-  localStorage.setItem(RIYOU_KEY, JSON.stringify({
+                 new TextEncoder().encode(JSON.stringify(data)));
+  localStorage.setItem(storeKey, JSON.stringify({
     v:1, salt:b64.enc(salt), iv:b64.enc(iv), ct:b64.enc(ct),
-    n:list.length, at:new Date().toISOString()
+    n:Array.isArray(data)?data.length:0, at:new Date().toISOString()
   }));
 }
-async function riyouLoad(pass){
-  const raw = localStorage.getItem(RIYOU_KEY);
+async function secLoad(storeKey, pass){
+  const raw = localStorage.getItem(storeKey);
   if(!raw) return null;
   const o = JSON.parse(raw);
   const key = await riyouKeyFrom(pass, b64.dec(o.salt));
   const pt  = await crypto.subtle.decrypt({name:'AES-GCM', iv:b64.dec(o.iv)}, key, b64.dec(o.ct));
   return JSON.parse(new TextDecoder().decode(pt));
 }
-function riyouStored(){ try{ return JSON.parse(localStorage.getItem(RIYOU_KEY)); }catch(e){ return null; } }
+function secStored(storeKey){ try{ return JSON.parse(localStorage.getItem(storeKey)); }catch(e){ return null; } }
+
+const riyouSave  = (list, pass)=> secSave(RIYOU_KEY, list, pass);
+const riyouLoad  = (pass)=> secLoad(RIYOU_KEY, pass);
+const riyouStored= ()=> secStored(RIYOU_KEY);
 
 // --- 日付・和暦・年齢 ---
 function riyouYmd(v){
@@ -3179,6 +3192,258 @@ function riyouRenderSearch(q){
   if(q!==undefined){ qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
 }
 /* ▲▲▲ 利用者AI ここまで ▲▲▲ */
+
+/* =========================================================================
+   ▼▼▼ 車両AI：車両台帳と車検・保険の期限管理 ▼▼▼
+   ・車両を登録／編集して、車検・自賠責・任意保険の満了日を管理します。
+   ・期限が近い車両を自動で知らせます（30日以内＝赤、90日以内＝黄）。
+   ・車両台帳Excel（シート「車両台帳データ」）からの取り込みにも対応。
+   ・★担当者名などを含むため、合言葉で暗号化してこの端末内だけに保存します。
+   ========================================================================= */
+const SHARYOU_KEY = 'aiosSharyouV1';
+let sharyouData = null;                 // 解錠中だけメモリに載せる
+let sharyouPass = null;                 // 保存のため解錠時の合言葉を保持
+const SHA_FIELDS = [
+  ['no','登録番号（車両番号）','text'], ['name','車名','text'],
+  ['belong','所属（ホーム・本社）','text'], ['staff','担当者','text'],
+  ['place','保管場所','text'], ['kind','種別・用途','text'],
+  ['seats','乗車定員','text'], ['model','型式','text'], ['chassis','車台番号','text'],
+  ['shaken','車検の満了日','date'], ['jibai','自賠責の満了日','date'],
+  ['hoken','任意保険の満了日','date'], ['hokenCo','保険会社','text'], ['hokenNo','証券番号','text'],
+  ['buy','購入・リース開始日','date'], ['memo','備考','text'],
+];
+const SHA_LIMITS = [['shaken','車検'],['jibai','自賠責'],['hoken','任意保険']];
+
+function shaDays(ymd){                                   // 満了日までの残り日数
+  if(!ymd) return null;
+  const d = new Date(ymd+'T00:00:00'); if(isNaN(d)) return null;
+  const t = new Date(); t.setHours(0,0,0,0);
+  return Math.round((d - t)/86400000);
+}
+function shaBadge(days){
+  if(days===null) return {cls:'', txt:'未登録', color:'#9aa38c'};
+  if(days < 0)   return {cls:'ng', txt:`${-days}日超過`, color:'#d0503f'};
+  if(days <= 30) return {cls:'ng', txt:`あと${days}日`,  color:'#d0503f'};
+  if(days <= 90) return {cls:'warn', txt:`あと${days}日`, color:'#c99a2e'};
+  return {cls:'ok', txt:`あと${days}日`, color:'#3a9d5d'};
+}
+function shaFmt(ymd){
+  if(!ymd) return '—';
+  const d=new Date(ymd+'T00:00:00');
+  return isNaN(d)?'—':`${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+}
+function shaToYmd(v){
+  const d = riyouYmd(v);
+  return d ? new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10) : '';
+}
+// 車両台帳Excel（シート「車両台帳データ」）から取り込む
+function shaParse(wb){
+  const sn = wb.SheetNames.find(n=>/車両台帳/.test(n));
+  if(!sn) throw new Error('シート「車両台帳データ」が見つかりません');
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, raw:true, defval:null});
+  // 見出し行（「車　名」を含む行）を探す
+  let hdr=-1;
+  for(let r=0;r<Math.min(rows.length,20);r++){
+    if((rows[r]||[]).some(c=>typeof c==='string' && c.replace(/[\s　]/g,'')==='車名')){ hdr=r; break; }
+  }
+  if(hdr<0) throw new Error('見出し行（車　名）が見つかりません');
+  const H  = (rows[hdr]||[]).map(c=>(c==null?'':String(c)).replace(/[\s　\n]/g,''));
+  const H2 = (rows[hdr+1]||[]).map(c=>(c==null?'':String(c)).replace(/[\s　\n]/g,''));
+  const ci = (...names)=>{ for(const n of names){ const i=H.indexOf(n); if(i>=0) return i; } return -1; };
+  const c = {
+    no:ci('登録番号車両番号','登録番号'), name:ci('車名'), chassis:ci('車台番号'), model:ci('型式'),
+    kind:ci('種別'), use:ci('用途'), seats:ci('乗車定員'), belong:ci('所属'), staff:ci('担当者'),
+    place:ci('保管場所'),
+  };
+  // 「自動車検査証（1）」の下に「有効期間」がある構成 → 最初の有効期間列を車検満了日とみなす
+  const shakenTop = H.findIndex(h=>/自動車検査証/.test(h));
+  const shakenCol = shakenTop>=0 ? H2.indexOf('有効期間', shakenTop) : -1;
+  const list=[];
+  for(let r=hdr+2; r<rows.length; r++){
+    const row=rows[r]||[];
+    const nm = c.name>=0 ? row[c.name] : null;
+    const no = c.no>=0 ? row[c.no] : null;
+    if(!nm && !no) continue;
+    const g = i => (i>=0 && row[i]!=null) ? String(row[i]).trim() : '';
+    list.push({
+      no:g(c.no), name:g(c.name), chassis:g(c.chassis), model:g(c.model),
+      kind:[g(c.kind),g(c.use)].filter(Boolean).join('・'), seats:g(c.seats),
+      belong:g(c.belong), staff:g(c.staff), place:g(c.place),
+      shaken: shakenCol>=0 ? shaToYmd(row[shakenCol]) : '',
+      jibai:'', hoken:'', hokenCo:'', hokenNo:'', buy:'', memo:'',
+    });
+  }
+  if(!list.length) throw new Error('車両の行を読み取れませんでした');
+  return list;
+}
+
+function openSharyouPanel(){
+  let p=document.getElementById('sharyouPanel');
+  if(!p){
+    p=document.createElement('div'); p.className='modal'; p.id='sharyouPanel';
+    p.innerHTML=`<div class="sheet" style="max-width:680px">
+      <div class="sheetHead"><b>🚗 車両AI（車両台帳・期限管理）</b><span class="grow"></span>
+        <button id="shaLock" title="ロックする">🔒</button>
+        <button onclick="document.getElementById('sharyouPanel').hidden=true">✕</button></div>
+      <div class="sheetBody" id="shaBody"></div></div>`;
+    p.addEventListener('click',ev=>{ if(ev.target.id==='sharyouPanel') p.hidden=true; });
+    document.body.appendChild(p);
+    document.getElementById('shaLock').addEventListener('click', ()=>{ sharyouData=null; sharyouPass=null; shaRender(); });
+  }
+  p.hidden=false; shaRender();
+}
+function shaNote(){
+  return `<div class="wpNote" style="background:#fdf6ec; border-color:#e6cfa5">
+    🔐 車両・担当者の情報は<b>合言葉で暗号化してこのパソコンの中だけ</b>に保存されます（公開ページには出ません）。</div>`;
+}
+function shaRender(){
+  const b=document.getElementById('shaBody');
+  const st=secStored(SHARYOU_KEY);
+  if(sharyouData){ shaRenderList(); return; }
+  if(!st){
+    b.innerHTML = shaNote() + `
+      <div style="font-weight:800; font-size:13px; color:#1f3a28; margin:12px 0 6px">はじめの設定（1回だけ）</div>
+      <div class="wpNote" style="margin-bottom:8px">合言葉を決めてください。次回からこの合言葉で開きます。<br>
+        車両は「＋ 車両を追加」で登録するか、車両台帳Excelから取り込めます。</div>
+      <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a">合言葉（4文字以上）</label>
+      <input id="shaPass" type="password" autocomplete="new-password" placeholder="例：olive2026"
+        style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 8px">
+      <button class="wpBtn primary" id="shaStart" style="width:100%; padding:11px" disabled>🔐 はじめる</button>`;
+    const pi=document.getElementById('shaPass');
+    pi.addEventListener('input',()=>{ document.getElementById('shaStart').disabled = pi.value.trim().length<4; });
+    document.getElementById('shaStart').addEventListener('click', async ()=>{
+      sharyouPass=pi.value.trim(); sharyouData=[];
+      await secSave(SHARYOU_KEY, sharyouData, sharyouPass);
+      shaRenderList();
+    });
+    return;
+  }
+  b.innerHTML = shaNote() + `
+    <div style="font-size:12.5px; color:#5a6f60; margin:12px 0 6px">登録済み：<b>${st.n}台</b></div>
+    <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a">合言葉</label>
+    <input id="shaPass2" type="password" autocomplete="current-password" placeholder="合言葉"
+      style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 8px">
+    <button class="wpBtn primary" id="shaOpen" style="width:100%; padding:11px">🔓 開く</button>
+    <div id="shaMsg" style="margin-top:8px"></div>
+    <div style="margin-top:14px; border-top:1px dashed var(--line); padding-top:10px">
+      <button class="wpBtn" id="shaReset" style="font-size:11px">🗑 このパソコンから消して入れ直す</button>
+    </div>`;
+  const go=async ()=>{
+    try{
+      const pw=document.getElementById('shaPass2').value.trim();
+      sharyouData = await secLoad(SHARYOU_KEY, pw); sharyouPass = pw;
+      shaRenderList();
+    }catch(e){ document.getElementById('shaMsg').innerHTML=`<p class="wpNote" style="background:#fdf3f3">⚠ 合言葉が違うようです</p>`; }
+  };
+  document.getElementById('shaOpen').addEventListener('click', go);
+  document.getElementById('shaPass2').addEventListener('keydown', e=>{ if(e.key==='Enter') go(); });
+  document.getElementById('shaReset').addEventListener('click', ()=>{
+    if(confirm('登録した車両データをこのパソコンから消します。よろしいですか？')){
+      localStorage.removeItem(SHARYOU_KEY); sharyouData=null; sharyouPass=null; shaRender();
+    }
+  });
+}
+async function shaPersist(){ await secSave(SHARYOU_KEY, sharyouData, sharyouPass); }
+
+// --- 一覧（期限の近い順）---
+function shaRenderList(){
+  const b=document.getElementById('shaBody');
+  const list=sharyouData||[];
+  const soonest = v => Math.min(...SHA_LIMITS.map(([k])=>{
+    const d=shaDays(v[k]); return d===null? 99999 : d;
+  }));
+  const sorted = list.slice().sort((a,c)=> soonest(a)-soonest(c));
+  const alerts = [];
+  for(const v of list) for(const [k,label] of SHA_LIMITS){
+    const d=shaDays(v[k]);
+    if(d!==null && d<=90) alerts.push({v,label,d});
+  }
+  alerts.sort((a,c)=>a.d-c.d);
+  const row = (v)=>{
+    const cells = SHA_LIMITS.map(([k,label])=>{
+      const d=shaDays(v[k]), bg=shaBadge(d);
+      return `<div style="flex:1; min-width:118px">
+        <div style="font-size:10px; color:#7a8b80">${label}</div>
+        <div style="font-size:12px">${shaFmt(v[k])}</div>
+        <span style="display:inline-block; font-size:10px; color:#fff; background:${bg.color}; border-radius:999px; padding:1px 8px; margin-top:2px">${bg.txt}</span>
+      </div>`;
+    }).join('');
+    return `<div style="border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:8px; background:#fff">
+      <div style="display:flex; gap:8px; align-items:baseline; flex-wrap:wrap">
+        <b style="font-size:14.5px; color:#1f3a28">${hkEsc(v.name||'（車名なし）')}</b>
+        <span style="font-size:12px; color:#455038">${hkEsc(v.no||'')}</span>
+        ${v.belong?`<span style="font-size:10.5px; background:var(--olive); color:#fff; border-radius:999px; padding:2px 9px">${hkEsc(v.belong)}</span>`:''}
+        ${v.staff?`<span style="font-size:11px; color:#7a8b80">担当：${hkEsc(v.staff)}</span>`:''}
+        <span class="grow" style="flex:1"></span>
+        <button class="wpBtn" data-edit="${v._i}" style="font-size:11px; padding:3px 9px">編集</button>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:7px">${cells}</div>
+    </div>`;
+  };
+  list.forEach((v,i)=>v._i=i);
+  b.innerHTML = `
+    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px">
+      <button class="wpBtn primary" id="shaAdd">＋ 車両を追加</button>
+      <button class="wpBtn" id="shaImport">📗 車両台帳Excelから取り込む</button>
+      <input type="file" id="shaFile" accept=".xlsx,.xlsm" hidden>
+    </div>
+    ${alerts.length ? `<div class="wpNote" style="background:#fdf3f3; border-color:#e6b3ab; margin-bottom:10px">
+        ⚠ <b>期限が近い車両（90日以内）</b><br>${alerts.map(a=>
+          `${hkEsc(a.v.name||a.v.no)}：${a.label} ${a.d<0?`<b style="color:#d0503f">${-a.d}日超過</b>`:`あと<b>${a.d}日</b>`}`).join('<br>')}</div>`
+      : (list.length?`<div class="wpNote" style="background:#eef7f0">✅ 90日以内に期限が来る車両はありません。</div>`:'')}
+    <div class="wpNote" style="margin-bottom:8px">登録車両：<b>${list.length}台</b>（期限の近い順）</div>
+    ${sorted.length ? sorted.map(row).join('') : '<p class="wpNote">まだ車両が登録されていません。「＋ 車両を追加」から登録してください。</p>'}`;
+  document.getElementById('shaAdd').addEventListener('click', ()=>shaRenderForm(-1));
+  b.querySelectorAll('[data-edit]').forEach(btn=>btn.addEventListener('click',()=>shaRenderForm(+btn.dataset.edit)));
+  document.getElementById('shaImport').addEventListener('click',()=>document.getElementById('shaFile').click());
+  document.getElementById('shaFile').addEventListener('change', async function(){
+    const f=this.files[0]; this.value=''; if(!f) return;
+    try{
+      if(typeof XLSX==='undefined') throw new Error('Excelライブラリを読み込めませんでした');
+      const wb=XLSX.read(await f.arrayBuffer(),{type:'array', cellDates:true});
+      const got=shaParse(wb);
+      sharyouData = sharyouData.concat(got);
+      await shaPersist(); shaRenderList();
+      banner(`🚗 ${got.length}台を取り込みました`);
+      logLine(`<b>車両AI</b>：車両台帳から${got.length}台を取り込み`);
+    }catch(e){ alert('取り込みエラー：'+e.message); }
+  });
+}
+// --- 登録・編集フォーム ---
+function shaRenderForm(idx){
+  const b=document.getElementById('shaBody');
+  const v = idx>=0 ? sharyouData[idx] : {};
+  const field = ([k,label,type])=>`
+    <label style="display:block; font-size:11.5px; font-weight:700; color:#2b5d8a; margin-top:8px">${label}</label>
+    <input data-k="${k}" type="${type}" value="${hkEsc(v[k]||'')}"
+      style="width:100%; padding:8px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px">`;
+  b.innerHTML = `
+    <button class="wpBtn" id="shaBack">← 一覧にもどる</button>
+    <div style="font-weight:800; font-size:14px; color:#1f3a28; margin:10px 0 2px">${idx>=0?'車両の編集':'車両の追加'}</div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 12px">
+      ${SHA_FIELDS.map(f=>`<div>${field(f)}</div>`).join('')}
+    </div>
+    <div style="display:flex; gap:8px; margin-top:14px; flex-wrap:wrap">
+      <button class="wpBtn primary" id="shaSave" style="flex:1; padding:11px">💾 保存</button>
+      ${idx>=0?'<button class="wpBtn" id="shaDel" style="color:#d0503f; border-color:#e6b3ab">🗑 この車両を削除</button>':''}
+    </div>`;
+  document.getElementById('shaBack').addEventListener('click', shaRenderList);
+  document.getElementById('shaSave').addEventListener('click', async ()=>{
+    const obj={};
+    b.querySelectorAll('[data-k]').forEach(i=>obj[i.dataset.k]=i.value.trim());
+    if(!obj.name && !obj.no){ alert('車名または登録番号のどちらかを入れてください'); return; }
+    if(idx>=0) sharyouData[idx]=obj; else sharyouData.push(obj);
+    await shaPersist(); shaRenderList();
+    banner('🚗 車両を保存しました');
+    logLine(`<b>車両AI</b>：車両「${hkEsc(obj.name||obj.no)}」を${idx>=0?'更新':'登録'}`);
+  });
+  const del=document.getElementById('shaDel');
+  if(del) del.addEventListener('click', async ()=>{
+    if(!confirm('この車両を削除します。よろしいですか？')) return;
+    sharyouData.splice(idx,1); await shaPersist(); shaRenderList();
+  });
+}
+/* ▲▲▲ 車両AI ここまで ▲▲▲ */
 
 /* ---- 行政AIの業務メニュー（変更届・付表12 の2つが格納されている） ---- */
 function openGyouseiMenu(){
