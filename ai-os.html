@@ -3130,6 +3130,9 @@ function riyouParse(wb){
   const cHome=col('ホーム'), cName=col('氏名'), cKubun=col('区分','障害支援区分'),
         cNo=col('受給者証番号'), cIn=col('おりーぶ庵入居','入居日','入居'), cBirth=col('誕生日','生年月日');
   if(cName<0 || cNo<0) throw new Error('「氏名」「受給者証番号」の列が見つかりません');
+  // 受給者証の有効期限：見出し「期限」の下に［開始／終了］の2列が並ぶ
+  const cLim = H.indexOf('期限');
+  const cLimFrom = cLim, cLimTo = cLim>=0 ? cLim+1 : -1;
 
   const list=[]; let home='', leftSection=false;
   for(let r=hdr+1; r<rows.length; r++){
@@ -3140,12 +3143,15 @@ function riyouParse(wb){
     const nm = row[cName]==null?'':String(row[cName]).replace(/[\s　]+/g,'　').trim();
     if(!nm || leftSection) continue;
     const birth = riyouYmd(row[cBirth>=0?cBirth:-1]);
+    const ymd = i => { if(i<0) return ''; const d=riyouYmd(row[i]);
+      return d ? new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10) : ''; };
     list.push({
       home, name:nm,
       kubun: row[cKubun>=0?cKubun:-1]==null?'':String(row[cKubun]).trim(),
       no: row[cNo]==null?'':String(row[cNo]).trim(),
-      moveIn: (d=>d?d.toISOString().slice(0,10):'')(riyouYmd(row[cIn>=0?cIn:-1])),
+      moveIn: ymd(cIn),
       birth: birth?birth.toISOString().slice(0,10):'',
+      limFrom: ymd(cLimFrom), limTo: ymd(cLimTo),
     });
   }
   if(list.length===0) throw new Error('利用者の行を読み取れませんでした');
@@ -3253,7 +3259,13 @@ function riyouRenderSearch(q){
     ) : list;
   const card=(u)=>{
     const bd=u.birth?new Date(u.birth):null, mi=u.moveIn?new Date(u.moveIn):null;
-    return `<div style="border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:8px; background:#fff">
+    const d=shaDays(u.limTo), bg=shaBadge(d);
+    const limRow = u.limTo
+      ? `<tr><td style="color:#7a8b80; padding:2px 0">受給者証の期限</td><td>
+           ${u.limFrom?shaFmt(u.limFrom)+' 〜 ':''}<b>${shaFmt(u.limTo)}</b>
+           <span style="display:inline-block; font-size:10.5px; color:#fff; background:${bg.color}; border-radius:999px; padding:1px 9px; margin-left:6px">${bg.txt}</span></td></tr>`
+      : `<tr><td style="color:#7a8b80; padding:2px 0">受給者証の期限</td><td style="color:#9aa38c">未登録</td></tr>`;
+    return `<div style="border:1px solid ${d!==null&&d<=90?bg.color:'var(--line)'}; border-radius:12px; padding:10px 12px; margin-bottom:8px; background:#fff">
       <div style="display:flex; gap:8px; align-items:baseline; flex-wrap:wrap">
         <b style="font-size:15px; color:#1f3a28">${hkEsc(u.name)}</b>
         ${u.home?`<span style="font-size:10.5px; background:var(--olive); color:#fff; border-radius:999px; padding:2px 9px">${hkEsc(u.home)}</span>`:''}
@@ -3261,16 +3273,33 @@ function riyouRenderSearch(q){
       </div>
       <table style="width:100%; font-size:12.5px; margin-top:7px; border-collapse:collapse">
         <tr><td style="color:#7a8b80; width:8em; padding:2px 0">受給者証番号</td><td><b style="font-size:14px; letter-spacing:.5px">${hkEsc(u.no)}</b></td></tr>
+        ${limRow}
         <tr><td style="color:#7a8b80; padding:2px 0">誕生日</td><td>${riyouFmt(bd)}${bd?`（${riyouWareki(bd)}）　<b>${riyouAge(bd)}歳</b>`:''}</td></tr>
         <tr><td style="color:#7a8b80; padding:2px 0">おりーぶ庵入居</td><td>${riyouFmt(mi)}</td></tr>
       </table></div>`;
   };
+  // 有効期限のアラート（期限切れ／まもなく期限）
+  const withLim = list.map(u=>({u, d:shaDays(u.limTo)})).filter(x=>x.d!==null);
+  const over = withLim.filter(x=>x.d<0).sort((a,c)=>a.d-c.d);
+  const soon = withLim.filter(x=>x.d>=0 && x.d<=90).sort((a,c)=>a.d-c.d);
+  const noLim = list.filter(u=>!u.limTo);
+  const line = (x, tail)=>`${hkEsc(x.u.name)}（${hkEsc(x.u.home)}）　${shaFmt(x.u.limTo)}　${tail}`;
+  const alertHtml = key ? '' :
+    (over.length ? `<div class="wpNote" style="background:#fdf3f3; border-color:#d0503f; margin-bottom:8px">
+        🔴 <b>期限を過ぎています：${over.length}名</b>　<span style="font-size:10.5px">※更新済みならExcelの「期限」欄をご確認ください</span><br>${
+        over.map(x=>line(x, `<b style="color:#d0503f">${-x.d}日超過</b>`)).join('<br>')}</div>` : '')
+    + (soon.length ? `<div class="wpNote" style="background:#fbf7ec; border-color:#e6cfa5; margin-bottom:8px">
+        🟡 <b>まもなく期限（90日以内）：${soon.length}名</b><br>${
+        soon.map(x=>line(x, `あと<b>${x.d}日</b>`)).join('<br>')}</div>` : '')
+    + (!over.length && !soon.length && withLim.length ? `<div class="wpNote" style="background:#eef7f0; margin-bottom:8px">✅ 期限切れ・期限が近い受給者証はありません。</div>` : '')
+    + (noLim.length ? `<div class="wpNote" style="margin-bottom:8px">📝 期限が未入力：${noLim.map(u=>hkEsc(u.name)).join('、')}</div>` : '');
   b.innerHTML = `
     <div style="display:flex; gap:6px; margin-bottom:10px">
       <input id="riyouQ" type="search" placeholder="氏名・受給者証番号・ホームで検索（例：山田）" value="${hkEsc(q||'')}"
         style="flex:1; padding:10px; border:1px solid #cfe0ee; border-radius:8px; font-size:14px">
       <button class="wpBtn" id="riyouClear">×</button>
     </div>
+    ${alertHtml}
     <div class="wpNote" style="margin-bottom:8px">${key?`「${hkEsc(q)}」の検索結果：<b>${hit.length}名</b>`:`在籍 <b>${list.length}名</b>（氏名を入れると絞り込めます）`}</div>
     ${hit.length? hit.map(card).join('') : '<p class="wpNote">見つかりませんでした。</p>'}`;
   const qi=document.getElementById('riyouQ');
