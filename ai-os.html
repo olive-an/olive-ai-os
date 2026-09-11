@@ -3079,6 +3079,25 @@ async function secLoad(storeKey, pass){
 }
 function secStored(storeKey){ try{ return JSON.parse(localStorage.getItem(storeKey)); }catch(e){ return null; } }
 
+/* 「このパソコンでは次回から合言葉を聞かない」設定
+   ★合言葉は公開ファイルには書かず、この端末のブラウザにだけ覚えさせます。 */
+const secPwKey = k => k + ':pw';
+function secRemember(storeKey, pass){ try{ localStorage.setItem(secPwKey(storeKey), pass); }catch(e){} }
+function secRemembered(storeKey){ try{ return localStorage.getItem(secPwKey(storeKey)); }catch(e){ return null; } }
+function secForget(storeKey){ try{ localStorage.removeItem(secPwKey(storeKey)); }catch(e){} }
+// 覚えている合言葉で自動的に開く（無い・合わない場合は null）
+async function secAutoLoad(storeKey){
+  const pw = secRemembered(storeKey);
+  if(!pw || !secStored(storeKey)) return null;
+  try{ return {data: await secLoad(storeKey, pw), pass: pw}; }
+  catch(e){ secForget(storeKey); return null; }
+}
+// 「次回から合言葉を聞かない」チェックボックスの共通HTML
+function secRememberBox(id){
+  return `<label style="display:flex; gap:6px; align-items:center; font-size:11.5px; color:#5a6f60; margin:8px 0">
+    <input type="checkbox" id="${id}" checked> このパソコンでは次回から合言葉を聞かない</label>`;
+}
+
 const riyouSave  = (list, pass)=> secSave(RIYOU_KEY, list, pass);
 const riyouLoad  = (pass)=> secLoad(RIYOU_KEY, pass);
 const riyouStored= ()=> secStored(RIYOU_KEY);
@@ -3175,7 +3194,9 @@ function openRiyouPanel(){
       <div class="sheetBody" id="riyouBody"></div></div>`;
     p.addEventListener('click',ev=>{ if(ev.target.id==='riyouPanel') p.hidden=true; });
     document.body.appendChild(p);
-    document.getElementById('riyouLock').addEventListener('click', ()=>{ riyouData=null; riyouRender(); });
+    document.getElementById('riyouLock').addEventListener('click', ()=>{
+      riyouData=null; secForget(RIYOU_KEY); riyouRender();   // 🔒は「覚えた合言葉も忘れる」
+    });
   }
   p.hidden=false;
   riyouRender();
@@ -3189,6 +3210,13 @@ function riyouRender(){
   const b=document.getElementById('riyouBody');
   const st=riyouStored();
   if(riyouData){ riyouRenderSearch(); return; }
+  if(st && secRemembered(RIYOU_KEY)){            // 合言葉を覚えていれば自動で開く
+    b.innerHTML='<p class="wpNote">🔓 開いています…</p>';
+    secAutoLoad(RIYOU_KEY).then(r=>{
+      if(r){ riyouData=r.data; riyouRenderSearch(); } else riyouRender();
+    });
+    return;
+  }
   if(!st){                                  // 初回：読み込み＋合言葉の設定
     b.innerHTML = riyouNote() + `
       <div style="font-weight:800; font-size:13px; color:#1f3a28; margin:12px 0 6px">はじめの設定（1回だけ）</div>
@@ -3198,8 +3226,9 @@ function riyouRender(){
       </ol>
       <button class="wpBtn" id="riyouPick" style="width:100%; text-align:left; padding:11px">📗 受給者証のExcelを選ぶ<br><small id="riyouFn" style="font-weight:400; color:#7a8b80">未選択</small></button>
       <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a; margin-top:10px">合言葉（4文字以上）</label>
-      <input id="riyouPass" type="password" autocomplete="new-password" placeholder="例：olive2026"
-        style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 8px">
+      <input id="riyouPass" type="password" autocomplete="new-password" placeholder="4文字以上"
+        style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 2px">
+      ${secRememberBox('riyouRem')}
       <button class="wpBtn primary" id="riyouSaveBtn" style="width:100%; padding:11px" disabled>🔐 暗号化して保存</button>
       <div id="riyouMsg" style="margin-top:8px"></div>
       <input type="file" id="riyouFile" accept=".xlsx,.xlsm" hidden>`;
@@ -3218,7 +3247,9 @@ function riyouRender(){
         if(typeof XLSX==='undefined') throw new Error('Excelライブラリを読み込めませんでした。少し待ってからお試しください');
         const wb=XLSX.read(await picked.arrayBuffer(),{type:'array', cellDates:true});
         const list=riyouParse(wb);
-        await riyouSave(list, document.getElementById('riyouPass').value.trim());
+        const pw=document.getElementById('riyouPass').value.trim();
+        await riyouSave(list, pw);
+        if(document.getElementById('riyouRem').checked) secRemember(RIYOU_KEY, pw);
         riyouData=list;
         banner('🔐 受給者証データ '+list.length+'名を保存しました');
         logLine(`<b>利用者AI</b>：受給者証データ${list.length}名を暗号化して保存（この端末のみ）`);
@@ -3233,7 +3264,8 @@ function riyouRender(){
       保存済み：<b>${st.n}名</b>（${st.at? new Date(st.at).toLocaleDateString('ja-JP') : ''} 更新）</div>
     <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a">合言葉</label>
     <input id="riyouPass2" type="password" autocomplete="current-password" placeholder="合言葉"
-      style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 8px">
+      style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 2px">
+    ${secRememberBox('riyouRem2')}
     <button class="wpBtn primary" id="riyouOpen" style="width:100%; padding:11px">🔓 開く</button>
     <div id="riyouMsg" style="margin-top:8px"></div>
     <div style="margin-top:14px; border-top:1px dashed var(--line); padding-top:10px">
@@ -3242,7 +3274,9 @@ function riyouRender(){
   const go=async ()=>{
     const msg=document.getElementById('riyouMsg');
     try{
-      riyouData = await riyouLoad(document.getElementById('riyouPass2').value.trim());
+      const pw=document.getElementById('riyouPass2').value.trim();
+      riyouData = await riyouLoad(pw);
+      if(document.getElementById('riyouRem2').checked) secRemember(RIYOU_KEY, pw);
       riyouRenderSearch();
     }catch(e){ msg.innerHTML=`<p class="wpNote" style="background:#fdf3f3">⚠ 合言葉が違うようです</p>`; }
   };
@@ -3250,7 +3284,7 @@ function riyouRender(){
   document.getElementById('riyouPass2').addEventListener('keydown', e=>{ if(e.key==='Enter') go(); });
   document.getElementById('riyouReset').addEventListener('click', ()=>{
     if(confirm('保存した受給者証データをこのパソコンから消します。よろしいですか？')){
-      localStorage.removeItem(RIYOU_KEY); riyouData=null; riyouRender();
+      localStorage.removeItem(RIYOU_KEY); secForget(RIYOU_KEY); riyouData=null; riyouRender();
     }
   });
 }
@@ -3409,7 +3443,9 @@ function openSharyouPanel(){
       <div class="sheetBody" id="shaBody"></div></div>`;
     p.addEventListener('click',ev=>{ if(ev.target.id==='sharyouPanel') p.hidden=true; });
     document.body.appendChild(p);
-    document.getElementById('shaLock').addEventListener('click', ()=>{ sharyouData=null; sharyouPass=null; shaRender(); });
+    document.getElementById('shaLock').addEventListener('click', ()=>{
+      sharyouData=null; sharyouPass=null; secForget(SHARYOU_KEY); shaRender();   // 🔒は「覚えた合言葉も忘れる」
+    });
   }
   p.hidden=false; shaRender();
 }
@@ -3421,20 +3457,29 @@ function shaRender(){
   const b=document.getElementById('shaBody');
   const st=secStored(SHARYOU_KEY);
   if(sharyouData){ shaRenderList(); return; }
+  if(st && secRemembered(SHARYOU_KEY)){            // 合言葉を覚えていれば自動で開く
+    b.innerHTML='<p class="wpNote">🔓 開いています…</p>';
+    secAutoLoad(SHARYOU_KEY).then(r=>{
+      if(r){ sharyouData=r.data; sharyouPass=r.pass; shaRenderList(); } else shaRender();
+    });
+    return;
+  }
   if(!st){
     b.innerHTML = shaNote() + `
       <div style="font-weight:800; font-size:13px; color:#1f3a28; margin:12px 0 6px">はじめの設定（1回だけ）</div>
       <div class="wpNote" style="margin-bottom:8px">合言葉を決めてください。次回からこの合言葉で開きます。<br>
         車両は「＋ 車両を追加」で登録するか、車両台帳Excelから取り込めます。</div>
       <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a">合言葉（4文字以上）</label>
-      <input id="shaPass" type="password" autocomplete="new-password" placeholder="例：olive2026"
-        style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 8px">
+      <input id="shaPass" type="password" autocomplete="new-password" placeholder="4文字以上"
+        style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 2px">
+      ${secRememberBox('shaRem')}
       <button class="wpBtn primary" id="shaStart" style="width:100%; padding:11px" disabled>🔐 はじめる</button>`;
     const pi=document.getElementById('shaPass');
     pi.addEventListener('input',()=>{ document.getElementById('shaStart').disabled = pi.value.trim().length<4; });
     document.getElementById('shaStart').addEventListener('click', async ()=>{
       sharyouPass=pi.value.trim(); sharyouData=[];
       await secSave(SHARYOU_KEY, sharyouData, sharyouPass);
+      if(document.getElementById('shaRem').checked) secRemember(SHARYOU_KEY, sharyouPass);
       shaRenderList();
     });
     return;
@@ -3443,7 +3488,8 @@ function shaRender(){
     <div style="font-size:12.5px; color:#5a6f60; margin:12px 0 6px">登録済み：<b>${st.n}台</b></div>
     <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a">合言葉</label>
     <input id="shaPass2" type="password" autocomplete="current-password" placeholder="合言葉"
-      style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 8px">
+      style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 2px">
+    ${secRememberBox('shaRem2')}
     <button class="wpBtn primary" id="shaOpen" style="width:100%; padding:11px">🔓 開く</button>
     <div id="shaMsg" style="margin-top:8px"></div>
     <div style="margin-top:14px; border-top:1px dashed var(--line); padding-top:10px">
@@ -3453,6 +3499,7 @@ function shaRender(){
     try{
       const pw=document.getElementById('shaPass2').value.trim();
       sharyouData = await secLoad(SHARYOU_KEY, pw); sharyouPass = pw;
+      if(document.getElementById('shaRem2').checked) secRemember(SHARYOU_KEY, pw);
       shaRenderList();
     }catch(e){ document.getElementById('shaMsg').innerHTML=`<p class="wpNote" style="background:#fdf3f3">⚠ 合言葉が違うようです</p>`; }
   };
@@ -3460,7 +3507,7 @@ function shaRender(){
   document.getElementById('shaPass2').addEventListener('keydown', e=>{ if(e.key==='Enter') go(); });
   document.getElementById('shaReset').addEventListener('click', ()=>{
     if(confirm('登録した車両データをこのパソコンから消します。よろしいですか？')){
-      localStorage.removeItem(SHARYOU_KEY); sharyouData=null; sharyouPass=null; shaRender();
+      localStorage.removeItem(SHARYOU_KEY); secForget(SHARYOU_KEY); sharyouData=null; sharyouPass=null; shaRender();
     }
   });
 }
