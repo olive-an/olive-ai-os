@@ -810,6 +810,7 @@ const STAFF = [
 /* ---- 施設ゾーン（背景の飾り） ---- */
 const ZONES = [
   ...STAFF.map(s=>({x:s.x, y:s.y, label:s.name, desk:'🖥️', deskOnly:true})),
+  {x:93, y:76, label:'ポチパス',   desk:'🐶'},
   {x:93, y:76, label:'プリンター', desk:'🖨️'},
   {x:92, y:9,  label:'書類棚',    desk:'🗄️'},
   {x:50, y:72, label:'会議室',    desk:'📊'},
@@ -872,6 +873,10 @@ for(const z of ZONES){
   if(z.label==='プリンター'){ // プリンターはクリックで印刷メニュー
     d.style.pointerEvents='auto'; d.style.cursor='pointer'; d.title='印刷メニューを開く';
     d.addEventListener('click', ()=>openPrinterPanel());
+  }
+  if(z.label==='ポチパス'){ // ポチパスはクリックで連携メニュー
+    d.style.pointerEvents='auto'; d.style.cursor='pointer'; d.title='ポチパスを開く・データを連携する';
+    d.addEventListener('click', ()=>openPochiPanel());
   }
   stage.appendChild(d);
   ZEL.push({el:d, z});
@@ -3560,6 +3565,53 @@ function shaRenderForm(idx){
   });
 }
 /* ▲▲▲ 車両AI ここまで ▲▲▲ */
+
+/* =========================================================================
+   ▼▼▼ ポチパス連携 ▼▼▼
+   ポチパス（トラストバンク社）には外部から接続できる公開APIが無いため、
+   自動ログインしてデータを直接取り出すことはできません。
+   そこで「画面をすぐ開く」＋「ポチパスのExcelを読み込む／書き出す」形で連携します。
+   ========================================================================= */
+const POCHI_LINKS = [
+  ['🐶 ポチパス ライフを開く',   'https://pochipass.com/',            'ログイン画面が開きます'],
+  ['❓ サポートページ',          'https://pochipass.com/kanri079.php','操作マニュアル(PDF)・FAQ・問い合わせ先'],
+];
+function openPochiPanel(){
+  let p=document.getElementById('pochiPanel');
+  if(!p){
+    p=document.createElement('div'); p.className='modal'; p.id='pochiPanel';
+    p.innerHTML=`<div class="sheet" style="max-width:560px">
+      <div class="sheetHead"><b>🐶 ポチパス連携</b><span class="grow"></span>
+        <button onclick="document.getElementById('pochiPanel').hidden=true">✕</button></div>
+      <div class="sheetBody">
+        <div style="font-weight:800; font-size:13px; color:#1f3a28; margin-bottom:6px">ポチパスを開く</div>
+        ${POCHI_LINKS.map(([t,u,s])=>`
+          <a class="wpBtn primary" href="${u}" target="_blank" rel="noopener"
+             style="display:block; text-align:left; padding:11px; text-decoration:none; margin-bottom:8px">
+            ${t}<br><small style="font-weight:400">${s}</small></a>`).join('')}
+
+        <div style="font-weight:800; font-size:13px; color:#1f3a28; margin:14px 0 6px">ポチパスのExcelを使う</div>
+        <button class="wpBtn" style="width:100%; text-align:left; padding:11px" onclick="document.getElementById('pochiPanel').hidden=true; openKeikakuPanel();">
+          📘 個別支援計画（様式1-1）<br><small style="font-weight:400">ポチパスの様式1-1を読み込み → 編集 → 書き出し（連携用データ列にも書き込み）</small>
+        </button>
+        <button class="wpBtn" style="width:100%; text-align:left; padding:11px; margin-top:8px" onclick="document.getElementById('pochiPanel').hidden=true; openRiyouPanel();">
+          📇 利用者・受給者証データ<br><small style="font-weight:400">受給者証Excelを読み込み → 氏名で検索・有効期限アラート</small>
+        </button>
+
+        <div class="wpNote" style="margin-top:12px">
+          ℹ️ ポチパスには外部システムから接続できる<b>公開API（自動でデータを取りにいく仕組み）がありません</b>。
+          そのため、ポチパスの画面で<b>Excelに書き出して</b>から、ここで読み込む流れになります。<br>
+          もしポチパス側で連携の仕組みが用意できるか確認したい場合は、サポート
+          （一次受付 050-1809-4588／10:00〜16:00）に「外部システムとのAPI連携は可能か」と
+          お問い合わせいただくと確実です。
+        </div>
+      </div></div>`;
+    p.addEventListener('click',ev=>{ if(ev.target.id==='pochiPanel') p.hidden=true; });
+    document.body.appendChild(p);
+  }
+  p.hidden=false;
+}
+/* ▲▲▲ ポチパス連携 ここまで ▲▲▲ */
 
 /* ---- 行政AIの業務メニュー（変更届・付表12 の2つが格納されている） ---- */
 function openGyouseiMenu(){
