@@ -14,7 +14,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>おりーぶ庵 AI-OS（デモ）</title>
-<!-- Excel入出力ライブラリ（既存 index.html と同じSheetJS） -->
+<!-- Excel入出力ライブラリ（既存 index.html と同じSheetJS＝読み取り専用で使用） -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <!-- Word(.docx)差し込み用の ZIP ライブラリ -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
@@ -151,8 +152,8 @@
     text-align:center; transition:filter .2s; will-change:left,top}
   .staff .avatar{font-size:42px; line-height:1; filter:drop-shadow(0 3px 2px rgba(0,0,0,.18))}
   @media(max-width:880px){
-    .staff .avatar{font-size:30px}
-    .staff .badge{font-size:10px; padding:1px 5px}
+    .staff .avatar{font-size:26px}
+    .staff .badge{font-size:8.5px; padding:1px 4px; letter-spacing:-.3px}
     .staff .state{font-size:9px}
   }
   .staff.walking .avatar{animation:bob .45s infinite}
@@ -781,6 +782,7 @@ const STAFF = [
   {id:'人事',   name:'人事AI',      face:'🤝',   x:85, y:68, lines:['職員情報を確認します','資格・研修を照合','契約書式を用意しました']},
   {id:'工房',   name:'工房AI',      face:'🛠️',  x:30, y:86, lines:['受注と納品を確認','工賃を計算します','作業実績まとめました']},
   {id:'ホーム', name:'ホーム管理AI', face:'🏠',   x:50, y:89, open:'keikaku', lines:['各ホームの空室を確認','西九条・九条…集計中','入居状況を更新しました']},
+  {id:'利用者', name:'利用者AI',     face:'📇',   x:65, y:16, open:'riyou', lines:['受給者証を確認します','入居状況を照会中','利用者情報をお出しします']},
   {id:'看護',   name:'看護AI',      face:'🩺',   x:70, y:86, lines:['健康記録を確認します','受診予定を反映','看護記録OKです']},
   {id:'DX',     name:'DX AI',       face:'💻',   x:88, y:89, lines:['自動化できます','スプレッドと連携','処理を高速化しました']},
 ];
@@ -813,9 +815,9 @@ const PLANS = [
   {key:['付表12','付表１２','記載事項'], title:'付表12を作成中…', icon:'🏢',
    output:'付表12（GH指定記載事項）', outNote:'行政AI・ホーム管理AI・文書AI 連携', real:'f12',
    flow:['秘書','行政','ホーム','文書']},
-  {key:['利用者','入居','登録'], title:'利用者情報を登録中…', icon:'🧑‍🦽',
-   output:'利用者登録票', outNote:'ホーム管理AI・人事AI・文書AI 連携',
-   flow:['秘書','ホーム','人事','文書']},
+  {key:['利用者','受給者証','入居','登録'], title:'受給者証データを照会中…', icon:'📇',
+   output:'受給者証データ', outNote:'利用者AI 連携', real:'riyou',
+   flow:['秘書','利用者']},
   {key:['工房','受注','工賃','売上'], title:'工房の売上を集計中…', icon:'🛠️',
    output:'工房 売上集計', outNote:'工房AI・経理AI 連携',
    flow:['秘書','工房','経理']},
@@ -860,6 +862,7 @@ const STAFF_OPEN = {
   shift:  { fn:()=>openShiftPanel(),   say:'シフト集計ですね、お任せください！',     title:'シフトを集計する' },
   keikaku:{ fn:()=>openKeikakuPanel(), say:'個別支援計画書ですね、お任せください！', title:'個別支援計画書を作成する' },
   kansa:  { fn:()=>openKansaMenu(),    say:'監査まわりですね、お任せください！', title:'運営指導チェック・勤務形態一覧表' },
+  riyou:  { fn:()=>openRiyouPanel(),   say:'利用者さんの受給者証ですね！', title:'受給者証データを調べる' },
 };
 for(const s of STAFF){
   const el = document.createElement('div');
@@ -884,15 +887,16 @@ document.getElementById('t-ai').textContent = STAFF.length;
 
 /* ---- 画面幅に合わせた配置（PC＝自席／スマホ・iPad＝3列グリッド） ----
    スマホでは社長室が下の指示バーになるので、AI社員は上半分にきれいに並べます。 */
-const NARROW_COLS = [18, 50, 82];                    // 3列
-const NARROW_ROWS = [10, 27, 44, 61];                // 4段（12名）
+const NARROW_COLS = [13, 37.7, 62.3, 87];            // 4列
+const NARROW_ROWS = [10, 27, 44, 61];                // 4段（最大16名）
 const NARROW_ZONE = {'書類棚':{x:14,y:70}, '会議室':{x:50,y:70}, 'プリンター':{x:86,y:70}};
 function isNarrow(){ return window.innerWidth <= 880; }
 function layoutForWidth(){
   const narrow = isNarrow();
+  const cols = NARROW_COLS.length;
   STAFF.forEach((s,i)=>{
     const o = S[s.id]; if(!o) return;
-    const p = narrow ? {x:NARROW_COLS[i%3], y:NARROW_ROWS[Math.floor(i/3)]} : {x:s.x, y:s.y};
+    const p = narrow ? {x:NARROW_COLS[i%cols], y:NARROW_ROWS[Math.floor(i/cols)]} : {x:s.x, y:s.y};
     o.home = {x:p.x, y:p.y};
     if(!o.moving && !busy){                          // 動いていない人はその場で定位置へ
       o.x=p.x; o.y=p.y; o.tx=p.x; o.ty=p.y;
@@ -1028,6 +1032,7 @@ async function runWorkflow(text){
   else if(plan.real === 'henkou'){ openHenkouPanel(); }
   else if(plan.real === 'keikaku'){ openKeikakuPanel(); }
   else if(plan.real === 'f12'){ openF12Panel(); }
+  else if(plan.real === 'riyou'){ openRiyouPanel(); }
 
   await wait(700);
 
@@ -1061,6 +1066,7 @@ function addDoc(plan){
       else if(plan.real==='henkou') openHenkouPanel();
       else if(plan.real==='keikaku') openKeikakuPanel();
       else if(plan.real==='f12') openF12Panel();
+      else if(plan.real==='riyou') openRiyouPanel();
     }); }
   tray.prepend(d);
   while(tray.children.length>6) tray.lastChild.remove();
@@ -1112,6 +1118,7 @@ document.getElementById('cmd').addEventListener('keydown', e=>{ if(e.key==='Ente
 /* ---- クイック指示チップ ---- */
 const CHIPS = [
   {t:'シフトを集計して', real:true},
+  {t:'受給者証を調べて', real:true},
   {t:'変更届作成して', real:true},
   {t:'個別支援計画を作成して', real:true},
   {t:'付表12を作成して', real:true},
@@ -2892,6 +2899,248 @@ async function kinmuRun(){
   }catch(e){ out.innerHTML=`<p class="wpNote" style="background:#fdf3f3">⚠ エラー：${hkEsc(e.message)}</p>`; }
 }
 /* ▲▲▲ 監査AI（運営指導チェック・勤務形態一覧表） ここまで ▲▲▲ */
+
+/* =========================================================================
+   ▼▼▼ 利用者AI：受給者証データの照会 ▼▼▼
+   ・受給者証Excel（シート「利用者受給者証」）を読み込み、氏名で検索して表示。
+   ・★個人情報のため、データは「合言葉で暗号化して、この端末のブラウザ内」だけに
+     保存します。公開ファイル（GitHub）には一切入りません。外部送信もしません。
+   ========================================================================= */
+const RIYOU_KEY = 'aiosRiyouV1';            // 暗号化データの保存先（この端末のみ）
+let riyouData = null;                       // 解錠中だけメモリに載せる
+
+// --- 合言葉で暗号化／復号（ブラウザ標準のAES-GCM） ---
+async function riyouKeyFrom(pass, salt){
+  const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2', salt, iterations:150000, hash:'SHA-256'},
+    km, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']);
+}
+const b64 = {
+  enc: a => btoa(String.fromCharCode(...new Uint8Array(a))),
+  dec: s => Uint8Array.from(atob(s), c=>c.charCodeAt(0)),
+};
+async function riyouSave(list, pass){
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv   = crypto.getRandomValues(new Uint8Array(12));
+  const key  = await riyouKeyFrom(pass, salt);
+  const ct   = await crypto.subtle.encrypt({name:'AES-GCM', iv}, key,
+                 new TextEncoder().encode(JSON.stringify(list)));
+  localStorage.setItem(RIYOU_KEY, JSON.stringify({
+    v:1, salt:b64.enc(salt), iv:b64.enc(iv), ct:b64.enc(ct),
+    n:list.length, at:new Date().toISOString()
+  }));
+}
+async function riyouLoad(pass){
+  const raw = localStorage.getItem(RIYOU_KEY);
+  if(!raw) return null;
+  const o = JSON.parse(raw);
+  const key = await riyouKeyFrom(pass, b64.dec(o.salt));
+  const pt  = await crypto.subtle.decrypt({name:'AES-GCM', iv:b64.dec(o.iv)}, key, b64.dec(o.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+function riyouStored(){ try{ return JSON.parse(localStorage.getItem(RIYOU_KEY)); }catch(e){ return null; } }
+
+// --- 日付・和暦・年齢 ---
+function riyouYmd(v){
+  if(v==null || v==='') return null;
+  if(v instanceof Date) return v;
+  if(typeof v==='number'){                          // Excelのシリアル値
+    const d = new Date(Date.UTC(1899,11,30) + v*86400000);
+    return isNaN(d) ? null : d;
+  }
+  const d = new Date(String(v).replace(/[年月]/g,'/').replace(/日/,''));
+  return isNaN(d) ? null : d;
+}
+function riyouFmt(d){ return d ? `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日` : ''; }
+function riyouWareki(d){
+  if(!d) return '';
+  const t = d.getTime();
+  const era = [['令和', 2019,4,30],['平成',1989,1,7],['昭和',1926,11,24],['大正',1912,7,29]];
+  for(const [name,y,m,day] of era){
+    const s = new Date(y, m-1, day+ (name==='令和'?1: (name==='平成'?1:(name==='昭和'?1:1))) -1);
+    const start = name==='令和' ? new Date(2019,4,1) : name==='平成' ? new Date(1989,0,8)
+                : name==='昭和' ? new Date(1926,11,25) : new Date(1912,6,30);
+    if(t >= start.getTime()){
+      const n = d.getFullYear() - start.getFullYear() + 1;
+      return `${name}${n===1?'元':n}年`;
+    }
+  }
+  return `${d.getFullYear()}年`;
+}
+function riyouAge(birth, at){
+  if(!birth) return '';
+  const now = at || new Date();
+  let a = now.getFullYear() - birth.getFullYear();
+  const m = now.getMonth() - birth.getMonth();
+  if(m < 0 || (m===0 && now.getDate() < birth.getDate())) a--;
+  return a;
+}
+
+// --- Excel（シート「利用者受給者証」）を読み取って一覧にする ---
+function riyouParse(wb){
+  const name = wb.SheetNames.find(n=>/受給者証/.test(n)) || wb.SheetNames[0];
+  const ws = wb.Sheets[name];
+  const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:null});
+  // 見出し行（「氏名」を含む行）を探す
+  let hdr = -1;
+  for(let r=0; r<Math.min(rows.length,12); r++){
+    if((rows[r]||[]).some(c=>typeof c==='string' && c.replace(/\s/g,'')==='氏名')){ hdr=r; break; }
+  }
+  if(hdr<0) throw new Error('「氏名」の見出し行が見つかりません（シート：'+name+'）');
+  const H = rows[hdr].map(c=> (c==null?'':String(c)).replace(/[\s　]/g,''));
+  const col = (...names)=>{ for(const n of names){ const i=H.indexOf(n); if(i>=0) return i; } return -1; };
+  const cHome=col('ホーム'), cName=col('氏名'), cKubun=col('区分','障害支援区分'),
+        cNo=col('受給者証番号'), cIn=col('おりーぶ庵入居','入居日','入居'), cBirth=col('誕生日','生年月日');
+  if(cName<0 || cNo<0) throw new Error('「氏名」「受給者証番号」の列が見つかりません');
+
+  const list=[]; let home='', leftSection=false;
+  for(let r=hdr+1; r<rows.length; r++){
+    const row = rows[r]||[];
+    const a = row[cHome]==null?'':String(row[cHome]).trim();
+    if(/^退去/.test(a)){ leftSection=true; continue; }   // 「退去」以降は在籍者ではない
+    if(a && !/^定員/.test(a)) home = a;                   // ホーム名（定員○○の行は見出しではない）
+    const nm = row[cName]==null?'':String(row[cName]).replace(/[\s　]+/g,'　').trim();
+    if(!nm || leftSection) continue;
+    const birth = riyouYmd(row[cBirth>=0?cBirth:-1]);
+    list.push({
+      home, name:nm,
+      kubun: row[cKubun>=0?cKubun:-1]==null?'':String(row[cKubun]).trim(),
+      no: row[cNo]==null?'':String(row[cNo]).trim(),
+      moveIn: (d=>d?d.toISOString().slice(0,10):'')(riyouYmd(row[cIn>=0?cIn:-1])),
+      birth: birth?birth.toISOString().slice(0,10):'',
+    });
+  }
+  if(list.length===0) throw new Error('利用者の行を読み取れませんでした');
+  return list;
+}
+
+// --- パネル ---
+function openRiyouPanel(){
+  let p=document.getElementById('riyouPanel');
+  if(!p){
+    p=document.createElement('div'); p.className='modal'; p.id='riyouPanel';
+    p.innerHTML=`<div class="sheet" style="max-width:620px">
+      <div class="sheetHead"><b>📇 利用者AI（受給者証データ）</b><span class="grow"></span>
+        <button id="riyouLock" title="ロックする">🔒</button>
+        <button onclick="document.getElementById('riyouPanel').hidden=true">✕</button></div>
+      <div class="sheetBody" id="riyouBody"></div></div>`;
+    p.addEventListener('click',ev=>{ if(ev.target.id==='riyouPanel') p.hidden=true; });
+    document.body.appendChild(p);
+    document.getElementById('riyouLock').addEventListener('click', ()=>{ riyouData=null; riyouRender(); });
+  }
+  p.hidden=false;
+  riyouRender();
+}
+function riyouNote(){
+  return `<div class="wpNote" style="background:#fdf6ec; border-color:#e6cfa5">
+    🔐 <b>利用者さんの個人情報</b>を扱います。データは<b>合言葉で暗号化してこのパソコンの中だけ</b>に保存され、
+    公開ページやインターネットには一切出ません（この画面の処理もすべて端末内で行われます）。</div>`;
+}
+function riyouRender(){
+  const b=document.getElementById('riyouBody');
+  const st=riyouStored();
+  if(riyouData){ riyouRenderSearch(); return; }
+  if(!st){                                  // 初回：読み込み＋合言葉の設定
+    b.innerHTML = riyouNote() + `
+      <div style="font-weight:800; font-size:13px; color:#1f3a28; margin:12px 0 6px">はじめの設定（1回だけ）</div>
+      <ol style="font-size:12.5px; line-height:1.9; padding-left:18px; margin:0 0 10px">
+        <li>受給者証データのExcelを選ぶ（シート「利用者受給者証」を読み取ります）</li>
+        <li>合言葉を決める（次回からこの合言葉で開きます）</li>
+      </ol>
+      <button class="wpBtn" id="riyouPick" style="width:100%; text-align:left; padding:11px">📗 受給者証のExcelを選ぶ<br><small id="riyouFn" style="font-weight:400; color:#7a8b80">未選択</small></button>
+      <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a; margin-top:10px">合言葉（4文字以上）</label>
+      <input id="riyouPass" type="password" autocomplete="new-password" placeholder="例：olive2026"
+        style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 8px">
+      <button class="wpBtn primary" id="riyouSaveBtn" style="width:100%; padding:11px" disabled>🔐 暗号化して保存</button>
+      <div id="riyouMsg" style="margin-top:8px"></div>
+      <input type="file" id="riyouFile" accept=".xlsx,.xlsm" hidden>`;
+    let picked=null;
+    const upd=()=>{ document.getElementById('riyouSaveBtn').disabled =
+      !(picked && document.getElementById('riyouPass').value.trim().length>=4); };
+    document.getElementById('riyouPick').addEventListener('click',()=>document.getElementById('riyouFile').click());
+    document.getElementById('riyouFile').addEventListener('change',function(){
+      if(this.files[0]){ picked=this.files[0]; document.getElementById('riyouFn').textContent=picked.name; }
+      this.value=''; upd();
+    });
+    document.getElementById('riyouPass').addEventListener('input',upd);
+    document.getElementById('riyouSaveBtn').addEventListener('click', async ()=>{
+      const msg=document.getElementById('riyouMsg');
+      try{
+        if(typeof XLSX==='undefined') throw new Error('Excelライブラリを読み込めませんでした。少し待ってからお試しください');
+        const wb=XLSX.read(await picked.arrayBuffer(),{type:'array', cellDates:true});
+        const list=riyouParse(wb);
+        await riyouSave(list, document.getElementById('riyouPass').value.trim());
+        riyouData=list;
+        banner('🔐 受給者証データ '+list.length+'名を保存しました');
+        logLine(`<b>利用者AI</b>：受給者証データ${list.length}名を暗号化して保存（この端末のみ）`);
+        riyouRenderSearch();
+      }catch(e){ msg.innerHTML=`<p class="wpNote" style="background:#fdf3f3">⚠ ${hkEsc(e.message)}</p>`; }
+    });
+    return;
+  }
+  // 2回目以降：合言葉で解錠
+  b.innerHTML = riyouNote() + `
+    <div style="font-size:12.5px; color:#5a6f60; margin:12px 0 6px">
+      保存済み：<b>${st.n}名</b>（${st.at? new Date(st.at).toLocaleDateString('ja-JP') : ''} 更新）</div>
+    <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a">合言葉</label>
+    <input id="riyouPass2" type="password" autocomplete="current-password" placeholder="合言葉"
+      style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 8px">
+    <button class="wpBtn primary" id="riyouOpen" style="width:100%; padding:11px">🔓 開く</button>
+    <div id="riyouMsg" style="margin-top:8px"></div>
+    <div style="margin-top:14px; border-top:1px dashed var(--line); padding-top:10px">
+      <button class="wpBtn" id="riyouReset" style="font-size:11px">🗑 このパソコンから消して入れ直す</button>
+    </div>`;
+  const go=async ()=>{
+    const msg=document.getElementById('riyouMsg');
+    try{
+      riyouData = await riyouLoad(document.getElementById('riyouPass2').value.trim());
+      riyouRenderSearch();
+    }catch(e){ msg.innerHTML=`<p class="wpNote" style="background:#fdf3f3">⚠ 合言葉が違うようです</p>`; }
+  };
+  document.getElementById('riyouOpen').addEventListener('click', go);
+  document.getElementById('riyouPass2').addEventListener('keydown', e=>{ if(e.key==='Enter') go(); });
+  document.getElementById('riyouReset').addEventListener('click', ()=>{
+    if(confirm('保存した受給者証データをこのパソコンから消します。よろしいですか？')){
+      localStorage.removeItem(RIYOU_KEY); riyouData=null; riyouRender();
+    }
+  });
+}
+// --- 検索画面 ---
+function riyouRenderSearch(q){
+  const b=document.getElementById('riyouBody');
+  const list=riyouData||[];
+  const key=(q||'').replace(/[\s　]/g,'');
+  const hit = key ? list.filter(u=>
+      u.name.replace(/[\s　]/g,'').includes(key) || u.no.includes(key) || u.home.includes(key)
+    ) : list;
+  const card=(u)=>{
+    const bd=u.birth?new Date(u.birth):null, mi=u.moveIn?new Date(u.moveIn):null;
+    return `<div style="border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:8px; background:#fff">
+      <div style="display:flex; gap:8px; align-items:baseline; flex-wrap:wrap">
+        <b style="font-size:15px; color:#1f3a28">${hkEsc(u.name)}</b>
+        ${u.home?`<span style="font-size:10.5px; background:var(--olive); color:#fff; border-radius:999px; padding:2px 9px">${hkEsc(u.home)}</span>`:''}
+        ${u.kubun?`<span style="font-size:10.5px; background:#4a7fae; color:#fff; border-radius:999px; padding:2px 9px">区分 ${hkEsc(u.kubun)}</span>`:''}
+      </div>
+      <table style="width:100%; font-size:12.5px; margin-top:7px; border-collapse:collapse">
+        <tr><td style="color:#7a8b80; width:8em; padding:2px 0">受給者証番号</td><td><b style="font-size:14px; letter-spacing:.5px">${hkEsc(u.no)}</b></td></tr>
+        <tr><td style="color:#7a8b80; padding:2px 0">誕生日</td><td>${riyouFmt(bd)}${bd?`（${riyouWareki(bd)}）　<b>${riyouAge(bd)}歳</b>`:''}</td></tr>
+        <tr><td style="color:#7a8b80; padding:2px 0">おりーぶ庵入居</td><td>${riyouFmt(mi)}</td></tr>
+      </table></div>`;
+  };
+  b.innerHTML = `
+    <div style="display:flex; gap:6px; margin-bottom:10px">
+      <input id="riyouQ" type="search" placeholder="氏名・受給者証番号・ホームで検索（例：山田）" value="${hkEsc(q||'')}"
+        style="flex:1; padding:10px; border:1px solid #cfe0ee; border-radius:8px; font-size:14px">
+      <button class="wpBtn" id="riyouClear">×</button>
+    </div>
+    <div class="wpNote" style="margin-bottom:8px">${key?`「${hkEsc(q)}」の検索結果：<b>${hit.length}名</b>`:`在籍 <b>${list.length}名</b>（氏名を入れると絞り込めます）`}</div>
+    ${hit.length? hit.map(card).join('') : '<p class="wpNote">見つかりませんでした。</p>'}`;
+  const qi=document.getElementById('riyouQ');
+  qi.addEventListener('input', ()=>riyouRenderSearch(qi.value));
+  document.getElementById('riyouClear').addEventListener('click', ()=>riyouRenderSearch(''));
+  if(q!==undefined){ qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
+}
+/* ▲▲▲ 利用者AI ここまで ▲▲▲ */
 
 /* ---- 行政AIの業務メニュー（変更届・付表12 の2つが格納されている） ---- */
 function openGyouseiMenu(){
