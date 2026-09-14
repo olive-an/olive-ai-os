@@ -3355,7 +3355,8 @@ function riyouRenderSearch(q){
    ・車両台帳Excel（シート「車両台帳データ」）からの取り込みにも対応。
    ・★担当者名などを含むため、合言葉で暗号化してこの端末内だけに保存します。
    ========================================================================= */
-const SHARYOU_KEY = 'aiosSharyouV1';
+const SHARYOU_KEY = 'aiosSharyouV1';       // 旧：合言葉つきで保存していた分（引き継ぎ用）
+const SHARYOU_PLAIN = 'aiosSharyouV2';    // 車両データ（合言葉なし・この端末のみ）
 let sharyouData = null;                 // 解錠中だけメモリに載せる
 let sharyouPass = null;                 // 保存のため解錠時の合言葉を保持
 const SHA_FIELDS = [
@@ -3438,80 +3439,73 @@ function openSharyouPanel(){
     p=document.createElement('div'); p.className='modal'; p.id='sharyouPanel';
     p.innerHTML=`<div class="sheet" style="max-width:680px">
       <div class="sheetHead"><b>🚗 車両AI（車両台帳・期限管理）</b><span class="grow"></span>
-        <button id="shaLock" title="ロックする">🔒</button>
         <button onclick="document.getElementById('sharyouPanel').hidden=true">✕</button></div>
       <div class="sheetBody" id="shaBody"></div></div>`;
     p.addEventListener('click',ev=>{ if(ev.target.id==='sharyouPanel') p.hidden=true; });
     document.body.appendChild(p);
-    document.getElementById('shaLock').addEventListener('click', ()=>{
-      sharyouData=null; sharyouPass=null; secForget(SHARYOU_KEY); shaRender();   // 🔒は「覚えた合言葉も忘れる」
-    });
   }
   p.hidden=false; shaRender();
 }
 function shaNote(){
-  return `<div class="wpNote" style="background:#fdf6ec; border-color:#e6cfa5">
-    🔐 車両・担当者の情報は<b>合言葉で暗号化してこのパソコンの中だけ</b>に保存されます（公開ページには出ません）。</div>`;
+  return `<div class="wpNote">🚗 車両の情報は<b>このパソコンの中だけ</b>に保存されます（公開ページには出ません）。</div>`;
+}
+// 車両データは合言葉なしで開きます（利用者さんの個人情報ではないため）
+function shaRead(){
+  try{ const r=localStorage.getItem(SHARYOU_PLAIN); return r?JSON.parse(r):null; }catch(e){ return null; }
 }
 function shaRender(){
   const b=document.getElementById('shaBody');
-  const st=secStored(SHARYOU_KEY);
   if(sharyouData){ shaRenderList(); return; }
-  if(st && secRemembered(SHARYOU_KEY)){            // 合言葉を覚えていれば自動で開く
-    b.innerHTML='<p class="wpNote">🔓 開いています…</p>';
-    secAutoLoad(SHARYOU_KEY).then(r=>{
-      if(r){ sharyouData=r.data; sharyouPass=r.pass; shaRenderList(); } else shaRender();
+  const plain = shaRead();
+  if(plain){ sharyouData=plain; shaRenderList(); return; }
+  // 以前に合言葉つきで保存したデータがあれば引き継ぐ
+  const old = secStored(SHARYOU_KEY);
+  if(old){
+    b.innerHTML='<p class="wpNote">🔓 以前のデータを読み込んでいます…</p>';
+    secAutoLoad(SHARYOU_KEY).then(async r=>{
+      if(r){                                   // 覚えていた合言葉で自動的に引き継ぐ
+        sharyouData = r.data;
+        await shaPersist();
+        localStorage.removeItem(SHARYOU_KEY); secForget(SHARYOU_KEY);
+        shaRenderList();
+        banner('🚗 以前の車両データを引き継ぎました');
+      }else{ shaRenderTakeOver(old); }
     });
     return;
   }
-  if(!st){
-    b.innerHTML = shaNote() + `
-      <div style="font-weight:800; font-size:13px; color:#1f3a28; margin:12px 0 6px">はじめの設定（1回だけ）</div>
-      <div class="wpNote" style="margin-bottom:8px">合言葉を決めてください。次回からこの合言葉で開きます。<br>
-        車両は「＋ 車両を追加」で登録するか、車両台帳Excelから取り込めます。</div>
-      <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a">合言葉（4文字以上）</label>
-      <input id="shaPass" type="password" autocomplete="new-password" placeholder="4文字以上"
-        style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 2px">
-      ${secRememberBox('shaRem')}
-      <button class="wpBtn primary" id="shaStart" style="width:100%; padding:11px" disabled>🔐 はじめる</button>`;
-    const pi=document.getElementById('shaPass');
-    pi.addEventListener('input',()=>{ document.getElementById('shaStart').disabled = pi.value.trim().length<4; });
-    document.getElementById('shaStart').addEventListener('click', async ()=>{
-      sharyouPass=pi.value.trim(); sharyouData=[];
-      await secSave(SHARYOU_KEY, sharyouData, sharyouPass);
-      if(document.getElementById('shaRem').checked) secRemember(SHARYOU_KEY, sharyouPass);
-      shaRenderList();
-    });
-    return;
-  }
-  b.innerHTML = shaNote() + `
-    <div style="font-size:12.5px; color:#5a6f60; margin:12px 0 6px">登録済み：<b>${st.n}台</b></div>
-    <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a">合言葉</label>
-    <input id="shaPass2" type="password" autocomplete="current-password" placeholder="合言葉"
-      style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 2px">
-    ${secRememberBox('shaRem2')}
-    <button class="wpBtn primary" id="shaOpen" style="width:100%; padding:11px">🔓 開く</button>
+  sharyouData=[]; shaRenderList();             // まっさらな状態から開始
+}
+// 合言葉を覚えていない端末のための引き継ぎ画面
+function shaRenderTakeOver(old){
+  const b=document.getElementById('shaBody');
+  b.innerHTML = `
+    <div class="wpNote" style="margin-bottom:10px">
+      以前に合言葉をつけて保存した車両データが<b>${old.n}台分</b>あります。<br>
+      合言葉を入れると引き継げます（次からは合言葉なしで開きます）。</div>
+    <input id="shaOldPass" type="password" autocomplete="current-password" placeholder="以前の合言葉"
+      style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 8px">
+    <button class="wpBtn primary" id="shaTakeOver" style="width:100%; padding:11px">🔓 引き継ぐ</button>
     <div id="shaMsg" style="margin-top:8px"></div>
     <div style="margin-top:14px; border-top:1px dashed var(--line); padding-top:10px">
-      <button class="wpBtn" id="shaReset" style="font-size:11px">🗑 このパソコンから消して入れ直す</button>
+      <button class="wpBtn" id="shaSkip" style="font-size:11px">引き継がずに最初から始める</button>
     </div>`;
   const go=async ()=>{
     try{
-      const pw=document.getElementById('shaPass2').value.trim();
-      sharyouData = await secLoad(SHARYOU_KEY, pw); sharyouPass = pw;
-      if(document.getElementById('shaRem2').checked) secRemember(SHARYOU_KEY, pw);
+      sharyouData = await secLoad(SHARYOU_KEY, document.getElementById('shaOldPass').value.trim());
+      await shaPersist();
+      localStorage.removeItem(SHARYOU_KEY); secForget(SHARYOU_KEY);
       shaRenderList();
     }catch(e){ document.getElementById('shaMsg').innerHTML=`<p class="wpNote" style="background:#fdf3f3">⚠ 合言葉が違うようです</p>`; }
   };
-  document.getElementById('shaOpen').addEventListener('click', go);
-  document.getElementById('shaPass2').addEventListener('keydown', e=>{ if(e.key==='Enter') go(); });
-  document.getElementById('shaReset').addEventListener('click', ()=>{
-    if(confirm('登録した車両データをこのパソコンから消します。よろしいですか？')){
-      localStorage.removeItem(SHARYOU_KEY); secForget(SHARYOU_KEY); sharyouData=null; sharyouPass=null; shaRender();
-    }
+  document.getElementById('shaTakeOver').addEventListener('click', go);
+  document.getElementById('shaOldPass').addEventListener('keydown', e=>{ if(e.key==='Enter') go(); });
+  document.getElementById('shaSkip').addEventListener('click', async ()=>{
+    if(!confirm('以前の車両データは引き継がず、最初から始めます。よろしいですか？')) return;
+    localStorage.removeItem(SHARYOU_KEY); secForget(SHARYOU_KEY);
+    sharyouData=[]; await shaPersist(); shaRenderList();
   });
 }
-async function shaPersist(){ await secSave(SHARYOU_KEY, sharyouData, sharyouPass); }
+async function shaPersist(){ localStorage.setItem(SHARYOU_PLAIN, JSON.stringify(sharyouData)); }
 
 // --- 一覧（期限の近い順）---
 function shaRenderList(){
@@ -3553,6 +3547,8 @@ function shaRenderList(){
     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px">
       <button class="wpBtn primary" id="shaAdd">＋ 車両を追加</button>
       <button class="wpBtn" id="shaImport">📗 車両台帳Excelから取り込む</button>
+      <span class="grow" style="flex:1"></span>
+      <button class="wpBtn" id="shaClear" style="font-size:11px; color:#d0503f; border-color:#e6b3ab">🗑 全部消す</button>
       <input type="file" id="shaFile" accept=".xlsx,.xlsm" hidden>
     </div>
     ${alerts.length ? `<div class="wpNote" style="background:#fdf3f3; border-color:#e6b3ab; margin-bottom:10px">
@@ -3563,6 +3559,10 @@ function shaRenderList(){
     ${sorted.length ? sorted.map(row).join('') : '<p class="wpNote">まだ車両が登録されていません。「＋ 車両を追加」から登録してください。</p>'}`;
   document.getElementById('shaAdd').addEventListener('click', ()=>shaRenderForm(-1));
   b.querySelectorAll('[data-edit]').forEach(btn=>btn.addEventListener('click',()=>shaRenderForm(+btn.dataset.edit)));
+  document.getElementById('shaClear').addEventListener('click', async ()=>{
+    if(!confirm('登録した車両データをこのパソコンからすべて消します。よろしいですか？')) return;
+    sharyouData=[]; await shaPersist(); shaRenderList();
+  });
   document.getElementById('shaImport').addEventListener('click',()=>document.getElementById('shaFile').click());
   document.getElementById('shaFile').addEventListener('change', async function(){
     const f=this.files[0]; this.value=''; if(!f) return;
