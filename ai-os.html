@@ -813,7 +813,7 @@ const ZONES = [
   {x:93, y:76, label:'ポチパス',   desk:'🐶'},
   {x:93, y:76, label:'プリンター', desk:'🖨️'},
   {x:92, y:9,  label:'書類棚',    desk:'🗄️'},
-  {x:50, y:72, label:'会議室',    desk:'📊'},
+  {x:50, y:72, label:'会議室',    desk:'🗣️'},
 ];
 
 /* ---- 業務プラン（キーワード → 担当AIの流れ＋成果物） ---- */
@@ -877,6 +877,10 @@ for(const z of ZONES){
   if(z.label==='ポチパス'){ // ポチパスはクリックで連携メニュー
     d.style.pointerEvents='auto'; d.style.cursor='pointer'; d.title='ポチパスを開く・データを連携する';
     d.addEventListener('click', ()=>openPochiPanel());
+  }
+  if(z.label==='会議室'){ // 会議室はクリックで議事録フォルダ
+    d.style.pointerEvents='auto'; d.style.cursor='pointer'; d.title='議事録フォルダを開く';
+    d.addEventListener('click', ()=>openGijiPanel());
   }
   stage.appendChild(d);
   ZEL.push({el:d, z});
@@ -3659,6 +3663,233 @@ function openPochiPanel(){
   p.hidden=false;
 }
 /* ▲▲▲ ポチパス連携 ここまで ▲▲▲ */
+
+/* =========================================================================
+   ▼▼▼ 会議室：議事録フォルダ ▼▼▼
+   Word(.docx)やテキストの議事録を読み込んで、日付順に保管・全文検索・印刷。
+   ★議事録には利用者さんの障害名・病状など「要配慮個人情報」が含まれるため、
+     合言葉で暗号化してこの端末のブラウザ内だけに保存します。
+     公開ファイル（GitHub）には一切入りません。外部にも送信しません。
+   ========================================================================= */
+const GIJI_KEY = 'aiosGijiV1';
+let gijiData = null;            // 解錠中だけメモリに載せる
+let gijiPass = null;
+
+const gijiSave = (list, pass)=> secSave(GIJI_KEY, list, pass);
+const gijiZen  = s => String(s||'').replace(/[０-９]/g, c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
+
+// Word(.docx)から本文テキストを取り出す（JSZipで中のXMLを読むだけ）
+async function gijiReadFile(file){
+  const name = file.name || '';
+  if(/\.txt$/i.test(name)) return await file.text();
+  if(!/\.docx$/i.test(name)) throw new Error('Word(.docx)かテキスト(.txt)を選んでください');
+  if(typeof JSZip==='undefined') throw new Error('ライブラリを読み込めませんでした。少し待ってからお試しください');
+  const zip = await JSZip.loadAsync(await file.arrayBuffer());
+  const f = zip.file('word/document.xml');
+  if(!f) throw new Error('Wordの中身を読み取れませんでした');
+  const xml = await f.async('string');
+  const txt = xml.replace(/<w:p[ >][\s\S]*?<\/w:p>|<w:p\/>/g, m=>{
+                const t=[...m.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)].map(x=>x[1]).join('');
+                return t+'\n';
+              }).replace(/<[^>]+>/g,'');
+  return shXmlUnesc(txt).replace(/\n{3,}/g,'\n\n').trim();
+}
+// 本文からタイトルと開催日を推測
+function gijiMeta(text, fileName){
+  const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
+  let title = lines[0] || (fileName||'').replace(/\.(docx|txt)$/i,'') || '議事録';
+  let date = '';
+  for(const l of lines.slice(0,8)){
+    const m = gijiZen(l).match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+    if(m){ date = `${m[1]}-${('0'+m[2]).slice(-2)}-${('0'+m[3]).slice(-2)}`; break; }
+  }
+  if(!date){                                   // ファイル名から（例：2026.1.16）
+    const m = gijiZen(fileName||'').match(/(\d{4})[.\-\/年](\d{1,2})[.\-\/月](\d{1,2})/);
+    if(m) date = `${m[1]}-${('0'+m[2]).slice(-2)}-${('0'+m[3]).slice(-2)}`;
+  }
+  return {title: title.slice(0,60), date};
+}
+
+function openGijiPanel(){
+  let p=document.getElementById('gijiPanel');
+  if(!p){
+    p=document.createElement('div'); p.className='modal'; p.id='gijiPanel';
+    p.innerHTML=`<div class="sheet" style="max-width:680px">
+      <div class="sheetHead"><b>🗣️ 会議室（議事録フォルダ）</b><span class="grow"></span>
+        <button id="gijiLock" title="ロックする">🔒</button>
+        <button onclick="document.getElementById('gijiPanel').hidden=true">✕</button></div>
+      <div class="sheetBody" id="gijiBody"></div></div>`;
+    p.addEventListener('click',ev=>{ if(ev.target.id==='gijiPanel') p.hidden=true; });
+    document.body.appendChild(p);
+    document.getElementById('gijiLock').addEventListener('click', ()=>{
+      gijiData=null; gijiPass=null; secForget(GIJI_KEY); gijiRender();
+    });
+  }
+  p.hidden=false; gijiRender();
+}
+function gijiNote(){
+  return `<div class="wpNote" style="background:#fdf6ec; border-color:#e6cfa5">
+    🔐 議事録には利用者さんの<b>障害名や病状などの大切な個人情報</b>が含まれます。
+    合言葉で暗号化して<b>このパソコンの中だけ</b>に保存され、公開ページやインターネットには一切出ません。</div>`;
+}
+function gijiRender(){
+  const b=document.getElementById('gijiBody');
+  const st=secStored(GIJI_KEY);
+  if(gijiData){ gijiList(); return; }
+  if(st && secRemembered(GIJI_KEY)){
+    b.innerHTML='<p class="wpNote">🔓 開いています…</p>';
+    secAutoLoad(GIJI_KEY).then(r=>{
+      if(r){ gijiData=r.data; gijiPass=r.pass; gijiList(); } else gijiRender();
+    });
+    return;
+  }
+  if(!st){
+    b.innerHTML = gijiNote() + `
+      <div style="font-weight:800; font-size:13px; color:#1f3a28; margin:12px 0 6px">はじめの設定（1回だけ）</div>
+      <div class="wpNote" style="margin-bottom:8px">合言葉を決めてください。あとは「＋ 議事録を追加」でWordを選ぶだけです。</div>
+      <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a">合言葉（4文字以上）</label>
+      <input id="gijiPassIn" type="password" autocomplete="new-password" placeholder="4文字以上"
+        style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 2px">
+      ${secRememberBox('gijiRem')}
+      <button class="wpBtn primary" id="gijiStart" style="width:100%; padding:11px" disabled>🔐 はじめる</button>`;
+    const pi=document.getElementById('gijiPassIn');
+    pi.addEventListener('input',()=>{ document.getElementById('gijiStart').disabled = pi.value.trim().length<4; });
+    document.getElementById('gijiStart').addEventListener('click', async ()=>{
+      gijiPass=pi.value.trim(); gijiData=[];
+      await gijiSave(gijiData, gijiPass);
+      if(document.getElementById('gijiRem').checked) secRemember(GIJI_KEY, gijiPass);
+      gijiList();
+    });
+    return;
+  }
+  b.innerHTML = gijiNote() + `
+    <div style="font-size:12.5px; color:#5a6f60; margin:12px 0 6px">保管中：<b>${st.n}件</b></div>
+    <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a">合言葉</label>
+    <input id="gijiPass2" type="password" autocomplete="current-password" placeholder="合言葉"
+      style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 2px">
+    ${secRememberBox('gijiRem2')}
+    <button class="wpBtn primary" id="gijiOpen" style="width:100%; padding:11px">🔓 開く</button>
+    <div id="gijiMsg" style="margin-top:8px"></div>
+    <div style="margin-top:14px; border-top:1px dashed var(--line); padding-top:10px">
+      <button class="wpBtn" id="gijiReset" style="font-size:11px">🗑 このパソコンから消して入れ直す</button>
+    </div>`;
+  const go=async ()=>{
+    try{
+      const pw=document.getElementById('gijiPass2').value.trim();
+      gijiData=await secLoad(GIJI_KEY, pw); gijiPass=pw;
+      if(document.getElementById('gijiRem2').checked) secRemember(GIJI_KEY, pw);
+      gijiList();
+    }catch(e){ document.getElementById('gijiMsg').innerHTML=`<p class="wpNote" style="background:#fdf3f3">⚠ 合言葉が違うようです</p>`; }
+  };
+  document.getElementById('gijiOpen').addEventListener('click', go);
+  document.getElementById('gijiPass2').addEventListener('keydown', e=>{ if(e.key==='Enter') go(); });
+  document.getElementById('gijiReset').addEventListener('click', ()=>{
+    if(confirm('保管した議事録をこのパソコンから消します。よろしいですか？')){
+      localStorage.removeItem(GIJI_KEY); secForget(GIJI_KEY); gijiData=null; gijiRender();
+    }
+  });
+}
+async function gijiPersist(){ await gijiSave(gijiData, gijiPass); }
+
+// --- 一覧（新しい順）＋全文検索 ---
+function gijiList(q){
+  const b=document.getElementById('gijiBody');
+  const key=(q||'').trim();
+  const all=(gijiData||[]).slice().sort((a,c)=>(c.date||'').localeCompare(a.date||''));
+  const hit = key ? all.filter(g=> (g.title+g.body).includes(key)) : all;
+  const snippet = (g)=>{
+    if(!key) return (g.body||'').replace(/\n/g,' ').slice(0,70)+'…';
+    const i=(g.body||'').indexOf(key);
+    if(i<0) return '';
+    return '…'+g.body.slice(Math.max(0,i-25), i+45).replace(/\n/g,' ')
+      .replace(key, `<mark style="background:#ffe9a8">${hkEsc(key)}</mark>`)+'…';
+  };
+  const row=(g,i)=>`<div class="gijiRow" data-i="${g._i}" style="border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:8px; background:#fff; cursor:pointer">
+      <div style="display:flex; gap:8px; align-items:baseline; flex-wrap:wrap">
+        <span style="font-size:11px; background:var(--olive); color:#fff; border-radius:999px; padding:2px 9px">${g.date?hkEsc(g.date.replace(/-/g,'/')):'日付なし'}</span>
+        <b style="font-size:13.5px; color:#1f3a28">${hkEsc(g.title)}</b>
+      </div>
+      <div style="font-size:11.5px; color:#7a8b80; margin-top:4px">${key?snippet(g):hkEsc(snippet(g))}</div>
+    </div>`;
+  (gijiData||[]).forEach((g,i)=>g._i=i);
+  b.innerHTML = `
+    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px">
+      <button class="wpBtn primary" id="gijiAdd">＋ 議事録を追加</button>
+      <input type="file" id="gijiFile" accept=".docx,.txt" multiple hidden>
+    </div>
+    <div style="display:flex; gap:6px; margin-bottom:10px">
+      <input id="gijiQ" type="search" placeholder="議事録の中身を検索（例：シフト、意見箱、九条）" value="${hkEsc(q||'')}"
+        style="flex:1; padding:10px; border:1px solid #cfe0ee; border-radius:8px; font-size:14px">
+      <button class="wpBtn" id="gijiClear">×</button>
+    </div>
+    <div class="wpNote" style="margin-bottom:8px">${key?`「${hkEsc(key)}」を含む議事録：<b>${hit.length}件</b>`:`保管中の議事録：<b>${all.length}件</b>（新しい順）`}</div>
+    ${hit.length? hit.map(row).join('') : `<p class="wpNote">${key?'見つかりませんでした。':'まだありません。「＋ 議事録を追加」からWordを選んでください。'}</p>`}`;
+  document.getElementById('gijiAdd').addEventListener('click', ()=>document.getElementById('gijiFile').click());
+  document.getElementById('gijiFile').addEventListener('change', async function(){
+    const files=[...this.files]; this.value=''; if(!files.length) return;
+    let ok=0; const ng=[];
+    for(const f of files){
+      try{
+        const body=await gijiReadFile(f);
+        const {title,date}=gijiMeta(body, f.name);
+        gijiData.push({title, date, body, file:f.name, at:new Date().toISOString()});
+        ok++;
+      }catch(e){ ng.push(f.name+'：'+e.message); }
+    }
+    if(ok) await gijiPersist();
+    gijiList(q);
+    if(ok){ banner(`🗣️ 議事録を${ok}件 保管しました`); logLine(`<b>会議室</b>：議事録${ok}件を保管（この端末のみ）`); }
+    if(ng.length) alert('読み込めなかったファイル：\n'+ng.join('\n'));
+  });
+  const qi=document.getElementById('gijiQ');
+  qi.addEventListener('input', ()=>gijiList(qi.value));
+  document.getElementById('gijiClear').addEventListener('click', ()=>gijiList(''));
+  b.querySelectorAll('.gijiRow').forEach(el=>el.addEventListener('click', ()=>gijiView(+el.dataset.i, q)));
+  if(q!==undefined && qi){ qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
+}
+// --- 本文表示 ---
+function gijiView(i, backQ){
+  const g=gijiData[i]; const b=document.getElementById('gijiBody');
+  b.innerHTML = `
+    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px">
+      <button class="wpBtn" id="gijiBack">← 一覧にもどる</button>
+      <span class="grow" style="flex:1"></span>
+      <button class="wpBtn" id="gijiPrint">🖨 印刷</button>
+      <button class="wpBtn" id="gijiDel" style="color:#d0503f; border-color:#e6b3ab">🗑 削除</button>
+    </div>
+    <div style="background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px 16px">
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:6px">
+        <input id="gijiDate" type="date" value="${hkEsc(g.date||'')}"
+          style="padding:5px 7px; border:1px solid #cfe0ee; border-radius:8px; font-size:12px">
+        <input id="gijiTitle" type="text" value="${hkEsc(g.title)}"
+          style="flex:1; min-width:180px; padding:5px 8px; border:1px solid #cfe0ee; border-radius:8px; font-size:13.5px; font-weight:700; color:#1f3a28">
+        <button class="wpBtn" id="gijiFix" style="font-size:11px">✔ 直す</button>
+      </div>
+      <div style="font-size:11px; color:#7a8b80">${g.date?shaFmt(g.date):'日付なし'}</div>
+      <div style="white-space:pre-wrap; font-size:12.5px; line-height:1.9; color:#2a3a4a; margin-top:10px">${hkEsc(g.body)}</div>
+    </div>`;
+  document.getElementById('gijiBack').addEventListener('click', ()=>gijiList(backQ));
+  document.getElementById('gijiFix').addEventListener('click', async ()=>{   // 日付・タイトルの手直し
+    g.date  = document.getElementById('gijiDate').value;
+    g.title = document.getElementById('gijiTitle').value.trim() || g.title;
+    await gijiPersist(); gijiView(i, backQ); banner('🗣️ 議事録の見出しを直しました');
+  });
+  document.getElementById('gijiPrint').addEventListener('click', ()=>{
+    const tmp=document.createElement('div'); tmp.className='aiosPrintArea';
+    tmp.innerHTML=`<h2 style="font-size:15px">${hkEsc(g.title)}</h2>
+      <p style="font-size:11px">${hkEsc(g.date||'')}</p>
+      <div style="white-space:pre-wrap; font-size:11.5px; line-height:1.8">${hkEsc(g.body)}</div>`;
+    document.body.appendChild(tmp);
+    const clean=()=>{ tmp.remove(); window.removeEventListener('afterprint', clean); };
+    window.addEventListener('afterprint', clean);
+    setTimeout(()=>window.print(), 60);
+  });
+  document.getElementById('gijiDel').addEventListener('click', async ()=>{
+    if(!confirm('この議事録を削除します。よろしいですか？')) return;
+    gijiData.splice(i,1); await gijiPersist(); gijiList(backQ);
+  });
+}
+/* ▲▲▲ 会議室：議事録フォルダ ここまで ▲▲▲ */
 
 /* ---- 行政AIの業務メニュー（変更届・付表12 の2つが格納されている） ---- */
 function openGyouseiMenu(){
