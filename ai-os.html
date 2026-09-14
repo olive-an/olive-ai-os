@@ -499,7 +499,7 @@
         ✅ <b>付表12</b>…GH指定記載事項の読込・編集・書き出し。<br>
         ✅ <b>勤務形態一覧表</b>…6ホーム＋本社の実績Excelから自動作成。<br>
         ✅ <b>利用者AI</b>…受給者証の照会と有効期限アラート。<br>
-        ✅ <b>人事AI</b>…職員名簿と資格・研修・健康診断の期限アラート。<br>
+        ✅ <b>人事AI</b>…従業員名簿と資格・研修・健康診断の期限アラート。<br>
         ✅ <b>車両AI</b>…車両台帳と車検・自賠責・任意保険の期限アラート。<br>
         ✅ <b>会議室</b>…議事録フォルダ（Word取込・全文検索）。<br>
         その他（給与・工房売上など）はまだ<b>見た目のデモ</b>で、1業務ずつ本物にしていきます。<br>
@@ -3650,12 +3650,17 @@ let jinjiData = null;                 // 解錠中だけメモリに載せる
 let jinjiPass = null;                 // 保存のため解錠時の合言葉を保持
 
 const JIN_FIELDS = [
-  ['name','氏名','text'],   ['kana','ふりがな','text'],
-  ['home','所属（ホーム・本社）','text'], ['job','職種','text'],
-  ['emp','雇用形態（常勤・非常勤）','text'], ['tel','連絡先','text'],
-  ['hire','入社日','date'], ['birth','生年月日','date'],
-  ['memo','備考','text'],
+  ['no','社員番号','text'],   ['name','氏名','text'],
+  ['kana','ふりがな','text'], ['sex','性別','text'],
+  ['birth','生年月日','date'],['hire','入社年月日','date'],
+  ['job','役職・職種','text'],['emp','常勤・非常勤','text'],
+  ['home','拠点（ホーム・本部）','text'], ['ape','類人猿分類','text'],
+  ['mobile','携帯電話','text'],['tel','電話番号','text'],
+  ['mail','メールアドレス','text'], ['zip','郵便番号','text'],
+  ['addr','住所','text'],     ['kenpo','けんぽ（社会保険）','text'],
+  ['dbl','ダブルワーク','text'], ['memo','備考','text'],
 ];
+// ★マイナンバー（個人番号）は取り扱いが特に厳しいので、この名簿では扱いません。
 // よく使う資格・研修（数字＝有効期間の月数。0＝期限なし）
 const JIN_PRESETS = [
   ['健康診断', 12],
@@ -3713,66 +3718,144 @@ function jinAlerts(list){
   out.sort((a,b)=>a.d-b.d);
   return out;
 }
+// 生年月日から今の年齢、入社日から勤続年数を計算する（毎回その日で計算するので古くならない）
+function jinAge(ymd){
+  if(!ymd) return null;
+  const d=new Date(ymd+'T00:00:00'); if(isNaN(d)) return null;
+  const t=new Date(); let a=t.getFullYear()-d.getFullYear();
+  const m=t.getMonth()-d.getMonth();
+  if(m<0 || (m===0 && t.getDate()<d.getDate())) a--;
+  return a>=0 && a<130 ? a : null;
+}
+function jinTenure(ymd){
+  if(!ymd) return '';
+  const d=new Date(ymd+'T00:00:00'); if(isNaN(d)) return '';
+  const t=new Date();
+  let mm=(t.getFullYear()-d.getFullYear())*12 + (t.getMonth()-d.getMonth());
+  if(t.getDate()<d.getDate()) mm--;
+  if(mm<0) return '';
+  return Math.floor(mm/12)+'年'+(mm%12)+'ヶ月';
+}
 function jinStored(){ return secStored(JINJI_KEY); }
 async function jinPersist(){
   await secSave(JINJI_KEY, jinjiData, jinjiPass);
 }
 
-// --- 職員名簿Excelの取り込み（見出しの言葉から列を推測します）---
+// --- 従業員名簿Excelの取り込み（見出しの言葉から列を推測します）---
+// ★個人番号（マイナンバー）は法律上の取扱いが特に厳しいため、取り込みません。
 function jinParse(wb){
-  const sn = wb.SheetNames.find(n=>/職員|名簿|従業者|従事者/.test(n)) || wb.SheetNames[0];
+  const sn = wb.SheetNames.find(n=>/従業員|職員|名簿|従業者|従事者/.test(n)) || wb.SheetNames[0];
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, raw:true, defval:null});
-  const norm = c => (c==null?'':String(c)).replace(/[\s　\n]/g,'');
+  const norm = c => (c==null || c instanceof Date) ? '' : String(c).replace(/[\s　\n\r]/g,'');
+  const NAME_RE = /^(氏名|社員氏名|職員氏名|従業員氏名|職員名|従業員名|名前)$/;
   let hdr=-1;
   for(let r=0;r<Math.min(rows.length,25);r++){
-    if((rows[r]||[]).some(c=>/^(氏名|職員名|職員氏名|名前)$/.test(norm(c)))){ hdr=r; break; }
+    if((rows[r]||[]).some(c=>NAME_RE.test(norm(c)))){ hdr=r; break; }
   }
-  if(hdr<0) throw new Error('「氏名」の見出しが見つかりませんでした');
+  if(hdr<0) throw new Error('「氏名」（または「社員氏名」）の見出しが見つかりませんでした');
   const H = (rows[hdr]||[]).map(norm);
-  const find = (re)=>H.findIndex(h=>h && re.test(h));
-  const c = {
-    name: find(/^(氏名|職員名|職員氏名|名前)$/),
-    kana: find(/(ふりがな|フリガナ|カナ|よみ)/),
-    home: find(/(所属|事業所|ホーム|勤務先)/),
-    job:  find(/(職種|職名|役職)/),
-    emp:  find(/(雇用形態|常勤|勤務形態|雇用区分)/),
-    tel:  find(/(電話|連絡先|携帯)/),
-    hire: find(/(入社|採用|入職|雇入)/),
-    birth:find(/(生年月日|誕生日)/),
+  const used = new Set();
+
+  // ★マイナンバーの列は最初に外して、絶対に読み込まない
+  const skipped = [];
+  H.forEach((h,i)=>{ if(h && /(個人番号|マイナンバー|ﾏｲﾅﾝﾊﾞｰ)/.test(h)){ used.add(i); skipped.push(h); } });
+  // 年齢・在籍期間は生年月日・入社日から毎回計算するので取り込まない
+  H.forEach((h,i)=>{ if(h && /^(年齢|在籍期間|勤続年数|勤続)$/.test(h)) used.add(i); });
+
+  const pick = (re)=>{
+    for(let i=0;i<H.length;i++){ if(used.has(i)||!H[i]) continue;
+      if(re.test(H[i])){ used.add(i); return i; } }
+    return -1;
   };
-  // 資格・研修らしい列（見出しに 研修・資格・免許・健康診断 を含む列）
+  const c = {
+    name:  pick(NAME_RE),
+    kana:  pick(/(ふりがな|フリガナ|カナ|ｶﾅ|よみ)/),
+    no:    pick(/(社員番号|職員番号|従業員番号|^No$|^列1$|^番号$)/i),
+    sex:   pick(/性別/),
+    birth: pick(/(生年月日|誕生日)/),
+    job:   pick(/(役職|職種|職名)/),
+    emp:   pick(/(常勤|雇用形態|勤務形態|雇用区分)/),
+    home:  pick(/(拠点|所属|事業所|ホーム|勤務先|配属)/),
+    zip:   pick(/郵便/),
+    addr:  pick(/住所/),
+    mobile:pick(/(携帯|ケータイ)/),
+    tel:   pick(/(電話|連絡先|TEL)/i),
+    mail:  pick(/(メール|ﾒｰﾙ|mail)/i),
+    hire:  pick(/(入社|採用|入職|雇入)/),
+    kenpo: pick(/(けんぽ|健保|健康保険|社会保険|社保)/),
+    ape:   pick(/類人猿/),
+    dbl:   pick(/(ダブルワーク|兼業|副業)/),
+    memo:  pick(/(備考|メモ)/),
+  };
+  // 残りのうち、資格・研修らしい列（日付のことも、資格名が並んでいることもある）
   const qCols = [];
   H.forEach((h,i)=>{
-    if(!h || i===c.job) return;
-    if(/(研修|資格|免許|健康診断|講習)/.test(h)){
+    if(used.has(i) || !h) return;
+    if(/(資格|研修|免許|健康診断|講習|聞き取り|修了)/.test(h)){
+      used.add(i);
       qCols.push({i, label:h, isDate:/(期限|有効|満了|次回)/.test(h)});
     }
   });
+  // それ以外で中身のある列は備考にまとめる
+  const etcCols = [];
+  for(let i=0;i<Math.max(H.length,(rows[hdr]||[]).length);i++) if(!used.has(i)) etcCols.push({i, label:H[i]||''});
+
+  // 「介護福祉士（改行）重度訪問介護従事者（改行）（基礎・追加課程）」のような書き方をほどく
+  const splitQuals = (v)=>{
+    const lines = String(v).split(/[\r\n]+/).map(t=>t.trim()).filter(Boolean);
+    const merged = [];
+    for(const L of lines){
+      if(/^[（(]/.test(L) && merged.length) merged[merged.length-1] += L;   // 「（基礎・実践）」は前の行の続き
+      else merged.push(L);
+    }
+    const out = [];
+    for(const t of merged) for(const x of t.split(/[、,]/)){
+      const s = x.trim();
+      if(!s) continue;
+      if(/^(資格なし|なし|ほかなし|ほか無し|無し|特になし|未提出|—|ー|-)$/.test(s.replace(/[\s　]/g,''))) continue;
+      out.push(s);
+    }
+    return out;
+  };
+
   const list=[];
   for(let r=hdr+1; r<rows.length; r++){
     const row=rows[r]||[];
     const nm = c.name>=0 ? norm(row[c.name]) : '';
     if(!nm) continue;
-    if(/^(合計|以上|計)$/.test(nm)) continue;
-    const g = i => (i>=0 && row[i]!=null) ? String(row[i]).trim() : '';
-    const quals=[];
+    if(/^(合計|以上|計|小計)$/.test(nm)) continue;
+    const g = i => (i>=0 && row[i]!=null) ? String(row[i]).replace(/[\r\n]+/g,' ').trim() : '';
+    const quals=[]; const seen=new Set();
     for(const q of qCols){
-      const ymd = shaToYmd(row[q.i]);
-      if(!ymd) continue;
-      if(q.isDate){ quals.push({name:q.label, date:'', exp:ymd}); }
-      else{
-        const m = jinPresetMonths(q.label);            // 例）健康診断＝1年後が次回期限
-        quals.push({name:q.label, date:ymd, exp: m? jinAddMonths(ymd, m) : ''});
+      const raw = row[q.i]; if(raw==null || String(raw).trim()==='') continue;
+      const ymd = shaToYmd(raw);
+      if(ymd){                                            // 日付が入っている列
+        if(q.isDate) quals.push({name:q.label, date:'', exp:ymd});
+        else{ const m=jinPresetMonths(q.label);
+              quals.push({name:q.label, date:ymd, exp: m? jinAddMonths(ymd,m) : ''}); }
+        continue;
+      }
+      for(const t of splitQuals(raw)){                    // 資格名が並んでいる列
+        const k = t.replace(/[\s　]/g,'');
+        if(seen.has(k)) continue; seen.add(k);
+        quals.push({name:t, date:'', exp:'', note:q.label});
       }
     }
+    const etc = etcCols.map(e=>{
+      const v=g(e.i); if(!v) return '';
+      return e.label ? e.label+'：'+v : v;
+    }).filter(Boolean);
+    const memo = [g(c.memo), ...etc].filter(Boolean).join(' ／ ');
     list.push({
-      name:g(c.name), kana:g(c.kana), home:g(c.home), job:g(c.job), emp:g(c.emp),
-      tel:g(c.tel), hire:shaToYmd(row[c.hire]), birth:shaToYmd(row[c.birth]),
-      memo:'', quals,
+      no:g(c.no), name:g(c.name), kana:g(c.kana), sex:g(c.sex),
+      birth:shaToYmd(row[c.birth]), job:g(c.job), emp:g(c.emp), home:g(c.home),
+      zip:g(c.zip), addr:g(c.addr), tel:g(c.tel), mobile:g(c.mobile), mail:g(c.mail),
+      hire:shaToYmd(row[c.hire]), kenpo:g(c.kenpo), ape:g(c.ape), dbl:g(c.dbl),
+      memo, quals,
     });
   }
-  if(!list.length) throw new Error('職員の行を読み取れませんでした');
-  return {list, sheet:sn, qCols:qCols.map(q=>q.label)};
+  if(!list.length) throw new Error('従業員の行を読み取れませんでした');
+  return {list, sheet:sn, qCols:qCols.map(q=>q.label), skipped};
 }
 
 /* ---------------------------------------------------------------
@@ -4068,7 +4151,7 @@ function openJinjiPanel(){
   if(!p){
     p=document.createElement('div'); p.className='modal'; p.id='jinjiPanel';
     p.innerHTML=`<div class="sheet" style="max-width:720px">
-      <div class="sheetHead"><b>🤝 人事AI（職員名簿・資格の期限管理）</b><span class="grow"></span>
+      <div class="sheetHead"><b>🤝 人事AI（従業員名簿・資格の期限管理）</b><span class="grow"></span>
         <button onclick="document.getElementById('jinjiPanel').hidden=true">✕</button></div>
       <div class="sheetBody" id="jinBody"></div></div>`;
     p.addEventListener('click',ev=>{ if(ev.target.id==='jinjiPanel') p.hidden=true; });
@@ -4077,7 +4160,7 @@ function openJinjiPanel(){
   p.hidden=false; jinRender();
 }
 function jinNote(){
-  return `<div class="wpNote">🔐 職員の情報は<b>合言葉で暗号化</b>して、<b>このパソコン（この端末）の中だけ</b>に保存します。
+  return `<div class="wpNote">🔐 従業員の情報は<b>合言葉で暗号化</b>して、<b>このパソコン（この端末）の中だけ</b>に保存します。
     インターネット上の公開ページには一切出ません。</div>`;
 }
 
@@ -4097,7 +4180,7 @@ function jinRender(){
       <div style="font-weight:800; font-size:13px; color:#1f3a28; margin:12px 0 6px">はじめの設定（1回だけ）</div>
       <div style="font-size:12.5px; line-height:1.8; color:#5a6f60; margin-bottom:8px">
         合言葉を決めると、すぐに使い始められます。<br>
-        職員はこの画面から1人ずつ登録できますし、職員名簿のExcelからまとめて取り込むこともできます。</div>
+        従業員はこの画面から1人ずつ登録できますし、従業員名簿のExcelからまとめて取り込むこともできます。</div>
       <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a">合言葉（4文字以上）</label>
       <input id="jinPass" type="password" autocomplete="new-password" placeholder="4文字以上"
         style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 2px">
@@ -4112,7 +4195,7 @@ function jinRender(){
       await jinPersist();
       if(document.getElementById('jinRem').checked) secRemember(JINJI_KEY, jinjiPass);
       jinRenderList();
-      banner('🤝 職員名簿をはじめました');
+      banner('🤝 従業員名簿をはじめました');
     };
     document.getElementById('jinStart').addEventListener('click', start);
     pw.addEventListener('keydown', e=>{ if(e.key==='Enter') start(); });
@@ -4142,7 +4225,7 @@ function jinRender(){
   document.getElementById('jinOpen').addEventListener('click', go);
   document.getElementById('jinPass2').addEventListener('keydown', e=>{ if(e.key==='Enter') go(); });
   document.getElementById('jinReset').addEventListener('click', ()=>{
-    if(confirm('保存した職員名簿をこのパソコンから消します。よろしいですか？')){
+    if(confirm('保存した従業員名簿をこのパソコンから消します。よろしいですか？')){
       localStorage.removeItem(JINJI_KEY); secForget(JINJI_KEY); jinjiData=null; jinjiPass=null; jinRender();
     }
   });
@@ -4155,7 +4238,7 @@ function jinRenderList(){
   const all=jinjiData||[];
   all.forEach((p,i)=>p._i=i);
   const q = jinQuery.trim();
-  const hit = p => !q || [p.name,p.kana,p.home,p.job,p.emp,
+  const hit = p => !q || [p.no,p.name,p.kana,p.home,p.job,p.emp,p.sex,p.ape,p.memo,
                           ...(p.quals||[]).map(x=>x.name)].join(' ').includes(q);
   const list = all.filter(hit);
   const soonest = p => Math.min(99999, ...(p.quals||[]).map(x=>{
@@ -4164,8 +4247,9 @@ function jinRenderList(){
   const alerts = jinAlerts(all);
 
   const card = (p)=>{
-    const qs = (p.quals||[]).filter(x=>x.exp || x.date);
-    const cells = qs.map(x=>{
+    const dated = (p.quals||[]).filter(x=>x.exp || x.date);
+    const plain = (p.quals||[]).filter(x=>!x.exp && !x.date);
+    const cells = dated.map(x=>{
       const d=shaDays(x.exp), bg=shaBadge(d);
       return `<div style="min-width:150px">
         <div style="font-size:10px; color:#7a8b80">${hkEsc(x.name)}${x.file?' 📄':''}</div>
@@ -4174,25 +4258,35 @@ function jinRenderList(){
                :`<span style="display:inline-block; font-size:10px; color:#5a6f60; background:#eef2e6; border-radius:999px; padding:1px 8px; margin-top:2px">期限なし</span>`}
       </div>`;
     }).join('');
+    const tags = plain.map(x=>{
+      const said = /聞き取り|自己申告|申告/.test(x.note||'');     // 証明書の提出なし＝本人からの申告
+      return `<span title="${hkEsc(x.note||'')}" style="display:inline-block; font-size:10.5px; `
+        + (said ? `color:#7a6a3a; background:#fdf8ea; border:1px dashed #ddc98f;`
+                : `color:#3a5a2c; background:#eef4e4; border:1px solid #dbe6cc;`)
+        + `border-radius:999px; padding:2px 9px">${hkEsc(x.name)}${x.file?' 📄':''}`
+        + (said?`<span style="opacity:.75"> 聞き取り</span>`:'') + `</span>`;
+    }).join(' ');
+    const age=jinAge(p.birth), ten=jinTenure(p.hire);
+    const sub=[p.job, p.emp, age!=null?age+'歳':'', ten?'勤続'+ten:''].filter(Boolean).join('　');
     return `<div style="border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:8px; background:#fff">
       <div style="display:flex; gap:8px; align-items:baseline; flex-wrap:wrap">
         <b style="font-size:14.5px; color:#1f3a28">${hkEsc(p.name||'（氏名なし）')}</b>
         ${p.kana?`<span style="font-size:10.5px; color:#7a8b80">${hkEsc(p.kana)}</span>`:''}
         ${p.home?`<span style="font-size:10.5px; background:var(--olive); color:#fff; border-radius:999px; padding:2px 9px">${hkEsc(p.home)}</span>`:''}
-        ${p.job?`<span style="font-size:11px; color:#455038">${hkEsc(p.job)}</span>`:''}
-        ${p.emp?`<span style="font-size:11px; color:#7a8b80">${hkEsc(p.emp)}</span>`:''}
         <span class="grow" style="flex:1"></span>
         <button class="wpBtn" data-edit="${p._i}" style="font-size:11px; padding:3px 9px">編集</button>
       </div>
-      ${cells?`<div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:7px">${cells}</div>`
-             :`<div style="font-size:11.5px; color:#9aa38c; margin-top:6px">資格・研修は未登録です</div>`}
+      ${sub?`<div style="font-size:11.5px; color:#455038; margin-top:3px">${hkEsc(sub)}</div>`:''}
+      ${cells?`<div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:7px">${cells}</div>`:''}
+      ${tags?`<div style="display:flex; gap:4px; flex-wrap:wrap; margin-top:7px">${tags}</div>`:''}
+      ${(!cells&&!tags)?`<div style="font-size:11.5px; color:#9aa38c; margin-top:6px">資格・研修は未登録です</div>`:''}
     </div>`;
   };
 
   b.innerHTML = `
     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px">
-      <button class="wpBtn primary" id="jinAdd">＋ 職員を追加</button>
-      <button class="wpBtn" id="jinImport">📗 職員名簿Excelから取り込む</button>
+      <button class="wpBtn primary" id="jinAdd">＋ 従業員を追加</button>
+      <button class="wpBtn" id="jinImport">📗 従業員名簿Excelから取り込む</button>
       <span class="grow" style="flex:1"></span>
       <button class="wpBtn" id="jinLock" style="font-size:11px">🔒 閉じる</button>
       <button class="wpBtn" id="jinClear" style="font-size:11px; color:#d0503f; border-color:#e6b3ab">🗑 全部消す</button>
@@ -4202,12 +4296,12 @@ function jinRenderList(){
         ⚠ <b>期限が近い資格・研修（90日以内）</b><br>${alerts.map(a=>
           `${hkEsc(a.p.name)}：${hkEsc(a.q.name)} ${a.d<0?`<b style="color:#d0503f">${-a.d}日超過</b>`:`あと<b>${a.d}日</b>`}`).join('<br>')}</div>`
       : (all.length?`<div class="wpNote" style="background:#eef7f0">✅ 90日以内に期限が来る資格・研修はありません。</div>`:'')}
-    <input id="jinQ" type="search" placeholder="🔍 氏名・ホーム・職種・資格名で探す" value="${hkEsc(jinQuery)}"
+    <input id="jinQ" type="search" placeholder="🔍 氏名・カナ・拠点・役職・資格名で探す" value="${hkEsc(jinQuery)}"
       style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin-bottom:8px">
-    <div class="wpNote" style="margin-bottom:8px">登録職員：<b>${all.length}名</b>${q?`（「${hkEsc(q)}」に${list.length}名該当）`:''}（期限の近い順）</div>
+    <div class="wpNote" style="margin-bottom:8px">登録従業員：<b>${all.length}名</b>${q?`（「${hkEsc(q)}」に${list.length}名該当）`:''}（期限の近い順）</div>
     ${sorted.length ? sorted.map(card).join('')
-      : (all.length? '<p class="wpNote">該当する職員が見つかりません。</p>'
-                   : '<p class="wpNote">まだ職員が登録されていません。「＋ 職員を追加」から登録してください。</p>')}`;
+      : (all.length? '<p class="wpNote">該当する方が見つかりません。</p>'
+                   : '<p class="wpNote">まだ従業員が登録されていません。「＋ 従業員を追加」から登録してください。</p>')}`;
 
   const qEl=document.getElementById('jinQ');
   qEl.addEventListener('input', ()=>{ jinQuery=qEl.value; const at=qEl.selectionStart;
@@ -4218,7 +4312,7 @@ function jinRenderList(){
     jinjiData=null; jinjiPass=null; secForget(JINJI_KEY); jinRender();
   });
   document.getElementById('jinClear').addEventListener('click', async ()=>{
-    if(!confirm('登録した職員名簿をこのパソコンからすべて消します。よろしいですか？')) return;
+    if(!confirm('登録した従業員名簿をこのパソコンからすべて消します。よろしいですか？')) return;
     jinjiData=[]; await jinPersist(); await jinGC(); jinRenderList();
   });
   document.getElementById('jinImport').addEventListener('click',()=>document.getElementById('jinFile').click());
@@ -4231,8 +4325,19 @@ function jinRenderList(){
       jinjiData = jinjiData.concat(got.list);
       await jinPersist(); jinRenderList();
       banner(`🤝 ${got.list.length}名を取り込みました`);
-      logLine(`<b>人事AI</b>：職員名簿から${got.list.length}名を取り込み（シート「${hkEsc(got.sheet)}」`
+      logLine(`<b>人事AI</b>：従業員名簿から${got.list.length}名を取り込み（シート「${hkEsc(got.sheet)}」`
         + (got.qCols.length?`／資格欄：${got.qCols.map(hkEsc).join('・')}`:'') + '）');
+      let m = '取り込みました（'+got.list.length+'名）。\n'
+            + 'シート：'+got.sheet+'\n'
+            + (got.qCols.length? '資格として読んだ列：'+got.qCols.join('・')+'\n' : '');
+      if(got.skipped && got.skipped.length){
+        logLine(`<b>人事AI</b>：⚠ ${got.skipped.map(hkEsc).join('・')}の列は<b>取り込んでいません</b>（マイナンバーは扱いが特に厳しいため）`);
+        m += '\n★「'+got.skipped.join('・')+'」の列は取り込んでいません。\n'
+           + 'マイナンバー（個人番号）は法律で取扱いが特に厳しく定められているため、\n'
+           + 'このシステムでは保管しません。原本は社内の所定の場所で管理してください。\n';
+      }
+      m += '\n※年齢と勤続年数は、生年月日・入社日から毎回その日で計算します。';
+      alert(m);
     }catch(e){ alert('取り込みエラー：'+e.message); }
   });
 }
@@ -4255,7 +4360,7 @@ function jinRenderForm(idx, draft){
   b.innerHTML = `
     <button class="wpBtn" id="jinBack">← 一覧にもどる</button>
     <datalist id="jinJobs">${JIN_JOBS.map(j=>`<option value="${j}">`).join('')}</datalist>
-    <div style="font-weight:800; font-size:14px; color:#1f3a28; margin:10px 0 2px">${idx>=0?'職員の編集':'職員の追加'}</div>
+    <div style="font-weight:800; font-size:14px; color:#1f3a28; margin:10px 0 2px">${idx>=0?'従業員の編集':'従業員の追加'}</div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 12px">
       ${JIN_FIELDS.map(f=>`<div>${field(f)}</div>`).join('')}
     </div>
@@ -4267,7 +4372,7 @@ function jinRenderForm(idx, draft){
     <button class="wpBtn" id="jinQAdd" style="margin-top:6px">＋ 資格・研修を追加</button>
     <div style="display:flex; gap:8px; margin-top:16px; flex-wrap:wrap">
       <button class="wpBtn primary" id="jinSave" style="flex:1; padding:11px">💾 保存</button>
-      ${idx>=0?'<button class="wpBtn" id="jinDel" style="color:#d0503f; border-color:#e6b3ab">🗑 この職員を削除</button>':''}
+      ${idx>=0?'<button class="wpBtn" id="jinDel" style="color:#d0503f; border-color:#e6b3ab">🗑 この方を削除</button>':''}
     </div>`;
 
   const qbox=document.getElementById('jinQuals');
@@ -4407,16 +4512,16 @@ function jinRenderForm(idx, draft){
     b.querySelectorAll('[data-k]').forEach(i=>obj[i.dataset.k]=i.value.trim());
     if(!obj.name){ alert('氏名を入れてください'); return; }
     obj.quals = quals.filter(x=>x.name || x.date || x.exp || x.file)
-                     .map(x=>({name:x.name||'', date:x.date||'', exp:x.exp||'', file:x.file}))
-                     .map(x=>{ if(!x.file) delete x.file; return x; });
+                     .map(x=>({name:x.name||'', date:x.date||'', exp:x.exp||'', file:x.file, note:x.note}))
+                     .map(x=>{ if(!x.file) delete x.file; if(!x.note) delete x.note; return x; });
     if(idx>=0) jinjiData[idx]=obj; else jinjiData.push(obj);
     await jinPersist(); await jinGC(); jinRenderList();
-    banner('🤝 職員情報を保存しました');
+    banner('🤝 従業員情報を保存しました');
     logLine(`<b>人事AI</b>：職員を${idx>=0?'更新':'登録'}（この端末のみ・暗号化）`);
   });
   const del=document.getElementById('jinDel');
   if(del) del.addEventListener('click', async ()=>{
-    if(!confirm('この職員を削除します。資格証の添付もいっしょに消えます。よろしいですか？')) return;
+    if(!confirm('この方を名簿から削除します。資格証の添付もいっしょに消えます。よろしいですか？')) return;
     jinjiData.splice(idx,1); await jinPersist(); await jinGC(); jinRenderList();
   });
 }
