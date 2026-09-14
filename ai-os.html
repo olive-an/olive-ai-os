@@ -3672,7 +3672,10 @@ const JIN_PRESETS = [
   ['相談支援従事者研修', 0],
   ['サービス管理責任者 基礎研修', 0],
   ['サービス管理責任者 実践研修', 0],
+  ['介護職員初任者研修', 0], ['介護福祉士実務者研修', 0],
+  ['行動援護従業者養成研修', 0], ['同行援護従業者養成研修', 0],
   ['介護福祉士', 0], ['社会福祉士', 0], ['精神保健福祉士', 0], ['看護師', 0],
+  ['准看護師', 0], ['防火管理者', 0], ['衛生管理者', 0],
   ['その他', 0],
 ];
 const JIN_JOBS = ['管理者','サービス管理責任者','管理者兼サービス管理責任者',
@@ -3770,6 +3773,294 @@ function jinParse(wb){
   }
   if(!list.length) throw new Error('職員の行を読み取れませんでした');
   return {list, sheet:sn, qCols:qCols.map(q=>q.label)};
+}
+
+/* ---------------------------------------------------------------
+   資格証の写真・PDFの保管
+   ・写真はその場で縮小して「1ページのPDF」に変換して保存します。
+   ・PDFはそのまま保存します。
+   ・中身は合言葉で暗号化し、この端末のブラウザ（IndexedDB）にだけ置きます。
+     （画像は大きいので、名簿本体（localStorage）とは別の入れ物に保管）
+   --------------------------------------------------------------- */
+const JIN_DB='aiosFilesV1', JIN_STORE='files';
+function jinDB(){
+  return new Promise((ok,ng)=>{
+    const r=indexedDB.open(JIN_DB,1);
+    r.onupgradeneeded=()=>{ if(!r.result.objectStoreNames.contains(JIN_STORE)) r.result.createObjectStore(JIN_STORE); };
+    r.onsuccess=()=>ok(r.result); r.onerror=()=>ng(r.error||new Error('保存領域を開けません'));
+  });
+}
+function jinDBdo(mode, fn){
+  return jinDB().then(db=>new Promise((ok,ng)=>{
+    const t=db.transaction(JIN_STORE,mode), st=t.objectStore(JIN_STORE);
+    let req; try{ req=fn(st); }catch(e){ ng(e); return; }
+    t.oncomplete=()=>ok(req && 'result' in req ? req.result : undefined);
+    t.onerror=()=>ng(t.error);
+  }));
+}
+const jinFilePut  = (id,rec)=> jinDBdo('readwrite', st=>st.put(rec,id));
+const jinFileGet  = (id)    => jinDBdo('readonly',  st=>st.get(id));
+const jinFileDel  = (id)    => jinDBdo('readwrite', st=>st.delete(id));
+const jinFileKeys = ()      => jinDBdo('readonly',  st=>st.getAllKeys());
+
+async function jinEncBytes(bytes, pass){
+  const salt=crypto.getRandomValues(new Uint8Array(16));
+  const iv  =crypto.getRandomValues(new Uint8Array(12));
+  const key =await riyouKeyFrom(pass, salt);
+  const ct  =await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, bytes);
+  return {v:1, salt, iv, ct};
+}
+async function jinDecBytes(rec, pass){
+  const key=await riyouKeyFrom(pass, new Uint8Array(rec.salt));
+  const pt =await crypto.subtle.decrypt({name:'AES-GCM', iv:new Uint8Array(rec.iv)}, key, rec.ct);
+  return new Uint8Array(pt);
+}
+// 使われていない添付ファイルを片づける
+async function jinGC(){
+  try{
+    const used=new Set();
+    (jinjiData||[]).forEach(p=>(p.quals||[]).forEach(q=>{ if(q.file&&q.file.id) used.add(q.file.id); }));
+    for(const k of (await jinFileKeys())||[]) if(!used.has(k)) await jinFileDel(k);
+  }catch(e){}
+}
+
+// --- 写真を縮小して JPEG に ---
+async function jinShrink(file, maxSide, q){
+  maxSide=maxSide||1600; q=q||0.72;
+  let bmp;
+  try{ bmp = await createImageBitmap(file, {imageOrientation:'from-image'}); }
+  catch(e){ bmp = await createImageBitmap(file); }
+  const k=Math.min(1, maxSide/Math.max(bmp.width,bmp.height));
+  const w=Math.max(1,Math.round(bmp.width*k)), h=Math.max(1,Math.round(bmp.height*k));
+  const c=document.createElement('canvas'); c.width=w; c.height=h;
+  c.getContext('2d').drawImage(bmp,0,0,w,h);
+  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',q));
+  if(!blob) throw new Error('写真を読み取れませんでした');
+  return {jpeg:new Uint8Array(await blob.arrayBuffer()), w, h};
+}
+// --- JPEG を 1ページの PDF に包む（外部ライブラリなし）---
+function jinJpegToPdf(jpeg, w, h){
+  const A4W=595.28, A4H=841.89;
+  const k=Math.min(A4W/w, A4H/h);
+  const pw=Math.round(w*k), ph=Math.round(h*k);
+  const enc=s=>{ const a=new Uint8Array(s.length); for(let i=0;i<s.length;i++) a[i]=s.charCodeAt(i)&0xff; return a; };
+  const parts=[]; let len=0; const off=[];
+  const push=u8=>{ parts.push(u8); len+=u8.length; };
+  const pushS=s=>push(enc(s));
+  pushS('%PDF-1.4\n');
+  const obj=(n, dict, stream)=>{
+    off[n]=len; pushS(n+' 0 obj\n'+dict+'\n');
+    if(stream){ pushS('stream\n'); push(stream); pushS('\nendstream\n'); }
+    pushS('endobj\n');
+  };
+  obj(1,'<< /Type /Catalog /Pages 2 0 R >>');
+  obj(2,'<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+  obj(3,`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pw} ${ph}] `
+       +`/Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>`);
+  obj(4,`<< /Type /XObject /Subtype /Image /Width ${w} /Height ${h} /ColorSpace /DeviceRGB `
+       +`/BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>`, jpeg);
+  const cs=enc(`q ${pw} 0 0 ${ph} 0 0 cm /Im0 Do Q`);
+  obj(5,`<< /Length ${cs.length} >>`, cs);
+  const xref=len;
+  let x='xref\n0 6\n0000000000 65535 f \n';
+  for(let i=1;i<=5;i++) x+=String(off[i]).padStart(10,'0')+' 00000 n \n';
+  pushS(x);
+  pushS(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+  const out=new Uint8Array(len); let p=0;
+  for(const a of parts){ out.set(a,p); p+=a.length; }
+  return out;
+}
+// 写真でもPDFでも、保存するのは常にPDF
+async function jinToPdf(file){
+  const isPdf = /pdf/i.test(file.type) || /\.pdf$/i.test(file.name);
+  if(isPdf){
+    const b=new Uint8Array(await file.arrayBuffer());
+    return {name:file.name, bytes:b, src:'pdf'};
+  }
+  const r=await jinShrink(file);
+  const base=(file.name||'資格証').replace(/\.[^.]+$/,'');
+  return {name:base+'.pdf', bytes:jinJpegToPdf(r.jpeg,r.w,r.h), src:'photo'};
+}
+
+/* ---------------------------------------------------------------
+   PDFから文字を拾って「資格名の候補」を出す（あくまで参考）
+   ・パソコンで作られたPDFは文字が入っているので読み取れます。
+   ・写真をPDFにしたものは文字が入っていないので読み取れません。
+   --------------------------------------------------------------- */
+async function jinInflate(bytes){
+  if(typeof DecompressionStream==='undefined') return null;
+  for(const fmt of ['deflate','deflate-raw']){
+    try{
+      const st=new Blob([bytes]).stream().pipeThrough(new DecompressionStream(fmt));
+      return new Uint8Array(await new Response(st).arrayBuffer());
+    }catch(e){}
+  }
+  return null;
+}
+function jinLatin(u8){
+  let s='';
+  for(let i=0;i<u8.length;i+=8192) s+=String.fromCharCode.apply(null, u8.subarray(i,i+8192));
+  return s;
+}
+// ToUnicode（文字コード→読める文字）の対応表を作る
+function jinCMap(t){
+  const uni={};
+  const hx=h=>{ let s=''; for(let i=0;i+4<=h.length;i+=4) s+=String.fromCharCode(parseInt(h.substr(i,4),16)); return s; };
+  for(const m of t.matchAll(/beginbfchar([\s\S]*?)endbfchar/g))
+    for(const p of m[1].matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g))
+      uni[parseInt(p[1],16)] = hx(p[2]);
+  for(const m of t.matchAll(/beginbfrange([\s\S]*?)endbfrange/g)){
+    for(const p of m[1].matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g)){
+      const a=parseInt(p[1],16), b=parseInt(p[2],16), c=parseInt(p[3],16);
+      for(let i=0; i<=b-a && i<4096; i++) uni[a+i]=String.fromCharCode(c+i);
+    }
+    for(const p of m[1].matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*\[([\s\S]*?)\]/g)){
+      const a=parseInt(p[1],16); let i=0;
+      for(const q of p[3].matchAll(/<([0-9A-Fa-f]+)>/g)) uni[a+(i++)]=hx(q[1]);
+    }
+  }
+  return uni;
+}
+function jinPdfStrings(t, uni){
+  const dec=(s,hex)=>{
+    let o='';
+    if(hex){
+      for(let i=0;i+4<=s.length;i+=4){
+        const c=parseInt(s.substr(i,4),16); if(isNaN(c)) break;
+        o += uni[c]!==undefined ? uni[c] : (c>=32&&c<127? String.fromCharCode(c) : '');
+      }
+      return o;
+    }
+    for(let i=0;i<s.length;i++){
+      const c=s.charCodeAt(i);
+      o += uni[c]!==undefined ? uni[c] : (c>=32&&c<127? s[i] : '');
+    }
+    return o;
+  };
+  let out='', i=0;
+  while(i<t.length){
+    const c=t[i];
+    if(c==='('){
+      let d=1,j=i+1,s='';
+      while(j<t.length && d>0){
+        const ch=t[j];
+        if(ch==='\\'){
+          const n=t[j+1], e={'n':'\n','r':'\r','t':'\t','(':'(',')':')','\\':'\\'}[n];
+          if(e!==undefined){ s+=e; j+=2; continue; }
+          if(/[0-7]/.test(n)){ let o='',k=j+1; while(k<t.length && /[0-7]/.test(t[k]) && o.length<3){o+=t[k];k++;}
+            s+=String.fromCharCode(parseInt(o,8)); j=k; continue; }
+          j+=2; continue;
+        }
+        if(ch==='('){ d++; s+=ch; j++; continue; }
+        if(ch===')'){ d--; if(d===0){ j++; break; } s+=ch; j++; continue; }
+        s+=ch; j++;
+      }
+      out+=dec(s,false); i=j; continue;
+    }
+    if(c==='<' && t[i+1]!=='<'){
+      const e=t.indexOf('>',i); if(e<0) break;
+      out+=dec(t.slice(i+1,e).replace(/\s/g,''),true); i=e+1; continue;
+    }
+    i++;
+  }
+  return out;
+}
+async function jinPdfText(bytes){
+  const s=jinLatin(bytes);
+  const cmaps=[], contents=[];
+  let idx=0;
+  while((idx=s.indexOf('stream', idx))>=0){
+    if(s.slice(idx-3,idx)==='end'){ idx+=6; continue; }
+    const ds=s.lastIndexOf('<<', idx);
+    const dict=ds>=0 ? s.slice(ds, idx) : '';
+    let b=idx+6; if(s[b]==='\r') b++; if(s[b]==='\n') b++;
+    const e=s.indexOf('endstream', b); if(e<0) break;
+    let end=e;
+    const lm=dict.match(/\/Length\s+(\d+)\s*(?:\/|>>)/);      // 長さが直接書いてあればそれに従う
+    if(lm && b+(+lm[1])<=e) end = b+(+lm[1]);
+    else { while(end>b && (bytes[end-1]===0x0a || bytes[end-1]===0x0d)) end--; }
+    let data=bytes.subarray(b,end);
+    if(/FlateDecode/.test(dict)){
+      const inf=await jinInflate(data);
+      if(inf) data=inf;                                       // 展開できなければ元のまま調べる
+    }
+    if(data){
+      const t=jinLatin(data);
+      if(/beginbfchar|beginbfrange/.test(t)) cmaps.push(t);
+      else if(/\bTj\b|\bTJ\b/.test(t)) contents.push(t);
+    }
+    idx=e+9;
+  }
+  const uni=jinCMap(cmaps.join('\n'));
+  return contents.map(t=>jinPdfStrings(t,uni)).join('\n');
+}
+// 資格名らしい言葉の辞書（PDFの文字・ファイル名の両方から探します）
+const JIN_CERT_WORDS = [
+  [/喀痰吸引|かくたん吸引|たん吸引/, '喀痰吸引等研修'],
+  [/強度行動障害/, '強度行動障害支援者養成研修'],
+  [/サービス管理責任者[\s\S]{0,12}更新|サビ管[\s\S]{0,8}更新/, 'サービス管理責任者 更新研修'],
+  [/サービス管理責任者[\s\S]{0,12}基礎/, 'サービス管理責任者 基礎研修'],
+  [/サービス管理責任者[\s\S]{0,12}実践/, 'サービス管理責任者 実践研修'],
+  [/相談支援従事者/, '相談支援従事者研修'],
+  [/普通救命|救命講習|応急手当/, '普通救命講習'],
+  [/健康診断|健診/, '健康診断'],
+  [/虐待防止/, '虐待防止研修（年1回）'],
+  [/身体拘束/, '身体拘束適正化研修（年1回）'],
+  [/感染症/, '感染症対策研修（年1回）'],
+  [/業務継続|ＢＣＰ|BCP/, '業務継続計画(BCP)研修（年1回）'],
+  [/防災訓練|避難訓練/, '防災訓練（年2回）'],
+  [/運転免許/, '運転免許'],
+  [/実務者研修/, '介護福祉士実務者研修'],
+  [/初任者研修/, '介護職員初任者研修'],
+  [/介護福祉士/, '介護福祉士'],
+  [/社会福祉士/, '社会福祉士'],
+  [/精神保健福祉士/, '精神保健福祉士'],
+  [/准看護師/, '准看護師'],
+  [/看護師/, '看護師'],
+  [/行動援護/, '行動援護従業者養成研修'],
+  [/同行援護/, '同行援護従業者養成研修'],
+  [/防火管理者/, '防火管理者'],
+  [/衛生管理者/, '衛生管理者'],
+];
+function jinFindWords(text){
+  const t=String(text||'').replace(/[\s　]/g,'');
+  const out=[];
+  for(const pair of JIN_CERT_WORDS) if(pair[0].test(t) && !out.includes(pair[1])) out.push(pair[1]);
+  return out.slice(0,5);
+}
+function jinFindDates(text){
+  const t=String(text||'');
+  const out=[];
+  const z=s=>String(s).replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
+  const pad=n=>String(+n).padStart(2,'0');
+  for(const m of t.matchAll(/(令和|平成|昭和)\s*(元|[0-9０-９]{1,2})\s*年\s*([0-9０-９]{1,2})\s*月\s*([0-9０-９]{1,2})\s*日/g)){
+    const base = m[1]==='令和'?2018 : m[1]==='平成'?1988 : 1925;
+    const y = base + (m[2]==='元'?1:+z(m[2]));
+    out.push(`${y}-${pad(z(m[3]))}-${pad(z(m[4]))}`);
+  }
+  for(const m of t.matchAll(/(\d{4})\s*[年\/\-\.]\s*(\d{1,2})\s*[月\/\-\.]\s*(\d{1,2})/g)){
+    const y=+m[1]; if(y>=1950 && y<=2100) out.push(`${y}-${pad(m[2])}-${pad(m[3])}`);
+  }
+  return [...new Set(out)].slice(0,5);
+}
+// 添付から「資格名・日付の候補」を作る
+async function jinReadHint(pdfBytes, fileName, src){
+  const hint={ok:false, names:[], dates:[], from:''};
+  try{
+    const text = src==='photo' ? '' : await jinPdfText(pdfBytes);
+    if(text && text.replace(/\s/g,'').length>=4){
+      hint.ok=true; hint.from='PDFの文字';
+      hint.names=jinFindWords(text); hint.dates=jinFindDates(text);
+    }
+    if(!hint.names.length){                       // 文字が無ければファイル名から
+      const fn=jinFindWords(fileName||'');
+      if(fn.length){ hint.names=fn; hint.ok=true; hint.from=hint.from?hint.from+'＋ファイル名':'ファイル名'; }
+    }
+    if(!hint.dates.length){
+      const fd=jinFindDates(fileName||''); if(fd.length) hint.dates=fd;
+    }
+  }catch(e){}
+  return hint;
 }
 
 function openJinjiPanel(){
@@ -3877,7 +4168,7 @@ function jinRenderList(){
     const cells = qs.map(x=>{
       const d=shaDays(x.exp), bg=shaBadge(d);
       return `<div style="min-width:150px">
-        <div style="font-size:10px; color:#7a8b80">${hkEsc(x.name)}</div>
+        <div style="font-size:10px; color:#7a8b80">${hkEsc(x.name)}${x.file?' 📄':''}</div>
         <div style="font-size:12px">${x.exp? shaFmt(x.exp) : '取得 '+shaFmt(x.date)}</div>
         ${x.exp?`<span style="display:inline-block; font-size:10px; color:#fff; background:${bg.color}; border-radius:999px; padding:1px 8px; margin-top:2px">${bg.txt}</span>`
                :`<span style="display:inline-block; font-size:10px; color:#5a6f60; background:#eef2e6; border-radius:999px; padding:1px 8px; margin-top:2px">期限なし</span>`}
@@ -3928,7 +4219,7 @@ function jinRenderList(){
   });
   document.getElementById('jinClear').addEventListener('click', async ()=>{
     if(!confirm('登録した職員名簿をこのパソコンからすべて消します。よろしいですか？')) return;
-    jinjiData=[]; await jinPersist(); jinRenderList();
+    jinjiData=[]; await jinPersist(); await jinGC(); jinRenderList();
   });
   document.getElementById('jinImport').addEventListener('click',()=>document.getElementById('jinFile').click());
   document.getElementById('jinFile').addEventListener('change', async function(){
@@ -3947,10 +4238,10 @@ function jinRenderList(){
 }
 
 // --- 登録・編集フォーム ---
-function jinRenderForm(idx){
+function jinRenderForm(idx, draft){
   const b=document.getElementById('jinBody');
-  const p = idx>=0 ? jinjiData[idx] : {};
-  let quals = JSON.parse(JSON.stringify(p.quals||[]));
+  const p = draft ? draft.p : (idx>=0 ? jinjiData[idx] : {});
+  let quals = draft ? draft.quals : JSON.parse(JSON.stringify(p.quals||[]));
   const field = ([k,label,type])=>{
     if(k==='job') return `
       <label style="display:block; font-size:11.5px; font-weight:700; color:#2b5d8a; margin-top:8px">${label}</label>
@@ -3968,8 +4259,10 @@ function jinRenderForm(idx){
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 12px">
       ${JIN_FIELDS.map(f=>`<div>${field(f)}</div>`).join('')}
     </div>
-    <div style="font-weight:800; font-size:13px; color:#1f3a28; margin:16px 0 4px">資格・研修（有効期限を管理します）</div>
-    <div class="wpNote" style="margin-bottom:8px">種類を選んで<b>取得日</b>を入れると、有効期限が自動で入ります（健康診断＝1年、普通救命講習＝3年など）。期限のない資格は空欄のままで大丈夫です。</div>
+    <div style="font-weight:800; font-size:13px; color:#1f3a28; margin:16px 0 4px">資格・研修（有効期限と資格証）</div>
+    <div class="wpNote" style="margin-bottom:8px">
+      種類を選んで<b>取得日</b>を入れると、有効期限が自動で入ります（健康診断＝1年、普通救命講習＝3年など）。<br>
+      <b>📷 資格証を撮る</b>で撮った写真は、自動でPDFにして保管します。パソコンで作られたPDFなら<b>資格名や日付の候補</b>も読み取ります（参考）。</div>
     <div id="jinQuals"></div>
     <button class="wpBtn" id="jinQAdd" style="margin-top:6px">＋ 資格・研修を追加</button>
     <div style="display:flex; gap:8px; margin-top:16px; flex-wrap:wrap">
@@ -3978,15 +4271,45 @@ function jinRenderForm(idx){
     </div>`;
 
   const qbox=document.getElementById('jinQuals');
+  const readFields = ()=>{                       // 入力途中の基本情報を控える
+    const o={}; b.querySelectorAll('[data-k]').forEach(i=>o[i.dataset.k]=i.value); return o;
+  };
   const readQuals = ()=>{
     qbox.querySelectorAll('[data-qi]').forEach(row=>{
       const i=+row.dataset.qi;
-      quals[i] = {
+      quals[i] = Object.assign({}, quals[i], {
         name: row.querySelector('[data-q="name"]').value.trim(),
         date: row.querySelector('[data-q="date"]').value,
         exp:  row.querySelector('[data-q="exp"]').value,
-      };
+      });
     });
+  };
+  // 添付部分のHTML
+  const attHtml = (x,i)=>{
+    const hint = x._hint ? (
+      (x._hint.names.length || x._hint.dates.length)
+        ? `<div style="font-size:10.5px; color:#7a8b80; margin-top:5px">🔎 読み取り候補（${hkEsc(x._hint.from)}／参考です。違っていたら直してください）</div>
+           <div style="display:flex; gap:4px; flex-wrap:wrap; margin-top:3px">
+             ${x._hint.names.map(n=>`<button class="wpBtn" data-hn="${i}" data-v="${hkEsc(n)}" style="font-size:10.5px; padding:2px 8px">${hkEsc(n)}</button>`).join('')}
+             ${x._hint.dates.map(d=>`<button class="wpBtn" data-hd="${i}" data-v="${d}" style="font-size:10.5px; padding:2px 8px">取得日に ${shaFmt(d)}</button>`).join('')}
+           </div>`
+        : `<div style="font-size:10.5px; color:#9aa38c; margin-top:5px">🔎 写真のPDFなど文字が入っていないため、資格名は読み取れませんでした。上の欄から選んでください。</div>`
+    ) : '';
+    if(x.file) return `
+      <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:6px">
+        <span style="font-size:11.5px; color:#3a6b47">📄 ${hkEsc(x.file.name)}（${Math.max(1,Math.round(x.file.size/1024))}KB）</span>
+        <button class="wpBtn" data-fview="${i}" style="font-size:11px; padding:3px 9px">表示</button>
+        <button class="wpBtn" data-fsave="${i}" style="font-size:11px; padding:3px 9px">⬇ PDFを保存</button>
+        <button class="wpBtn" data-fdel="${i}" style="font-size:11px; padding:3px 9px; color:#d0503f; border-color:#e6b3ab">添付を外す</button>
+      </div>${hint}`;
+    return `
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; align-items:center">
+        <button class="wpBtn" data-fcam="${i}" style="font-size:11px">📷 資格証を撮る</button>
+        <button class="wpBtn" data-fpick="${i}" style="font-size:11px">📎 写真・PDFを選ぶ</button>
+        <span data-fmsg="${i}" style="font-size:11px; color:#7a8b80"></span>
+        <input type="file" data-fin="cam${i}" accept="image/*" capture="environment" hidden>
+        <input type="file" data-fin="pick${i}" accept="image/*,application/pdf,.pdf" hidden>
+      </div>${hint}`;
   };
   const drawQuals = ()=>{
     qbox.innerHTML = quals.length ? quals.map((x,i)=>`
@@ -4006,9 +4329,13 @@ function jinRenderForm(idx){
             <input data-q="exp" type="date" value="${hkEsc(x.exp||'')}"
               style="width:100%; padding:7px; border:1px solid #cfe0ee; border-radius:8px; font-size:12.5px"></div>
         </div>
+        ${attHtml(x,i)}
       </div>`).join('') : '<p class="wpNote">まだ登録がありません。</p>';
-    qbox.querySelectorAll('[data-qdel]').forEach(btn=>btn.addEventListener('click',()=>{
-      readQuals(); quals.splice(+btn.dataset.qdel,1); drawQuals();
+
+    qbox.querySelectorAll('[data-qdel]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      readQuals(); const i=+btn.dataset.qdel;
+      if(quals[i].file){ try{ await jinFileDel(quals[i].file.id); }catch(e){} }
+      quals.splice(i,1); drawQuals();
     }));
     // 種類と取得日がそろったら有効期限を自動計算
     const auto=(row)=>{
@@ -4022,10 +4349,51 @@ function jinRenderForm(idx){
       row.querySelector('[data-q="name"]').addEventListener('change',()=>auto(row));
       row.querySelector('[data-q="date"]').addEventListener('change',()=>auto(row));
     });
+    // 読み取り候補を入れるボタン
+    qbox.querySelectorAll('[data-hn]').forEach(btn=>btn.addEventListener('click',()=>{
+      readQuals(); const i=+btn.dataset.hn;
+      quals[i].name = btn.dataset.v;
+      const m=jinPresetMonths(quals[i].name);
+      if(m>0 && quals[i].date && !quals[i].exp) quals[i].exp = jinAddMonths(quals[i].date, m);
+      drawQuals();
+    }));
+    qbox.querySelectorAll('[data-hd]').forEach(btn=>btn.addEventListener('click',()=>{
+      readQuals(); const i=+btn.dataset.hd;
+      quals[i].date = btn.dataset.v;
+      const m=jinPresetMonths(quals[i].name);
+      if(m>0 && !quals[i].exp) quals[i].exp = jinAddMonths(quals[i].date, m);
+      drawQuals();
+    }));
+    // 資格証を撮る／選ぶ
+    const pickFor=(i,kind)=>qbox.querySelector(`[data-fin="${kind}${i}"]`);
+    qbox.querySelectorAll('[data-fcam]').forEach(btn=>btn.addEventListener('click',()=>pickFor(+btn.dataset.fcam,'cam').click()));
+    qbox.querySelectorAll('[data-fpick]').forEach(btn=>btn.addEventListener('click',()=>pickFor(+btn.dataset.fpick,'pick').click()));
+    qbox.querySelectorAll('[data-fin]').forEach(inp=>inp.addEventListener('change', async function(){
+      const f=this.files[0]; this.value=''; if(!f) return;
+      const i=+this.closest('[data-qi]').dataset.qi;
+      const msg=qbox.querySelector(`[data-fmsg="${i}"]`);
+      if(msg) msg.textContent='読み込み中…';
+      readQuals();
+      try{ await jinAttach(i, f, quals); drawQuals(); }
+      catch(e){ if(msg) msg.textContent=''; alert('取り込めませんでした：'+e.message); }
+    }));
+    // 添付の表示・保存・削除
+    qbox.querySelectorAll('[data-fview]').forEach(btn=>btn.addEventListener('click',()=>{
+      readQuals(); jinRenderFile(idx, +btn.dataset.fview, {p:readFields(), quals});
+    }));
+    qbox.querySelectorAll('[data-fsave]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      readQuals(); await jinFileDownload(quals[+btn.dataset.fsave].file);
+    }));
+    qbox.querySelectorAll('[data-fdel]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      if(!confirm('この資格証の添付を外します。よろしいですか？')) return;
+      readQuals(); const i=+btn.dataset.fdel;
+      try{ await jinFileDel(quals[i].file.id); }catch(e){}
+      delete quals[i].file; delete quals[i]._hint; drawQuals();
+    }));
   };
   if(!document.getElementById('jinPresets')){
     const dl=document.createElement('datalist'); dl.id='jinPresets';
-    dl.innerHTML=JIN_PRESETS.map(([n])=>`<option value="${n}">`).join('');
+    dl.innerHTML=JIN_PRESETS.map(pr=>`<option value="${pr[0]}">`).join('');
     document.body.appendChild(dl);
   }
   drawQuals();
@@ -4038,18 +4406,77 @@ function jinRenderForm(idx){
     const obj={};
     b.querySelectorAll('[data-k]').forEach(i=>obj[i.dataset.k]=i.value.trim());
     if(!obj.name){ alert('氏名を入れてください'); return; }
-    obj.quals = quals.filter(x=>x.name || x.date || x.exp);
+    obj.quals = quals.filter(x=>x.name || x.date || x.exp || x.file)
+                     .map(x=>({name:x.name||'', date:x.date||'', exp:x.exp||'', file:x.file}))
+                     .map(x=>{ if(!x.file) delete x.file; return x; });
     if(idx>=0) jinjiData[idx]=obj; else jinjiData.push(obj);
-    await jinPersist(); jinRenderList();
+    await jinPersist(); await jinGC(); jinRenderList();
     banner('🤝 職員情報を保存しました');
     logLine(`<b>人事AI</b>：職員を${idx>=0?'更新':'登録'}（この端末のみ・暗号化）`);
   });
   const del=document.getElementById('jinDel');
   if(del) del.addEventListener('click', async ()=>{
-    if(!confirm('この職員を削除します。よろしいですか？')) return;
-    jinjiData.splice(idx,1); await jinPersist(); jinRenderList();
+    if(!confirm('この職員を削除します。資格証の添付もいっしょに消えます。よろしいですか？')) return;
+    jinjiData.splice(idx,1); await jinPersist(); await jinGC(); jinRenderList();
   });
 }
+
+// 写真・PDFを取り込んで、暗号化して保管する
+async function jinAttach(i, file, quals){
+  const pdf = await jinToPdf(file);
+  if(pdf.bytes.length > 8*1024*1024) throw new Error('ファイルが大きすぎます（8MBまで）');
+  const id  = 'f'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+  await jinFilePut(id, await jinEncBytes(pdf.bytes, jinjiPass));
+  if(quals[i].file){ try{ await jinFileDel(quals[i].file.id); }catch(e){} }
+  quals[i].file  = {id, name:pdf.name, size:pdf.bytes.length, src:pdf.src};
+  quals[i]._hint = await jinReadHint(pdf.bytes, file.name, pdf.src);
+  if(!quals[i].name && quals[i]._hint.names[0]) quals[i].name = quals[i]._hint.names[0];
+  if(!quals[i].date && quals[i]._hint.dates[0]) quals[i].date = quals[i]._hint.dates[0];
+  const m=jinPresetMonths(quals[i].name);
+  if(m>0 && quals[i].date && !quals[i].exp) quals[i].exp = jinAddMonths(quals[i].date, m);
+  return quals[i];
+}
+// 添付PDFを取り出す（復号）
+async function jinFileBytes(meta){
+  const rec = await jinFileGet(meta.id);
+  if(!rec) throw new Error('この端末に添付が見つかりません');
+  return await jinDecBytes(rec, jinjiPass);
+}
+async function jinFileDownload(meta){
+  try{
+    const bytes=await jinFileBytes(meta);
+    const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
+    const a=document.createElement('a'); a.href=url; a.download=meta.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+  }catch(e){ alert('取り出せませんでした：'+e.message); }
+}
+// 添付PDFをこの画面の中で表示する
+async function jinRenderFile(idx, qi, draft){
+  const b=document.getElementById('jinBody');
+  const meta=draft.quals[qi].file;
+  b.innerHTML=`<button class="wpBtn" id="jinFBack">← 入力にもどる</button>
+    <div style="font-weight:800; font-size:14px; color:#1f3a28; margin:10px 0 6px">📄 ${hkEsc(meta.name)}</div>
+    <div id="jinFView" class="wpNote">開いています…</div>`;
+  document.getElementById('jinFBack').addEventListener('click', ()=>{
+    jinRenderForm(idx, draft);                    // 入力途中の内容をそのまま戻す
+  });
+  try{
+    const bytes=await jinFileBytes(meta);
+    const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
+    document.getElementById('jinFView').outerHTML=`
+      <iframe src="${url}" style="width:100%; height:62vh; border:1px solid var(--line); border-radius:10px; background:#fff"></iframe>
+      <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap">
+        <a class="wpBtn primary" href="${url}" download="${hkEsc(meta.name)}" style="text-decoration:none">⬇ PDFを保存</a>
+        <a class="wpBtn" href="${url}" target="_blank" rel="noopener" style="text-decoration:none">別のタブで開く</a>
+      </div>
+      <div class="wpNote" style="margin-top:10px">この資格証は<b>合言葉で暗号化</b>して、この端末の中だけに保管しています。</div>`;
+    setTimeout(()=>URL.revokeObjectURL(url), 10*60*1000);
+  }catch(e){
+    document.getElementById('jinFView').innerHTML=`⚠ 開けませんでした：${hkEsc(e.message)}`;
+  }
+}
+
 /* ▲▲▲ 人事AI ここまで ▲▲▲ */
 
 /* =========================================================================
