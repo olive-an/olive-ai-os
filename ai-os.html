@@ -497,7 +497,14 @@
         ✅ <b>変更届</b>…下書き作成＋大阪市「様式第3号」へ直接記入（書式完全保持）。<br>
         ✅ <b>個別支援計画</b>…ポチパス様式1-1の読込・編集・書き出し。<br>
         ✅ <b>付表12</b>…GH指定記載事項の読込・編集・書き出し。<br>
-        その他（給与・工房売上など）はまだ<b>見た目のデモ</b>で、1業務ずつ本物にしていきます。
+        ✅ <b>勤務形態一覧表</b>…6ホーム＋本社の実績Excelから自動作成。<br>
+        ✅ <b>利用者AI</b>…受給者証の照会と有効期限アラート。<br>
+        ✅ <b>人事AI</b>…職員名簿と資格・研修・健康診断の期限アラート。<br>
+        ✅ <b>車両AI</b>…車両台帳と車検・自賠責・任意保険の期限アラート。<br>
+        ✅ <b>会議室</b>…議事録フォルダ（Word取込・全文検索）。<br>
+        その他（給与・工房売上など）はまだ<b>見た目のデモ</b>で、1業務ずつ本物にしていきます。<br>
+        <small>※個人情報を含むもの（利用者・職員・議事録）は合言葉で暗号化し、
+        <b>使っている端末の中だけ</b>に保存します。公開ページには出ません。</small>
       </div>
     </div>
     <div class="card" style="background:linear-gradient(180deg,#f4f9ff,#eaf3fc); border-color:#c9ddf0">
@@ -810,7 +817,7 @@ const STAFF = [
   {id:'文書',   name:'文書AI',      face:'📝',   x:15, y:68, lines:['体裁を整えます','ドライブに保存しました','清書が完成しました']},
   {id:'請求',   name:'請求AI',      face:'🧾',   x:85, y:16, lines:['国保連データを作ります','実績と突合します','返戻ゼロで通りそうです']},
   {id:'経理',   name:'経理AI',      face:'💰',   x:85, y:42, lines:['数字を集計します','売上と経費を照合中','収支が出ました']},
-  {id:'人事',   name:'人事AI',      face:'🤝',   x:85, y:68, lines:['職員情報を確認します','資格・研修を照合','契約書式を用意しました']},
+  {id:'人事',   name:'人事AI',      face:'🤝',   x:85, y:68, open:'jinji', lines:['職員情報を確認します','資格・研修を照合','契約書式を用意しました']},
   {id:'工房',   name:'工房AI',      face:'🛠️',  x:30, y:86, lines:['受注と納品を確認','工賃を計算します','作業実績まとめました']},
   {id:'ホーム', name:'ホーム管理AI', face:'🏠',   x:50, y:89, open:'keikaku', lines:['各ホームの空室を確認','西九条・九条…集計中','入居状況を更新しました']},
   {id:'利用者', name:'利用者AI',     face:'📇',   x:65, y:16, open:'riyou', lines:['受給者証を確認します','入居状況を照会中','利用者情報をお出しします']},
@@ -907,6 +914,7 @@ const STAFF_OPEN = {
   kansa:  { fn:()=>openKansaMenu(),    say:'監査まわりですね、お任せください！', title:'運営指導チェック・勤務形態一覧表' },
   riyou:  { fn:()=>openRiyouPanel(),   say:'利用者さんの受給者証ですね！', title:'受給者証データを調べる' },
   sharyou:{ fn:()=>openSharyouPanel(), say:'車両の管理ですね、お任せください！', title:'車両台帳・車検/保険の期限' },
+  jinji:  { fn:()=>openJinjiPanel(),   say:'職員さんのことですね、お任せください！', title:'職員名簿・資格や研修の期限' },
 };
 for(const s of STAFF){
   const el = document.createElement('div');
@@ -3628,6 +3636,421 @@ function shaRenderForm(idx){
   });
 }
 /* ▲▲▲ 車両AI ここまで ▲▲▲ */
+
+/* =========================================================================
+   ▼▼▼ 人事AI：職員名簿と資格・研修の期限管理 ▼▼▼
+   ・職員を登録して、資格・義務研修・健康診断などの有効期限を管理します。
+   ・期限が近い人を自動で知らせます（30日以内＝赤、90日以内＝黄、超過＝赤）。
+   ・職員名簿Excel（「氏名」の見出しがある表）からの取り込みにも対応。
+   ・★氏名・生年月日などの個人情報を含むため、合言葉で暗号化して
+     この端末の中だけに保存します（公開ページには一切出ません）。
+   ========================================================================= */
+const JINJI_KEY = 'aiosJinjiV1';
+let jinjiData = null;                 // 解錠中だけメモリに載せる
+let jinjiPass = null;                 // 保存のため解錠時の合言葉を保持
+
+const JIN_FIELDS = [
+  ['name','氏名','text'],   ['kana','ふりがな','text'],
+  ['home','所属（ホーム・本社）','text'], ['job','職種','text'],
+  ['emp','雇用形態（常勤・非常勤）','text'], ['tel','連絡先','text'],
+  ['hire','入社日','date'], ['birth','生年月日','date'],
+  ['memo','備考','text'],
+];
+// よく使う資格・研修（数字＝有効期間の月数。0＝期限なし）
+const JIN_PRESETS = [
+  ['健康診断', 12],
+  ['虐待防止研修（年1回）', 12],
+  ['身体拘束適正化研修（年1回）', 12],
+  ['感染症対策研修（年1回）', 12],
+  ['業務継続計画(BCP)研修（年1回）', 12],
+  ['防災訓練（年2回）', 6],
+  ['普通救命講習', 36],
+  ['サービス管理責任者 更新研修', 60],
+  ['運転免許', 0],
+  ['喀痰吸引等研修', 0],
+  ['強度行動障害支援者養成研修', 0],
+  ['相談支援従事者研修', 0],
+  ['サービス管理責任者 基礎研修', 0],
+  ['サービス管理責任者 実践研修', 0],
+  ['介護福祉士', 0], ['社会福祉士', 0], ['精神保健福祉士', 0], ['看護師', 0],
+  ['その他', 0],
+];
+const JIN_JOBS = ['管理者','サービス管理責任者','管理者兼サービス管理責任者',
+                  '世話人','生活支援員','看護師','事務','その他'];
+
+// 資格・研修の名前から有効期間（月数）を推測する。0＝期限なし
+function jinPresetMonths(name){
+  const n=String(name||'').replace(/[\s　]/g,'');
+  if(!n) return 0;
+  const hit=JIN_PRESETS.find(([x])=>x===name || x.replace(/[\s　]/g,'')===n);
+  if(hit) return hit[1];
+  if(/健康診断|健診/.test(n)) return 12;
+  if(/救命|AED/.test(n)) return 36;
+  if(/サービス管理責任者.*更新|サビ管.*更新/.test(n)) return 60;
+  if(/虐待防止|身体拘束|感染症|BCP|業務継続/.test(n)) return 12;
+  if(/防災訓練|避難訓練/.test(n)) return 6;
+  return 0;
+}
+// 取得日に月数を足して有効期限を出す（例：健康診断 12か月）
+function jinAddMonths(ymd, months){
+  if(!ymd || !months) return '';
+  const d = new Date(ymd+'T00:00:00'); if(isNaN(d)) return '';
+  const day = d.getDate();
+  d.setMonth(d.getMonth()+months);
+  if(d.getDate() < day) d.setDate(0);         // 月末の調整
+  return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+}
+// 期限が90日以内の資格・研修を集める（近い順）
+function jinAlerts(list){
+  const out=[];
+  (list||[]).forEach(p=>(p.quals||[]).forEach(q=>{
+    const d=shaDays(q.exp);
+    if(d!==null && d<=90) out.push({p, q, d});
+  }));
+  out.sort((a,b)=>a.d-b.d);
+  return out;
+}
+function jinStored(){ return secStored(JINJI_KEY); }
+async function jinPersist(){
+  await secSave(JINJI_KEY, jinjiData, jinjiPass);
+}
+
+// --- 職員名簿Excelの取り込み（見出しの言葉から列を推測します）---
+function jinParse(wb){
+  const sn = wb.SheetNames.find(n=>/職員|名簿|従業者|従事者/.test(n)) || wb.SheetNames[0];
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, raw:true, defval:null});
+  const norm = c => (c==null?'':String(c)).replace(/[\s　\n]/g,'');
+  let hdr=-1;
+  for(let r=0;r<Math.min(rows.length,25);r++){
+    if((rows[r]||[]).some(c=>/^(氏名|職員名|職員氏名|名前)$/.test(norm(c)))){ hdr=r; break; }
+  }
+  if(hdr<0) throw new Error('「氏名」の見出しが見つかりませんでした');
+  const H = (rows[hdr]||[]).map(norm);
+  const find = (re)=>H.findIndex(h=>h && re.test(h));
+  const c = {
+    name: find(/^(氏名|職員名|職員氏名|名前)$/),
+    kana: find(/(ふりがな|フリガナ|カナ|よみ)/),
+    home: find(/(所属|事業所|ホーム|勤務先)/),
+    job:  find(/(職種|職名|役職)/),
+    emp:  find(/(雇用形態|常勤|勤務形態|雇用区分)/),
+    tel:  find(/(電話|連絡先|携帯)/),
+    hire: find(/(入社|採用|入職|雇入)/),
+    birth:find(/(生年月日|誕生日)/),
+  };
+  // 資格・研修らしい列（見出しに 研修・資格・免許・健康診断 を含む列）
+  const qCols = [];
+  H.forEach((h,i)=>{
+    if(!h || i===c.job) return;
+    if(/(研修|資格|免許|健康診断|講習)/.test(h)){
+      qCols.push({i, label:h, isDate:/(期限|有効|満了|次回)/.test(h)});
+    }
+  });
+  const list=[];
+  for(let r=hdr+1; r<rows.length; r++){
+    const row=rows[r]||[];
+    const nm = c.name>=0 ? norm(row[c.name]) : '';
+    if(!nm) continue;
+    if(/^(合計|以上|計)$/.test(nm)) continue;
+    const g = i => (i>=0 && row[i]!=null) ? String(row[i]).trim() : '';
+    const quals=[];
+    for(const q of qCols){
+      const ymd = shaToYmd(row[q.i]);
+      if(!ymd) continue;
+      if(q.isDate){ quals.push({name:q.label, date:'', exp:ymd}); }
+      else{
+        const m = jinPresetMonths(q.label);            // 例）健康診断＝1年後が次回期限
+        quals.push({name:q.label, date:ymd, exp: m? jinAddMonths(ymd, m) : ''});
+      }
+    }
+    list.push({
+      name:g(c.name), kana:g(c.kana), home:g(c.home), job:g(c.job), emp:g(c.emp),
+      tel:g(c.tel), hire:shaToYmd(row[c.hire]), birth:shaToYmd(row[c.birth]),
+      memo:'', quals,
+    });
+  }
+  if(!list.length) throw new Error('職員の行を読み取れませんでした');
+  return {list, sheet:sn, qCols:qCols.map(q=>q.label)};
+}
+
+function openJinjiPanel(){
+  let p=document.getElementById('jinjiPanel');
+  if(!p){
+    p=document.createElement('div'); p.className='modal'; p.id='jinjiPanel';
+    p.innerHTML=`<div class="sheet" style="max-width:720px">
+      <div class="sheetHead"><b>🤝 人事AI（職員名簿・資格の期限管理）</b><span class="grow"></span>
+        <button onclick="document.getElementById('jinjiPanel').hidden=true">✕</button></div>
+      <div class="sheetBody" id="jinBody"></div></div>`;
+    p.addEventListener('click',ev=>{ if(ev.target.id==='jinjiPanel') p.hidden=true; });
+    document.body.appendChild(p);
+  }
+  p.hidden=false; jinRender();
+}
+function jinNote(){
+  return `<div class="wpNote">🔐 職員の情報は<b>合言葉で暗号化</b>して、<b>このパソコン（この端末）の中だけ</b>に保存します。
+    インターネット上の公開ページには一切出ません。</div>`;
+}
+
+function jinRender(){
+  const b=document.getElementById('jinBody');
+  const st=jinStored();
+  if(jinjiData){ jinRenderList(); return; }
+  if(st && secRemembered(JINJI_KEY)){            // 合言葉を覚えていれば自動で開く
+    b.innerHTML='<p class="wpNote">🔓 開いています…</p>';
+    secAutoLoad(JINJI_KEY).then(r=>{
+      if(r){ jinjiData=r.data; jinjiPass=r.pass; jinRenderList(); } else jinRender();
+    });
+    return;
+  }
+  if(!st){                                       // 初回：合言葉を決めるだけで始められます
+    b.innerHTML = jinNote() + `
+      <div style="font-weight:800; font-size:13px; color:#1f3a28; margin:12px 0 6px">はじめの設定（1回だけ）</div>
+      <div style="font-size:12.5px; line-height:1.8; color:#5a6f60; margin-bottom:8px">
+        合言葉を決めると、すぐに使い始められます。<br>
+        職員はこの画面から1人ずつ登録できますし、職員名簿のExcelからまとめて取り込むこともできます。</div>
+      <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a">合言葉（4文字以上）</label>
+      <input id="jinPass" type="password" autocomplete="new-password" placeholder="4文字以上"
+        style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 2px">
+      ${secRememberBox('jinRem')}
+      <button class="wpBtn primary" id="jinStart" style="width:100%; padding:11px" disabled>🔐 はじめる</button>
+      <div id="jinMsg" style="margin-top:8px"></div>`;
+    const pw=document.getElementById('jinPass');
+    pw.addEventListener('input',()=>{ document.getElementById('jinStart').disabled = pw.value.trim().length<4; });
+    const start=async ()=>{
+      if(pw.value.trim().length<4) return;
+      jinjiPass = pw.value.trim(); jinjiData = [];
+      await jinPersist();
+      if(document.getElementById('jinRem').checked) secRemember(JINJI_KEY, jinjiPass);
+      jinRenderList();
+      banner('🤝 職員名簿をはじめました');
+    };
+    document.getElementById('jinStart').addEventListener('click', start);
+    pw.addEventListener('keydown', e=>{ if(e.key==='Enter') start(); });
+    return;
+  }
+  // 2回目以降：合言葉で解錠
+  b.innerHTML = jinNote() + `
+    <div style="font-size:12.5px; color:#5a6f60; margin:12px 0 6px">
+      保存済み：<b>${st.n}名</b>（${st.at? new Date(st.at).toLocaleDateString('ja-JP') : ''} 更新）</div>
+    <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a">合言葉</label>
+    <input id="jinPass2" type="password" autocomplete="current-password" placeholder="合言葉"
+      style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 2px">
+    ${secRememberBox('jinRem2')}
+    <button class="wpBtn primary" id="jinOpen" style="width:100%; padding:11px">🔓 開く</button>
+    <div id="jinMsg" style="margin-top:8px"></div>
+    <div style="margin-top:14px; border-top:1px dashed var(--line); padding-top:10px">
+      <button class="wpBtn" id="jinReset" style="font-size:11px">🗑 このパソコンから消して入れ直す</button>
+    </div>`;
+  const go=async ()=>{
+    try{
+      const pw=document.getElementById('jinPass2').value.trim();
+      jinjiData = await secLoad(JINJI_KEY, pw); jinjiPass = pw;
+      if(document.getElementById('jinRem2').checked) secRemember(JINJI_KEY, pw);
+      jinRenderList();
+    }catch(e){ document.getElementById('jinMsg').innerHTML=`<p class="wpNote" style="background:#fdf3f3">⚠ 合言葉が違うようです</p>`; }
+  };
+  document.getElementById('jinOpen').addEventListener('click', go);
+  document.getElementById('jinPass2').addEventListener('keydown', e=>{ if(e.key==='Enter') go(); });
+  document.getElementById('jinReset').addEventListener('click', ()=>{
+    if(confirm('保存した職員名簿をこのパソコンから消します。よろしいですか？')){
+      localStorage.removeItem(JINJI_KEY); secForget(JINJI_KEY); jinjiData=null; jinjiPass=null; jinRender();
+    }
+  });
+}
+
+// --- 一覧（期限の近い順）---
+let jinQuery = '';
+function jinRenderList(){
+  const b=document.getElementById('jinBody');
+  const all=jinjiData||[];
+  all.forEach((p,i)=>p._i=i);
+  const q = jinQuery.trim();
+  const hit = p => !q || [p.name,p.kana,p.home,p.job,p.emp,
+                          ...(p.quals||[]).map(x=>x.name)].join(' ').includes(q);
+  const list = all.filter(hit);
+  const soonest = p => Math.min(99999, ...(p.quals||[]).map(x=>{
+    const d=shaDays(x.exp); return d===null? 99999 : d; }));
+  const sorted = list.slice().sort((a,c)=> soonest(a)-soonest(c));
+  const alerts = jinAlerts(all);
+
+  const card = (p)=>{
+    const qs = (p.quals||[]).filter(x=>x.exp || x.date);
+    const cells = qs.map(x=>{
+      const d=shaDays(x.exp), bg=shaBadge(d);
+      return `<div style="min-width:150px">
+        <div style="font-size:10px; color:#7a8b80">${hkEsc(x.name)}</div>
+        <div style="font-size:12px">${x.exp? shaFmt(x.exp) : '取得 '+shaFmt(x.date)}</div>
+        ${x.exp?`<span style="display:inline-block; font-size:10px; color:#fff; background:${bg.color}; border-radius:999px; padding:1px 8px; margin-top:2px">${bg.txt}</span>`
+               :`<span style="display:inline-block; font-size:10px; color:#5a6f60; background:#eef2e6; border-radius:999px; padding:1px 8px; margin-top:2px">期限なし</span>`}
+      </div>`;
+    }).join('');
+    return `<div style="border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:8px; background:#fff">
+      <div style="display:flex; gap:8px; align-items:baseline; flex-wrap:wrap">
+        <b style="font-size:14.5px; color:#1f3a28">${hkEsc(p.name||'（氏名なし）')}</b>
+        ${p.kana?`<span style="font-size:10.5px; color:#7a8b80">${hkEsc(p.kana)}</span>`:''}
+        ${p.home?`<span style="font-size:10.5px; background:var(--olive); color:#fff; border-radius:999px; padding:2px 9px">${hkEsc(p.home)}</span>`:''}
+        ${p.job?`<span style="font-size:11px; color:#455038">${hkEsc(p.job)}</span>`:''}
+        ${p.emp?`<span style="font-size:11px; color:#7a8b80">${hkEsc(p.emp)}</span>`:''}
+        <span class="grow" style="flex:1"></span>
+        <button class="wpBtn" data-edit="${p._i}" style="font-size:11px; padding:3px 9px">編集</button>
+      </div>
+      ${cells?`<div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:7px">${cells}</div>`
+             :`<div style="font-size:11.5px; color:#9aa38c; margin-top:6px">資格・研修は未登録です</div>`}
+    </div>`;
+  };
+
+  b.innerHTML = `
+    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px">
+      <button class="wpBtn primary" id="jinAdd">＋ 職員を追加</button>
+      <button class="wpBtn" id="jinImport">📗 職員名簿Excelから取り込む</button>
+      <span class="grow" style="flex:1"></span>
+      <button class="wpBtn" id="jinLock" style="font-size:11px">🔒 閉じる</button>
+      <button class="wpBtn" id="jinClear" style="font-size:11px; color:#d0503f; border-color:#e6b3ab">🗑 全部消す</button>
+      <input type="file" id="jinFile" accept=".xlsx,.xlsm" hidden>
+    </div>
+    ${alerts.length ? `<div class="wpNote" style="background:#fdf3f3; border-color:#e6b3ab; margin-bottom:10px">
+        ⚠ <b>期限が近い資格・研修（90日以内）</b><br>${alerts.map(a=>
+          `${hkEsc(a.p.name)}：${hkEsc(a.q.name)} ${a.d<0?`<b style="color:#d0503f">${-a.d}日超過</b>`:`あと<b>${a.d}日</b>`}`).join('<br>')}</div>`
+      : (all.length?`<div class="wpNote" style="background:#eef7f0">✅ 90日以内に期限が来る資格・研修はありません。</div>`:'')}
+    <input id="jinQ" type="search" placeholder="🔍 氏名・ホーム・職種・資格名で探す" value="${hkEsc(jinQuery)}"
+      style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin-bottom:8px">
+    <div class="wpNote" style="margin-bottom:8px">登録職員：<b>${all.length}名</b>${q?`（「${hkEsc(q)}」に${list.length}名該当）`:''}（期限の近い順）</div>
+    ${sorted.length ? sorted.map(card).join('')
+      : (all.length? '<p class="wpNote">該当する職員が見つかりません。</p>'
+                   : '<p class="wpNote">まだ職員が登録されていません。「＋ 職員を追加」から登録してください。</p>')}`;
+
+  const qEl=document.getElementById('jinQ');
+  qEl.addEventListener('input', ()=>{ jinQuery=qEl.value; const at=qEl.selectionStart;
+    jinRenderList(); const n=document.getElementById('jinQ'); n.focus(); n.setSelectionRange(at,at); });
+  document.getElementById('jinAdd').addEventListener('click', ()=>jinRenderForm(-1));
+  b.querySelectorAll('[data-edit]').forEach(btn=>btn.addEventListener('click',()=>jinRenderForm(+btn.dataset.edit)));
+  document.getElementById('jinLock').addEventListener('click', ()=>{
+    jinjiData=null; jinjiPass=null; secForget(JINJI_KEY); jinRender();
+  });
+  document.getElementById('jinClear').addEventListener('click', async ()=>{
+    if(!confirm('登録した職員名簿をこのパソコンからすべて消します。よろしいですか？')) return;
+    jinjiData=[]; await jinPersist(); jinRenderList();
+  });
+  document.getElementById('jinImport').addEventListener('click',()=>document.getElementById('jinFile').click());
+  document.getElementById('jinFile').addEventListener('change', async function(){
+    const f=this.files[0]; this.value=''; if(!f) return;
+    try{
+      if(typeof XLSX==='undefined') throw new Error('Excelライブラリを読み込めませんでした');
+      const wb=XLSX.read(await f.arrayBuffer(),{type:'array', cellDates:true});
+      const got=jinParse(wb);
+      jinjiData = jinjiData.concat(got.list);
+      await jinPersist(); jinRenderList();
+      banner(`🤝 ${got.list.length}名を取り込みました`);
+      logLine(`<b>人事AI</b>：職員名簿から${got.list.length}名を取り込み（シート「${hkEsc(got.sheet)}」`
+        + (got.qCols.length?`／資格欄：${got.qCols.map(hkEsc).join('・')}`:'') + '）');
+    }catch(e){ alert('取り込みエラー：'+e.message); }
+  });
+}
+
+// --- 登録・編集フォーム ---
+function jinRenderForm(idx){
+  const b=document.getElementById('jinBody');
+  const p = idx>=0 ? jinjiData[idx] : {};
+  let quals = JSON.parse(JSON.stringify(p.quals||[]));
+  const field = ([k,label,type])=>{
+    if(k==='job') return `
+      <label style="display:block; font-size:11.5px; font-weight:700; color:#2b5d8a; margin-top:8px">${label}</label>
+      <input data-k="job" list="jinJobs" value="${hkEsc(p.job||'')}"
+        style="width:100%; padding:8px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px">`;
+    return `
+      <label style="display:block; font-size:11.5px; font-weight:700; color:#2b5d8a; margin-top:8px">${label}</label>
+      <input data-k="${k}" type="${type}" value="${hkEsc(p[k]||'')}"
+        style="width:100%; padding:8px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px">`;
+  };
+  b.innerHTML = `
+    <button class="wpBtn" id="jinBack">← 一覧にもどる</button>
+    <datalist id="jinJobs">${JIN_JOBS.map(j=>`<option value="${j}">`).join('')}</datalist>
+    <div style="font-weight:800; font-size:14px; color:#1f3a28; margin:10px 0 2px">${idx>=0?'職員の編集':'職員の追加'}</div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 12px">
+      ${JIN_FIELDS.map(f=>`<div>${field(f)}</div>`).join('')}
+    </div>
+    <div style="font-weight:800; font-size:13px; color:#1f3a28; margin:16px 0 4px">資格・研修（有効期限を管理します）</div>
+    <div class="wpNote" style="margin-bottom:8px">種類を選んで<b>取得日</b>を入れると、有効期限が自動で入ります（健康診断＝1年、普通救命講習＝3年など）。期限のない資格は空欄のままで大丈夫です。</div>
+    <div id="jinQuals"></div>
+    <button class="wpBtn" id="jinQAdd" style="margin-top:6px">＋ 資格・研修を追加</button>
+    <div style="display:flex; gap:8px; margin-top:16px; flex-wrap:wrap">
+      <button class="wpBtn primary" id="jinSave" style="flex:1; padding:11px">💾 保存</button>
+      ${idx>=0?'<button class="wpBtn" id="jinDel" style="color:#d0503f; border-color:#e6b3ab">🗑 この職員を削除</button>':''}
+    </div>`;
+
+  const qbox=document.getElementById('jinQuals');
+  const readQuals = ()=>{
+    qbox.querySelectorAll('[data-qi]').forEach(row=>{
+      const i=+row.dataset.qi;
+      quals[i] = {
+        name: row.querySelector('[data-q="name"]').value.trim(),
+        date: row.querySelector('[data-q="date"]').value,
+        exp:  row.querySelector('[data-q="exp"]').value,
+      };
+    });
+  };
+  const drawQuals = ()=>{
+    qbox.innerHTML = quals.length ? quals.map((x,i)=>`
+      <div data-qi="${i}" style="border:1px solid var(--line); border-radius:10px; padding:8px 10px; margin-bottom:6px; background:#fbfcf8">
+        <div style="display:flex; gap:6px; align-items:center">
+          <input data-q="name" list="jinPresets" value="${hkEsc(x.name||'')}" placeholder="資格・研修の名前"
+            style="flex:1; min-width:120px; padding:7px; border:1px solid #cfe0ee; border-radius:8px; font-size:12.5px">
+          <button class="wpBtn" data-qdel="${i}" style="font-size:11px; color:#d0503f; border-color:#e6b3ab">削除</button>
+        </div>
+        <div style="display:flex; gap:8px; margin-top:6px; flex-wrap:wrap">
+          <div style="flex:1; min-width:130px">
+            <div style="font-size:10.5px; color:#7a8b80">取得日・受講日</div>
+            <input data-q="date" type="date" value="${hkEsc(x.date||'')}"
+              style="width:100%; padding:7px; border:1px solid #cfe0ee; border-radius:8px; font-size:12.5px"></div>
+          <div style="flex:1; min-width:130px">
+            <div style="font-size:10.5px; color:#7a8b80">有効期限（次回まで）</div>
+            <input data-q="exp" type="date" value="${hkEsc(x.exp||'')}"
+              style="width:100%; padding:7px; border:1px solid #cfe0ee; border-radius:8px; font-size:12.5px"></div>
+        </div>
+      </div>`).join('') : '<p class="wpNote">まだ登録がありません。</p>';
+    qbox.querySelectorAll('[data-qdel]').forEach(btn=>btn.addEventListener('click',()=>{
+      readQuals(); quals.splice(+btn.dataset.qdel,1); drawQuals();
+    }));
+    // 種類と取得日がそろったら有効期限を自動計算
+    const auto=(row)=>{
+      const nm=row.querySelector('[data-q="name"]').value.trim();
+      const dt=row.querySelector('[data-q="date"]').value;
+      const ex=row.querySelector('[data-q="exp"]');
+      const m=jinPresetMonths(nm);
+      if(m>0 && dt && !ex.value) ex.value = jinAddMonths(dt, m);
+    };
+    qbox.querySelectorAll('[data-qi]').forEach(row=>{
+      row.querySelector('[data-q="name"]').addEventListener('change',()=>auto(row));
+      row.querySelector('[data-q="date"]').addEventListener('change',()=>auto(row));
+    });
+  };
+  if(!document.getElementById('jinPresets')){
+    const dl=document.createElement('datalist'); dl.id='jinPresets';
+    dl.innerHTML=JIN_PRESETS.map(([n])=>`<option value="${n}">`).join('');
+    document.body.appendChild(dl);
+  }
+  drawQuals();
+  document.getElementById('jinQAdd').addEventListener('click', ()=>{
+    readQuals(); quals.push({name:'', date:'', exp:''}); drawQuals();
+  });
+  document.getElementById('jinBack').addEventListener('click', jinRenderList);
+  document.getElementById('jinSave').addEventListener('click', async ()=>{
+    readQuals();
+    const obj={};
+    b.querySelectorAll('[data-k]').forEach(i=>obj[i.dataset.k]=i.value.trim());
+    if(!obj.name){ alert('氏名を入れてください'); return; }
+    obj.quals = quals.filter(x=>x.name || x.date || x.exp);
+    if(idx>=0) jinjiData[idx]=obj; else jinjiData.push(obj);
+    await jinPersist(); jinRenderList();
+    banner('🤝 職員情報を保存しました');
+    logLine(`<b>人事AI</b>：職員を${idx>=0?'更新':'登録'}（この端末のみ・暗号化）`);
+  });
+  const del=document.getElementById('jinDel');
+  if(del) del.addEventListener('click', async ()=>{
+    if(!confirm('この職員を削除します。よろしいですか？')) return;
+    jinjiData.splice(idx,1); await jinPersist(); jinRenderList();
+  });
+}
+/* ▲▲▲ 人事AI ここまで ▲▲▲ */
 
 /* =========================================================================
    ▼▼▼ ポチパス連携 ▼▼▼
