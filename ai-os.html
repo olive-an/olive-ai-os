@@ -3430,7 +3430,7 @@ function riyouRender(){
     <button class="wpBtn primary" id="riyouOpen" style="width:100%; padding:11px">🔓 開く</button>
     <div id="riyouMsg" style="margin-top:8px"></div>
     <div style="margin-top:14px; border-top:1px dashed var(--line); padding-top:10px">
-      <button class="wpBtn" id="riyouReset" style="font-size:11px">🗑 このパソコンから消して入れ直す</button>
+      <button class="wpBtn" id="riyouReset" style="font-size:11px">🔄 合言葉を忘れた／Excelから入れ直す</button>
     </div>`;
   const go=async ()=>{
     const msg=document.getElementById('riyouMsg');
@@ -3439,12 +3439,12 @@ function riyouRender(){
       riyouData = await riyouLoad(pw); riyouPass = pw;
       if(document.getElementById('riyouRem2').checked) secRemember(RIYOU_KEY, pw);
       riyouRenderSearch();
-    }catch(e){ msg.innerHTML=`<p class="wpNote" style="background:#fdf3f3">⚠ 合言葉が違うようです</p>`; }
+    }catch(e){ msg.innerHTML=`<p class="wpNote" style="background:#fdf3f3; border-color:#e6b3ab">⚠ 合言葉が違うようです。<br><span style="font-size:11px">以前に<b>別の合言葉</b>で保存された可能性があります。思い当たる合言葉がなければ、下の「🔄 合言葉を忘れた／Excelから入れ直す」から入れ直せます（原本のExcelから読み直すので、何も失われません）。</span></p>`; }
   };
   document.getElementById('riyouOpen').addEventListener('click', go);
   document.getElementById('riyouPass2').addEventListener('keydown', e=>{ if(e.key==='Enter') go(); });
   document.getElementById('riyouReset').addEventListener('click', ()=>{
-    if(confirm('保存した受給者証データをこのパソコンから消します。よろしいですか？')){
+    if(confirm('このパソコンに保存した受給者証データを消して、最初から入れ直します。\n\n原本のExcelから読み直せるので、名簿そのものは失われません。\n（受給者証の写真を保管している場合は、その分は消えます）\n\nよろしいですか？')){
       localStorage.removeItem(RIYOU_KEY); secForget(RIYOU_KEY); riyouData=null; riyouRender();
     }
   });
@@ -4622,7 +4622,7 @@ function jinRender(){
     <button class="wpBtn primary" id="jinOpen" style="width:100%; padding:11px">🔓 開く</button>
     <div id="jinMsg" style="margin-top:8px"></div>
     <div style="margin-top:14px; border-top:1px dashed var(--line); padding-top:10px">
-      <button class="wpBtn" id="jinReset" style="font-size:11px">🗑 このパソコンから消して入れ直す</button>
+      <button class="wpBtn" id="jinReset" style="font-size:11px">🔄 合言葉を忘れた／Excelから入れ直す</button>
     </div>`;
   const go=async ()=>{
     try{
@@ -4630,12 +4630,12 @@ function jinRender(){
       jinjiData = await secLoad(JINJI_KEY, pw); jinjiPass = pw;
       if(document.getElementById('jinRem2').checked) secRemember(JINJI_KEY, pw);
       jinRenderList();
-    }catch(e){ document.getElementById('jinMsg').innerHTML=`<p class="wpNote" style="background:#fdf3f3">⚠ 合言葉が違うようです</p>`; }
+    }catch(e){ document.getElementById('jinMsg').innerHTML=`<p class="wpNote" style="background:#fdf3f3; border-color:#e6b3ab">⚠ 合言葉が違うようです。<br><span style="font-size:11px">以前に<b>別の合言葉</b>で保存された可能性があります。思い当たる合言葉がなければ、下の「🔄 合言葉を忘れた／Excelから入れ直す」から入れ直せます（原本のExcelから読み直すので、何も失われません）。</span></p>`; }
   };
   document.getElementById('jinOpen').addEventListener('click', go);
   document.getElementById('jinPass2').addEventListener('keydown', e=>{ if(e.key==='Enter') go(); });
   document.getElementById('jinReset').addEventListener('click', ()=>{
-    if(confirm('保存した従業員名簿をこのパソコンから消します。よろしいですか？')){
+    if(confirm('このパソコンに保存した従業員名簿を消して、最初から入れ直します。\n\n原本のExcelから読み直せるので、名簿そのものは失われません。\n（資格証の写真を保管している場合は、その分は消えます）\n\nよろしいですか？')){
       localStorage.removeItem(JINJI_KEY); secForget(JINJI_KEY); jinjiData=null; jinjiPass=null; jinRender();
     }
   });
@@ -5186,7 +5186,7 @@ function gijiRender(){
     <button class="wpBtn primary" id="gijiOpen" style="width:100%; padding:11px">🔓 開く</button>
     <div id="gijiMsg" style="margin-top:8px"></div>
     <div style="margin-top:14px; border-top:1px dashed var(--line); padding-top:10px">
-      <button class="wpBtn" id="gijiReset" style="font-size:11px">🗑 このパソコンから消して入れ直す</button>
+      <button class="wpBtn" id="gijiReset" style="font-size:11px">🔄 合言葉を忘れた／はじめから入れ直す</button>
     </div>`;
   const go=async ()=>{
     try{
@@ -5194,7 +5194,7 @@ function gijiRender(){
       gijiData=await secLoad(GIJI_KEY, pw); gijiPass=pw;
       if(document.getElementById('gijiRem2').checked) secRemember(GIJI_KEY, pw);
       gijiList();
-    }catch(e){ document.getElementById('gijiMsg').innerHTML=`<p class="wpNote" style="background:#fdf3f3">⚠ 合言葉が違うようです</p>`; }
+    }catch(e){ document.getElementById('gijiMsg').innerHTML=`<p class="wpNote" style="background:#fdf3f3; border-color:#e6b3ab">⚠ 合言葉が違うようです。<br><span style="font-size:11px">以前に<b>別の合言葉</b>で保存された可能性があります。思い当たる合言葉がなければ、下の「🔄 合言葉を忘れた／はじめから入れ直す」から入れ直せます（Wordの議事録をもう一度読み込みます）。</span></p>`; }
   };
   document.getElementById('gijiOpen').addEventListener('click', go);
   document.getElementById('gijiPass2').addEventListener('keydown', e=>{ if(e.key==='Enter') go(); });
