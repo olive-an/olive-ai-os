@@ -468,7 +468,7 @@
         <h2>🏛 社長室</h2>
         <p>あなたは社長です。ひとこと指示するだけ。</p>
         <div class="cmdrow">
-          <input id="cmd" placeholder="例：変更届作成して" autocomplete="off">
+          <input id="cmd" placeholder="ここに入力して" autocomplete="off">
           <button id="chipsToggle" title="よく使う指示">☰</button>
           <button id="go">指示</button>
         </div>
@@ -810,7 +810,6 @@ const stage = document.getElementById('stage');
 
 /* ---- AI社員の定義（名前・顔・担当・自席の位置） ---- */
 const STAFF = [
-  {id:'秘書',   name:'秘書AI',      face:'🧑‍💼', x:50, y:30, lines:['はい社長！内容を確認します','担当部署へ振り分けますね','こちらまとめました']},
   {id:'行政',   name:'行政AI',      face:'🧑‍⚖️', x:15, y:16, open:'gyousei', lines:['大阪市の様式で作成します','加算要件を確認中…','様式を最新版に差し替えました']},
   {id:'シフト', name:'シフトAI',    face:'🗓️',  x:17, y:85, open:'shift', lines:['シフト希望を集計します','人手不足の日をチェック中','シフト表に反映しました']},
   {id:'監査',   name:'監査AI',      face:'🔍',   x:15, y:42, open:'kansa', lines:['不足書類をチェックします','ここ、リスクありです','自己点検クリアです']},
@@ -839,37 +838,37 @@ const ZONES = [
 const PLANS = [
   {key:['変更届','管理者'], title:'管理者変更届を作成中…', icon:'📋',
    output:'管理者変更届（下書き）', outNote:'行政AI・人事AI・監査AI・文書AI 連携', real:'henkou',
-   flow:['秘書','行政','人事','監査','文書','秘書']},
+   flow:['行政', '人事', '監査', '文書']},
   {key:['給与','賃金'], title:'給与を確認中…', icon:'💴',
    output:'給与確認レポート', outNote:'経理AI・人事AI 連携',
-   flow:['秘書','経理','人事','経理']},
+   flow:['経理', '人事', '経理']},
   {key:['請求','国保連'], title:'請求データを作成中…', icon:'🧾',
    output:'国保連 請求データ（案）', outNote:'請求AI・経理AI・監査AI 連携',
-   flow:['秘書','請求','経理','監査','請求']},
+   flow:['請求', '経理', '監査', '請求']},
   {key:['監査','点検','運営指導'], title:'自己点検を実施中…', icon:'✅',
    output:'自己点検チェックリスト', outNote:'監査AI・行政AI・文書AI 連携',
-   flow:['秘書','監査','行政','文書']},
+   flow:['監査', '行政', '文書']},
   {key:['個別支援計画','支援計画'], title:'個別支援計画書を作成中…', icon:'📘',
    output:'個別支援計画書', outNote:'看護AI・ホーム管理AI・文書AI 連携', real:'keikaku',
-   flow:['秘書','ホーム','看護','文書']},
+   flow:['ホーム', '看護', '文書']},
   {key:['付表12','付表１２','記載事項'], title:'付表12を作成中…', icon:'🏢',
    output:'付表12（GH指定記載事項）', outNote:'行政AI・ホーム管理AI・文書AI 連携', real:'f12',
-   flow:['秘書','行政','ホーム','文書']},
+   flow:['行政', 'ホーム', '文書']},
   {key:['利用者','受給者証','入居','登録'], title:'受給者証データを照会中…', icon:'📇',
    output:'受給者証データ', outNote:'利用者AI 連携', real:'riyou',
-   flow:['秘書','利用者']},
+   flow:['利用者']},
   {key:['工房','受注','工賃','売上'], title:'工房の売上を集計中…', icon:'🛠️',
    output:'工房 売上集計', outNote:'工房AI・経理AI 連携',
-   flow:['秘書','工房','経理']},
+   flow:['工房', '経理']},
   {key:['シフト','勤務'], title:'シフトを集計中…', icon:'🗓️',
    output:'シフト集計表', outNote:'シフトAI・人事AI 連携', real:'shift',
-   flow:['秘書','シフト','人事','シフト']},
+   flow:['シフト', '人事', 'シフト']},
   {key:['車両','車検','自動車','保険'], title:'車両の期限を確認中…', icon:'🚗',
    output:'車両台帳・期限一覧', outNote:'車両AI 連携', real:'sharyou',
-   flow:['秘書','車両']},
+   flow:['車両']},
   {key:['看護','健康','受診'], title:'健康記録を確認中…', icon:'🩺',
    output:'看護記録サマリ', outNote:'看護AI・人事AI 連携',
-   flow:['秘書','看護','人事']},
+   flow:['看護', '人事']},
 ];
 
 const MEET = {x:50, y:72}; // 会議室（集合地点）
@@ -987,13 +986,14 @@ window.addEventListener('resize', ()=>{ clearTimeout(_lrT); _lrT=setTimeout(layo
 
 /* ---- 状態変更 ---- */
 function setState(id, st){
-  const o = S[id]; o.state = st;
+  const o = S[id]; if(!o) return;                 // いないAIを指しても止まらないように
+  o.state = st;
   o.stateEl.className = 'state st-'+st;
   o.stateEl.textContent = st;
 }
 /* ---- 吹き出し ---- */
 function say(id, text, ms=1600){
-  const o = S[id];
+  const o = S[id]; if(!o) return;
   o.bubbleEl.textContent = text;
   o.el.classList.add('say');
   clearTimeout(o._sayT);
@@ -1001,7 +1001,7 @@ function say(id, text, ms=1600){
 }
 /* ---- 目的地をセット（移動開始） ---- */
 function moveTo(id, x, y){
-  const o = S[id];
+  const o = S[id]; if(!o) return Promise.resolve();
   o.tx = x; o.ty = y; o.moving = true;
   setState(id,'移動'); o.el.classList.add('walking');
   // 進む向きに応じて顔を反転
@@ -1052,7 +1052,7 @@ function banner(text){
   b.textContent = text; b.classList.add('show');
   clearTimeout(b._t); b._t = setTimeout(()=>b.classList.remove('show'), 2600);
 }
-function pickLine(id, i){ const L=S[id].def.lines; return L[Math.min(i,L.length-1)]; }
+function pickLine(id, i){ if(!S[id]) return ''; const L=S[id].def.lines; return L[Math.min(i,L.length-1)]; }
 
 /* ---- 業務ワークフロー実行 ---- */
 function resolvePlan(text){
@@ -1063,19 +1063,14 @@ async function runWorkflow(text){
   if(busy) return;
   const plan = resolvePlan(text);
   if(!plan){
-    // 分からないときは秘書AIが聞き返す
-    setState('秘書','エラー');
-    say('秘書','「変更届」「給与」「請求」「工房売上」など、もう一度お願いします🙏', 3200);
-    logLine(`<b>秘書AI</b>：指示を認識できませんでした`);
-    setTimeout(()=>setState('秘書','待機'),1500);
+    // 分からないときは画面上で聞き返す
+    banner('🙏「変更届」「給与」「請求」「工房売上」など、もう一度お願いします');
+    logLine(`⚠ 指示を認識できませんでした：「${hkEsc(text)}」`);
     return;
   }
   busy = true;
   banner(plan.title);
   logLine(`👑 <b>社長</b>：「${text}」`);
-
-  // 秘書AIがまず反応
-  spotlight('秘書');
 
   let prev = null;
   for(let i=0;i<plan.flow.length;i++){
@@ -1086,7 +1081,7 @@ async function runWorkflow(text){
     const ty = MEET.y + Math.sin(angle)*8;
     await moveTo(id, tx, ty);
     setState(id, i===plan.flow.length-1 ? '完成' : '相談');
-    const line = (id==='秘書' && i>0) ? pickLine(id,2) : pickLine(id, i===0?0:1);
+    const line = pickLine(id, i===0?0:1);
     say(id, line, 1700);
     logLine(`<b>${S[id].def.name}</b>：${line}`);
     if(prev){ say(prev, '→ お願いします', 900); }
@@ -1116,7 +1111,8 @@ async function runWorkflow(text){
 }
 
 function spotlight(id){
-  const o=S[id]; o.el.classList.add('spot');
+  const o=S[id]; if(!o) return;
+  o.el.classList.add('spot');
   setTimeout(()=>o.el.classList.remove('spot'),600);
 }
 /* 固定モード（ふだん）＝自席にぴたっと固定。自席は机の真上に並ぶので整列して見えます。 */
@@ -1441,7 +1437,7 @@ document.getElementById('wpGAS').addEventListener('click', async ()=>{
     else{
       shGasCache = data.map(d=>d.text).join("\n\n");
       document.getElementById('wpPaste').value = shGasCache;
-      logLine(`<b>秘書AI</b>：フォームから${data.length}名分を取得`);
+      logLine(`<b>シフトAI</b>：フォームから${data.length}名分を取得`);
       shRun();
     }
   }catch(err){
@@ -5414,6 +5410,5 @@ async function printRinen(){
 /* ▲▲▲ 書類棚・理念手帳・プリンター ここまで ▲▲▲ */
 
 /* ---- 最初のひとこと ---- */
-setTimeout(()=>{ say('秘書','おはようございます、社長！ご指示をどうぞ。', 3000);
-  logLine('🌿 AI-OS を起動しました'); }, 600);
+setTimeout(()=>{ logLine('🌿 AI-OS を起動しました'); }, 600);
 </script>
