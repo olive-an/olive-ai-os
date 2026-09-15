@@ -3070,6 +3070,7 @@ async function kinmuRun(){
    ========================================================================= */
 const RIYOU_KEY = 'aiosRiyouV1';            // 暗号化データの保存先（この端末のみ）
 let riyouData = null;                       // 解錠中だけメモリに載せる
+let riyouPass = null;                       // 読み込み直しのため解錠時の合言葉を保持
 
 // --- 合言葉で暗号化／復号（ブラウザ標準のAES-GCM） ---
 async function riyouKeyFrom(pass, salt){
@@ -3162,9 +3163,67 @@ function riyouAge(birth, at){
   return a;
 }
 
+
+/* =========================================================================
+   ▼▼▼ 複数シートのExcelに対応する共通部品 ▼▼▼
+   1つのExcelに「従業員名簿」「利用者受給者証」「車両台帳」などが
+   入っていても、取り違えずに読み込めるよう、シートを選んでもらいます。
+   ========================================================================= */
+function xlsSheetInfo(wb){
+  return wb.SheetNames.map(n=>{
+    const ws=wb.Sheets[n];
+    let rows=[];
+    try{ rows = ws ? XLSX.utils.sheet_to_json(ws,{header:1, raw:false, defval:null}) : []; }catch(e){}
+    const live = rows.filter(r=>r && r.some(c=>c!=null && String(c).trim()!==''));
+    let head=[];
+    for(const r of live.slice(0,25)){                       // 見出しらしい行（3つ以上の言葉が並ぶ最初の行）
+      const v=(r||[]).filter(c=>c!=null && String(c).trim()!=='')
+                     .map(c=>String(c).replace(/[\s　\n\r]/g,''));
+      if(v.length>=3){ head=v; break; }
+    }
+    return {name:n, rows:live.length, head};
+  });
+}
+// bodyEl にシートの一覧を出して、選ばれたシート名（やめたら null）を返す
+function xlsSheetPick(bodyEl, wb, opt){
+  return new Promise(resolve=>{
+    const info = xlsSheetInfo(wb).map(x=>Object.assign({}, x, {
+      ok:  opt.need  ? x.head.some(h=>opt.need.test(h)) : true,
+      rec: opt.guess ? opt.guess.test(x.name) : false,
+    }));
+    const order = info.slice().sort((a,b)=>(b.ok*2+b.rec)-(a.ok*2+a.rec));
+    const card = x => `
+      <button class="wpBtn" data-sheet="${hkEsc(x.name)}"
+        style="display:block; width:100%; text-align:left; padding:10px 12px; margin-bottom:6px;${x.ok?' border-color:var(--olive)':''}">
+        <b style="font-size:13.5px">${hkEsc(x.name)}</b>
+        ${x.ok?'<span style="font-size:10.5px; color:#fff; background:#3a9d5d; border-radius:999px; padding:1px 8px; margin-left:6px">読み込めます</span>'
+              :'<span style="font-size:10.5px; color:#8a7a5a; background:#fbf3e2; border-radius:999px; padding:1px 8px; margin-left:6px">見出しが違うかも</span>'}
+        <div style="font-size:10.5px; color:#7a8b80; font-weight:400; margin-top:3px">
+          ${x.rows}行　／　見出し：${x.head.length? hkEsc(x.head.slice(0,6).join('・'))+(x.head.length>6?' …':'') : '（見つかりません）'}</div>
+      </button>`;
+    bodyEl.innerHTML = `
+      <div style="font-weight:800; font-size:14px; color:#1f3a28; margin-bottom:4px">${hkEsc(opt.title||'どのシートを取り込みますか？')}</div>
+      <div class="wpNote" style="margin-bottom:10px">このExcelには<b>${info.length}枚</b>のシートが入っています。取り込むシートを選んでください。
+        <br><small>※選んだシート以外は読み込みません。</small></div>
+      ${order.map(card).join('')}
+      <button class="wpBtn" id="xlsCancel" style="margin-top:6px; font-size:11px">やめる</button>`;
+    bodyEl.querySelectorAll('[data-sheet]').forEach(b=>b.addEventListener('click',()=>resolve(b.dataset.sheet)));
+    bodyEl.querySelector('#xlsCancel').addEventListener('click',()=>resolve(null));
+  });
+}
+// 1枚だけのときは選ばせず、複数のときだけ選んでもらう
+async function xlsChoose(bodyEl, wb, opt){
+  if(wb.SheetNames.length<=1) return wb.SheetNames[0];
+  return await xlsSheetPick(bodyEl, wb, opt);
+}
+const XLS_JIN   = {title:'従業員名簿はどのシートですか？',  guess:/従業員|職員|名簿|スタッフ/,
+                   need:/^(氏名|社員氏名|職員氏名|従業員氏名|職員名|従業員名|名前)$/};
+const XLS_RIYOU = {title:'受給者証データはどのシートですか？', guess:/受給者証|利用者/,
+                   need:/^(氏名|受給者証番号)$/};
+
 // --- Excel（シート「利用者受給者証」）を読み取って一覧にする ---
-function riyouParse(wb){
-  const name = wb.SheetNames.find(n=>/受給者証/.test(n)) || wb.SheetNames[0];
+function riyouParse(wb, sheetName){
+  const name = sheetName || wb.SheetNames.find(n=>/受給者証/.test(n)) || wb.SheetNames[0];
   const ws = wb.Sheets[name];
   const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:null});
   // 見出し行（「氏名」を含む行）を探す
@@ -3237,7 +3296,7 @@ function riyouRender(){
   if(st && secRemembered(RIYOU_KEY)){            // 合言葉を覚えていれば自動で開く
     b.innerHTML='<p class="wpNote">🔓 開いています…</p>';
     secAutoLoad(RIYOU_KEY).then(r=>{
-      if(r){ riyouData=r.data; riyouRenderSearch(); } else riyouRender();
+      if(r){ riyouData=r.data; riyouPass=r.pass; riyouRenderSearch(); } else riyouRender();
     });
     return;
   }
@@ -3269,11 +3328,17 @@ function riyouRender(){
       const msg=document.getElementById('riyouMsg');
       try{
         if(typeof XLSX==='undefined') throw new Error('Excelライブラリを読み込めませんでした。少し待ってからお試しください');
-        const wb=XLSX.read(await picked.arrayBuffer(),{type:'array', cellDates:true});
-        const list=riyouParse(wb);
         const pw=document.getElementById('riyouPass').value.trim();
-        await riyouSave(list, pw);
-        if(document.getElementById('riyouRem').checked) secRemember(RIYOU_KEY, pw);
+        const rem=document.getElementById('riyouRem').checked;
+        const wb=XLSX.read(await picked.arrayBuffer(),{type:'array', cellDates:true});
+        const sheet=await xlsChoose(b, wb, XLS_RIYOU);       // 複数シートなら選んでもらう
+        if(!sheet){ riyouRender(); return; }
+        const list=riyouParse(wb, sheet);
+        if(wb.SheetNames.length>1 &&
+           !confirm(`シート「${sheet}」から ${list.length}名を読み取りました。\nこの内容で登録しますか？`)){
+          riyouRender(); return; }
+        await riyouSave(list, pw); riyouPass=pw;
+        if(rem) secRemember(RIYOU_KEY, pw);
         riyouData=list;
         banner('🔐 受給者証データ '+list.length+'名を保存しました');
         logLine(`<b>利用者AI</b>：受給者証データ${list.length}名を暗号化して保存（この端末のみ）`);
@@ -3299,7 +3364,7 @@ function riyouRender(){
     const msg=document.getElementById('riyouMsg');
     try{
       const pw=document.getElementById('riyouPass2').value.trim();
-      riyouData = await riyouLoad(pw);
+      riyouData = await riyouLoad(pw); riyouPass = pw;
       if(document.getElementById('riyouRem2').checked) secRemember(RIYOU_KEY, pw);
       riyouRenderSearch();
     }catch(e){ msg.innerHTML=`<p class="wpNote" style="background:#fdf3f3">⚠ 合言葉が違うようです</p>`; }
@@ -3362,12 +3427,35 @@ function riyouRenderSearch(q){
         style="flex:1; padding:10px; border:1px solid #cfe0ee; border-radius:8px; font-size:14px">
       <button class="wpBtn" id="riyouClear">×</button>
     </div>
+    <div style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap">
+      <button class="wpBtn" id="riyouReload">📗 Excelから最新に更新</button>
+      <input type="file" id="riyouReFile" accept=".xlsx,.xlsm" hidden>
+    </div>
     ${alertHtml}
     <div class="wpNote" style="margin-bottom:8px">${key?`「${hkEsc(q)}」の検索結果：<b>${hit.length}名</b>`:`在籍 <b>${list.length}名</b>（氏名を入れると絞り込めます）`}</div>
     ${hit.length? hit.map(card).join('') : '<p class="wpNote">見つかりませんでした。</p>'}`;
   const qi=document.getElementById('riyouQ');
   qi.addEventListener('input', ()=>riyouRenderSearch(qi.value));
   document.getElementById('riyouClear').addEventListener('click', ()=>riyouRenderSearch(''));
+  document.getElementById('riyouReload').addEventListener('click',()=>document.getElementById('riyouReFile').click());
+  document.getElementById('riyouReFile').addEventListener('change', async function(){
+    const f=this.files[0]; this.value=''; if(!f) return;
+    try{
+      if(typeof XLSX==='undefined') throw new Error('Excelライブラリを読み込めませんでした');
+      const pw = riyouPass || secRemembered(RIYOU_KEY);
+      if(!pw) throw new Error('いったん画面を閉じて開き直してから、もう一度お試しください');
+      const wb=XLSX.read(await f.arrayBuffer(),{type:'array', cellDates:true});
+      const sheet=await xlsChoose(b, wb, XLS_RIYOU);
+      if(!sheet){ riyouRenderSearch(''); return; }
+      const list=riyouParse(wb, sheet);
+      if(!confirm(`いまの${(riyouData||[]).length}名を、読み込んだ${list.length}名に入れ替えます。よろしいですか？`)){
+        riyouRenderSearch(''); return; }
+      await riyouSave(list, pw); riyouPass=pw; riyouData=list;
+      riyouRenderSearch('');
+      banner(`📇 受給者証データを${list.length}名に更新しました`);
+      logLine(`<b>利用者AI</b>：受給者証データを${list.length}名に更新（シート「${hkEsc(sheet)}」・この端末のみ）`);
+    }catch(e){ alert('取り込みエラー：'+e.message); riyouRenderSearch(''); }
+  });
   if(q!==undefined){ qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
 }
 /* ▲▲▲ 利用者AI ここまで ▲▲▲ */
@@ -3743,8 +3831,8 @@ async function jinPersist(){
 
 // --- 従業員名簿Excelの取り込み（見出しの言葉から列を推測します）---
 // ★個人番号（マイナンバー）は法律上の取扱いが特に厳しいため、取り込みません。
-function jinParse(wb){
-  const sn = wb.SheetNames.find(n=>/従業員|職員|名簿|従業者|従事者/.test(n)) || wb.SheetNames[0];
+function jinParse(wb, sheetName){
+  const sn = sheetName || wb.SheetNames.find(n=>/従業員|職員|名簿|従業者|従事者/.test(n)) || wb.SheetNames[0];
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, raw:true, defval:null});
   const norm = c => (c==null || c instanceof Date) ? '' : String(c).replace(/[\s　\n\r]/g,'');
   const NAME_RE = /^(氏名|社員氏名|職員氏名|従業員氏名|職員名|従業員名|名前)$/;
@@ -4146,6 +4234,29 @@ async function jinReadHint(pdfBytes, fileName, src){
   return hint;
 }
 
+
+// 取り込む前に、何を読んだかを見せて「追加」か「入れ替え」かを選んでもらう
+function jinImportConfirm(bodyEl, got, sheet, have){
+  return new Promise(resolve=>{
+    const ex = got.list.slice(0,3).map(x=>x.name).filter(Boolean).join('、');
+    bodyEl.innerHTML = `
+      <div style="font-weight:800; font-size:14px; color:#1f3a28; margin-bottom:4px">この内容で取り込みますか？</div>
+      <div class="wpNote" style="margin-bottom:10px">
+        シート：<b>${hkEsc(sheet)}</b><br>
+        読み取り：<b>${got.list.length}名</b>${ex?`（例：${hkEsc(ex)} …）`:''}<br>
+        ${got.qCols.length?`資格として読んだ列：${got.qCols.map(hkEsc).join('・')}<br>`:''}
+        ${(got.skipped&&got.skipped.length)?`<span style="color:#b04a3a">★「${got.skipped.map(hkEsc).join('・')}」の列は取り込みません</span>（マイナンバーは法律で取扱いが特に厳しく定められているため）<br>`:''}
+        <small>※年齢と勤続年数は、生年月日・入社日から毎回その日で計算します。</small>
+      </div>
+      ${have ? `<button class="wpBtn primary" id="jinImpRep" style="width:100%; padding:11px; margin-bottom:6px">🔄 いまの${have}名と入れ替える</button>
+                <button class="wpBtn" id="jinImpAdd" style="width:100%; padding:11px">＋ いまの名簿に追加する</button>`
+             : `<button class="wpBtn primary" id="jinImpAdd" style="width:100%; padding:11px">✅ 取り込む</button>`}
+      <button class="wpBtn" id="jinImpNo" style="margin-top:8px; font-size:11px">やめる</button>`;
+    const on=(id,v)=>{ const el=bodyEl.querySelector('#'+id); if(el) el.addEventListener('click',()=>resolve(v)); };
+    on('jinImpRep','replace'); on('jinImpAdd','add'); on('jinImpNo',null);
+  });
+}
+
 function openJinjiPanel(){
   let p=document.getElementById('jinjiPanel');
   if(!p){
@@ -4321,23 +4432,19 @@ function jinRenderList(){
     try{
       if(typeof XLSX==='undefined') throw new Error('Excelライブラリを読み込めませんでした');
       const wb=XLSX.read(await f.arrayBuffer(),{type:'array', cellDates:true});
-      const got=jinParse(wb);
-      jinjiData = jinjiData.concat(got.list);
-      await jinPersist(); jinRenderList();
-      banner(`🤝 ${got.list.length}名を取り込みました`);
+      const body=document.getElementById('jinBody');
+      const sheet=await xlsChoose(body, wb, XLS_JIN);
+      if(!sheet){ jinRenderList(); return; }
+      const got=jinParse(wb, sheet);
+      const mode=await jinImportConfirm(body, got, sheet, (jinjiData||[]).length);
+      if(!mode){ jinRenderList(); return; }
+      jinjiData = (mode==='replace') ? got.list : jinjiData.concat(got.list);
+      await jinPersist(); await jinGC(); jinRenderList();
+      banner(`🤝 ${got.list.length}名を${mode==='replace'?'読み込みました（入れ替え）':'追加しました'}`);
       logLine(`<b>人事AI</b>：従業員名簿から${got.list.length}名を取り込み（シート「${hkEsc(got.sheet)}」`
         + (got.qCols.length?`／資格欄：${got.qCols.map(hkEsc).join('・')}`:'') + '）');
-      let m = '取り込みました（'+got.list.length+'名）。\n'
-            + 'シート：'+got.sheet+'\n'
-            + (got.qCols.length? '資格として読んだ列：'+got.qCols.join('・')+'\n' : '');
-      if(got.skipped && got.skipped.length){
+      if(got.skipped && got.skipped.length)
         logLine(`<b>人事AI</b>：⚠ ${got.skipped.map(hkEsc).join('・')}の列は<b>取り込んでいません</b>（マイナンバーは扱いが特に厳しいため）`);
-        m += '\n★「'+got.skipped.join('・')+'」の列は取り込んでいません。\n'
-           + 'マイナンバー（個人番号）は法律で取扱いが特に厳しく定められているため、\n'
-           + 'このシステムでは保管しません。原本は社内の所定の場所で管理してください。\n';
-      }
-      m += '\n※年齢と勤続年数は、生年月日・入社日から毎回その日で計算します。';
-      alert(m);
     }catch(e){ alert('取り込みエラー：'+e.message); }
   });
 }
