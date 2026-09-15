@@ -3164,6 +3164,45 @@ function riyouAge(birth, at){
 }
 
 
+
+/* ---- いつも使うExcelを覚えておく（毎回ファイルを選ばなくて済む）----
+   Edge/Chrome の機能を使い、ファイルの場所をこの端末に記憶します。
+   中身は保存しません（読むときに、そのつどファイルを開き直します）。 */
+let aiosBookCached = null;                       // 覚えているファイル名（表示用）
+const aiosCanRemember = ()=> !!window.showOpenFilePicker;
+async function aiosPickBook(){
+  if(!window.showOpenFilePicker) throw new Error('この端末では使えません（パソコンのEdge/Chromeでお使いください）');
+  const [h] = await window.showOpenFilePicker({ id:'aios-book', multiple:false, types:[{
+    description:'Excelブック',
+    accept:{'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['.xlsx'],
+            'application/vnd.ms-excel.sheet.macroEnabled.12':['.xlsm']} }] });
+  await idbSet('bookHandle', h); aiosBookCached = h.name;
+  return h;
+}
+async function aiosBookFile(ask){
+  let h=null; try{ h=await idbGet('bookHandle'); }catch(e){}
+  if(!h) return null;
+  try{
+    let perm = await h.queryPermission({mode:'read'});
+    if(perm!=='granted' && ask) perm = await h.requestPermission({mode:'read'});
+    if(perm!=='granted') return null;
+    return await h.getFile();
+  }catch(e){ return null; }
+}
+async function aiosBookWorkbook(){
+  if(typeof XLSX==='undefined') throw new Error('Excelライブラリを読み込めませんでした');
+  let f = await aiosBookFile(true);
+  if(!f){ const h = await aiosPickBook(); f = await h.getFile(); }
+  return XLSX.read(await f.arrayBuffer(), {type:'array', cellDates:true});
+}
+function aiosBookBtn(id){
+  if(!aiosCanRemember()) return '';
+  return aiosBookCached
+    ? `<button class="wpBtn" id="${id}" title="${hkEsc(aiosBookCached)}">🔁 いつものExcelから更新</button>`
+    : `<button class="wpBtn" id="${id}">📌 いつものExcelを覚える</button>`;
+}
+(async()=>{ try{ const h=await idbGet('bookHandle'); if(h) aiosBookCached=h.name; }catch(e){} })();
+
 /* =========================================================================
    ▼▼▼ 複数シートのExcelに対応する共通部品 ▼▼▼
    1つのExcelに「従業員名簿」「利用者受給者証」「車両台帳」などが
@@ -3188,16 +3227,22 @@ function xlsSheetInfo(wb){
 function xlsSheetPick(bodyEl, wb, opt){
   return new Promise(resolve=>{
     const info = xlsSheetInfo(wb).map(x=>Object.assign({}, x, {
-      ok:  opt.need  ? x.head.some(h=>opt.need.test(h)) : true,
-      rec: opt.guess ? opt.guess.test(x.name) : false,
+      ok:   opt.need    ? x.head.some(h=>opt.need.test(h)) : true,
+      rec:  opt.guess   ? opt.guess.test(x.name) : false,
+      best: opt.prefer  ? opt.prefer.test(x.name) : false,     // ★いつも使うシート
+      warn: opt.caution ? opt.caution.test(x.name) : false,    // 似ているが別のシート
     }));
-    const order = info.slice().sort((a,b)=>(b.ok*2+b.rec)-(a.ok*2+a.rec));
+    const score = x => (x.best?8:0) + (x.ok?4:0) + (x.rec?2:0) - (x.warn?1:0);
+    const order = info.slice().sort((a,b)=>score(b)-score(a));
     const card = x => `
       <button class="wpBtn" data-sheet="${hkEsc(x.name)}"
-        style="display:block; width:100%; text-align:left; padding:10px 12px; margin-bottom:6px;${x.ok?' border-color:var(--olive)':''}">
+        style="display:block; width:100%; text-align:left; padding:10px 12px; margin-bottom:6px;${
+          x.best?' border-color:var(--olive); border-width:2px; background:#f4f9ec;' : x.ok?' border-color:var(--olive)':''}">
         <b style="font-size:13.5px">${hkEsc(x.name)}</b>
-        ${x.ok?'<span style="font-size:10.5px; color:#fff; background:#3a9d5d; border-radius:999px; padding:1px 8px; margin-left:6px">読み込めます</span>'
-              :'<span style="font-size:10.5px; color:#8a7a5a; background:#fbf3e2; border-radius:999px; padding:1px 8px; margin-left:6px">見出しが違うかも</span>'}
+        ${x.best?'<span style="font-size:10.5px; color:#fff; background:var(--olive); border-radius:999px; padding:1px 8px; margin-left:6px">★ いつものシート</span>'
+          : x.ok?'<span style="font-size:10.5px; color:#fff; background:#3a9d5d; border-radius:999px; padding:1px 8px; margin-left:6px">読み込めます</span>'
+                :'<span style="font-size:10.5px; color:#8a7a5a; background:#fbf3e2; border-radius:999px; padding:1px 8px; margin-left:6px">見出しが違うかも</span>'}
+        ${(!x.best && x.warn)?`<span style="font-size:10.5px; color:#a4622a; background:#fdf1ea; border-radius:999px; padding:1px 8px; margin-left:4px">⚠ ${hkEsc(opt.cautionText||'別の用途のシートです')}</span>`:''}
         <div style="font-size:10.5px; color:#7a8b80; font-weight:400; margin-top:3px">
           ${x.rows}行　／　見出し：${x.head.length? hkEsc(x.head.slice(0,6).join('・'))+(x.head.length>6?' …':'') : '（見つかりません）'}</div>
       </button>`;
@@ -3217,9 +3262,15 @@ async function xlsChoose(bodyEl, wb, opt){
   return await xlsSheetPick(bodyEl, wb, opt);
 }
 const XLS_JIN   = {title:'従業員名簿はどのシートですか？',  guess:/従業員|職員|名簿|スタッフ/,
-                   need:/^(氏名|社員氏名|職員氏名|従業員氏名|職員名|従業員名|名前)$/};
+                   need:/^(氏名|社員氏名|職員氏名|従業員氏名|職員名|従業員名|名前)$/,
+                   prefer:/従業員名簿[（(]?おりーぶ庵|おりーぶ庵.*従業員名簿/,
+                   caution:/退職|ぼのぼの|応募|鍵|送付|社員証|証うら/,
+                   cautionText:'おりーぶ庵の現職の名簿ではありません'};
 const XLS_RIYOU = {title:'受給者証データはどのシートですか？', guess:/受給者証|利用者/,
-                   need:/^(氏名|受給者証番号)$/};
+                   need:/^(氏名|受給者証番号)$/,
+                   prefer:/利用者受給者証/,
+                   caution:/送付|新聞|請求書先|応募|退職/,
+                   cautionText:'受給者証のシートではありません'};
 
 // --- Excel（シート「利用者受給者証」）を読み取って一覧にする ---
 function riyouParse(wb, sheetName){
@@ -3378,10 +3429,79 @@ function riyouRender(){
   });
 }
 // --- 検索画面 ---
+
+// --- 受給者証の写真・PDF（この端末に暗号化して保管）---
+function riyouPw(){ return riyouPass || secRemembered(RIYOU_KEY); }
+function riyouAttHtml(u){
+  const wrap = inner => `<div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;
+    margin-top:8px; border-top:1px dashed var(--line); padding-top:7px">${inner}</div>`;
+  if(u.file) return wrap(`
+    <span style="font-size:11.5px; color:#3a6b47">📄 受給者証（${Math.max(1,Math.round(u.file.size/1024))}KB）</span>
+    <button class="wpBtn" data-rview="${u._i}" style="font-size:11px; padding:3px 9px">表示</button>
+    <button class="wpBtn" data-rsave="${u._i}" style="font-size:11px; padding:3px 9px">⬇ PDFを保存</button>
+    <button class="wpBtn" data-rdel="${u._i}" style="font-size:11px; padding:3px 9px; color:#d0503f; border-color:#e6b3ab">外す</button>`);
+  return wrap(`
+    <button class="wpBtn" data-rcam="${u._i}" style="font-size:11px">📷 受給者証を撮る</button>
+    <button class="wpBtn" data-rpick="${u._i}" style="font-size:11px">📎 写真・PDFを選ぶ</button>
+    <input type="file" data-rin="cam${u._i}" accept="image/*" capture="environment" hidden>
+    <input type="file" data-rin="pick${u._i}" accept="image/*,application/pdf,.pdf" hidden>`);
+}
+// 添付した受給者証を画面の中で表示する
+async function riyouShowFile(i, backQ){
+  const b=document.getElementById('riyouBody');
+  const u=riyouData[i];
+  b.innerHTML=`<button class="wpBtn" id="riyouFBack">← 一覧にもどる</button>
+    <div style="font-weight:800; font-size:14px; color:#1f3a28; margin:10px 0 6px">📄 ${hkEsc(u.name)} さんの受給者証</div>
+    <div id="riyouFView" class="wpNote">開いています…</div>`;
+  document.getElementById('riyouFBack').addEventListener('click',()=>riyouRenderSearch(backQ||''));
+  try{
+    const bytes=await jinFileBytes(u.file, riyouPw());
+    const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
+    document.getElementById('riyouFView').outerHTML=`
+      <iframe src="${url}" style="width:100%; height:58vh; border:1px solid var(--line); border-radius:10px; background:#fff"></iframe>
+      <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap">
+        <a class="wpBtn primary" href="${url}" download="${hkEsc(u.file.name)}" style="text-decoration:none">⬇ PDFを保存</a>
+        <a class="wpBtn" href="${url}" target="_blank" rel="noopener" style="text-decoration:none">別のタブで開く</a>
+      </div>
+      <div class="wpNote" style="margin-top:10px">受給者証は<b>合言葉で暗号化</b>して、この端末の中だけに保管しています。公開ページには出ません。</div>`;
+    setTimeout(()=>URL.revokeObjectURL(url), 10*60*1000);
+  }catch(e){
+    const v=document.getElementById('riyouFView'); if(v) v.innerHTML='⚠ 開けませんでした：'+hkEsc(e.message);
+  }
+}
+// 添付のボタンを動かす（一覧を描き直すたびに呼ぶ）
+function riyouBindAtt(b, q){
+  const pick=(i,kind)=>b.querySelector(`[data-rin="${kind}${i}"]`);
+  b.querySelectorAll('[data-rcam]').forEach(x=>x.addEventListener('click',()=>pick(x.dataset.rcam,'cam').click()));
+  b.querySelectorAll('[data-rpick]').forEach(x=>x.addEventListener('click',()=>pick(x.dataset.rpick,'pick').click()));
+  b.querySelectorAll('[data-rin]').forEach(inp=>inp.addEventListener('change', async function(){
+    const f=this.files[0]; this.value=''; if(!f) return;
+    const i=+String(this.dataset.rin).replace(/\D/g,'');
+    try{
+      const pw=riyouPw(); if(!pw) throw new Error('画面を開き直してからお試しください');
+      const r=await aiosAttachSave(f, pw, riyouData[i].file, 'r');
+      riyouData[i].file=r.meta; riyouPass=pw; await riyouSave(riyouData, pw);
+      riyouRenderSearch(q);
+      banner('📄 '+riyouData[i].name+'さんの受給者証を保存しました');
+      logLine(`<b>利用者AI</b>：受給者証の写真を保管（この端末のみ・暗号化）`);
+    }catch(e){ alert('取り込めませんでした：'+e.message); }
+  }));
+  b.querySelectorAll('[data-rview]').forEach(x=>x.addEventListener('click',()=>riyouShowFile(+x.dataset.rview, q)));
+  b.querySelectorAll('[data-rsave]').forEach(x=>x.addEventListener('click',()=>jinFileDownload(riyouData[+x.dataset.rsave].file, riyouPw())));
+  b.querySelectorAll('[data-rdel]').forEach(x=>x.addEventListener('click', async ()=>{
+    const i=+x.dataset.rdel;
+    if(!confirm('この受給者証の写真を外します。よろしいですか？')) return;
+    try{ await jinFileDel(riyouData[i].file.id); }catch(e){}
+    delete riyouData[i].file; await riyouSave(riyouData, riyouPw());
+    riyouRenderSearch(q);
+  }));
+}
+
 function riyouRenderSearch(q){
   const b=document.getElementById('riyouBody');
   const list=riyouData||[];
   const key=(q||'').replace(/[\s　]/g,'');
+  list.forEach((u,i)=>u._i=i);                 // 添付の出し入れに使う通し番号
   const hit = key ? list.filter(u=>
       u.name.replace(/[\s　]/g,'').includes(key) || u.no.includes(key) || u.home.includes(key)
     ) : list;
@@ -3404,22 +3524,27 @@ function riyouRenderSearch(q){
         ${limRow}
         <tr><td style="color:#7a8b80; padding:2px 0">誕生日</td><td>${riyouFmt(bd)}${bd?`（${riyouWareki(bd)}）　<b>${riyouAge(bd)}歳</b>`:''}</td></tr>
         <tr><td style="color:#7a8b80; padding:2px 0">おりーぶ庵入居</td><td>${riyouFmt(mi)}</td></tr>
-      </table></div>`;
+      </table>
+      ${riyouAttHtml(u)}</div>`;
   };
   // 有効期限のアラート（期限切れ／まもなく期限）
   const withLim = list.map(u=>({u, d:shaDays(u.limTo)})).filter(x=>x.d!==null);
   const over = withLim.filter(x=>x.d<0).sort((a,c)=>a.d-c.d);
-  const soon = withLim.filter(x=>x.d>=0 && x.d<=90).sort((a,c)=>a.d-c.d);
+  const in30 = withLim.filter(x=>x.d>=0 && x.d<=30).sort((a,c)=>a.d-c.d);   // ★30日前アラート
+  const in90 = withLim.filter(x=>x.d>30 && x.d<=90).sort((a,c)=>a.d-c.d);   // 早めの準備用
   const noLim = list.filter(u=>!u.limTo);
   const line = (x, tail)=>`${hkEsc(x.u.name)}（${hkEsc(x.u.home)}）　${shaFmt(x.u.limTo)}　${tail}`;
   const alertHtml = key ? '' :
     (over.length ? `<div class="wpNote" style="background:#fdf3f3; border-color:#d0503f; margin-bottom:8px">
         🔴 <b>期限を過ぎています：${over.length}名</b>　<span style="font-size:10.5px">※更新済みならExcelの「期限」欄をご確認ください</span><br>${
         over.map(x=>line(x, `<b style="color:#d0503f">${-x.d}日超過</b>`)).join('<br>')}</div>` : '')
-    + (soon.length ? `<div class="wpNote" style="background:#fbf7ec; border-color:#e6cfa5; margin-bottom:8px">
-        🟡 <b>まもなく期限（90日以内）：${soon.length}名</b><br>${
-        soon.map(x=>line(x, `あと<b>${x.d}日</b>`)).join('<br>')}</div>` : '')
-    + (!over.length && !soon.length && withLim.length ? `<div class="wpNote" style="background:#eef7f0; margin-bottom:8px">✅ 期限切れ・期限が近い受給者証はありません。</div>` : '')
+    + (in30.length ? `<div class="wpNote" style="background:#fdf1ea; border-color:#e08a4a; margin-bottom:8px">
+        🟠 <b>あと30日以内に期限：${in30.length}名</b>　<span style="font-size:10.5px">※更新手続きの時期です</span><br>${
+        in30.map(x=>line(x, `あと<b style="color:#c4611f">${x.d}日</b>`)).join('<br>')}</div>` : '')
+    + (in90.length ? `<div class="wpNote" style="background:#fbf7ec; border-color:#e6cfa5; margin-bottom:8px">
+        🟡 <b>90日以内に期限：${in90.length}名</b>　<span style="font-size:10.5px">※そろそろ準備を</span><br>${
+        in90.map(x=>line(x, `あと<b>${x.d}日</b>`)).join('<br>')}</div>` : '')
+    + (!over.length && !in30.length && !in90.length && withLim.length ? `<div class="wpNote" style="background:#eef7f0; margin-bottom:8px">✅ 期限切れ・期限が近い受給者証はありません。</div>` : '')
     + (noLim.length ? `<div class="wpNote" style="margin-bottom:8px">📝 期限が未入力：${noLim.map(u=>hkEsc(u.name)).join('、')}</div>` : '');
   b.innerHTML = `
     <div style="display:flex; gap:6px; margin-bottom:10px">
@@ -3429,34 +3554,60 @@ function riyouRenderSearch(q){
     </div>
     <div style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap">
       <button class="wpBtn" id="riyouReload">📗 Excelから最新に更新</button>
+      ${aiosBookBtn('riyouBook')}
       <input type="file" id="riyouReFile" accept=".xlsx,.xlsm" hidden>
     </div>
     ${alertHtml}
     <div class="wpNote" style="margin-bottom:8px">${key?`「${hkEsc(q)}」の検索結果：<b>${hit.length}名</b>`:`在籍 <b>${list.length}名</b>（氏名を入れると絞り込めます）`}</div>
     ${hit.length? hit.map(card).join('') : '<p class="wpNote">見つかりませんでした。</p>'}`;
+  riyouBindAtt(b, q);
   const qi=document.getElementById('riyouQ');
   qi.addEventListener('input', ()=>riyouRenderSearch(qi.value));
   document.getElementById('riyouClear').addEventListener('click', ()=>riyouRenderSearch(''));
   document.getElementById('riyouReload').addEventListener('click',()=>document.getElementById('riyouReFile').click());
+  const rbook=document.getElementById('riyouBook');
+  if(rbook) rbook.addEventListener('click', async ()=>{
+    try{ await riyouImportFromWorkbook(await aiosBookWorkbook()); }
+    catch(e){ if(e.name!=='AbortError') alert('読み込めませんでした：'+e.message); riyouRenderSearch(''); }
+  });
   document.getElementById('riyouReFile').addEventListener('change', async function(){
     const f=this.files[0]; this.value=''; if(!f) return;
     try{
       if(typeof XLSX==='undefined') throw new Error('Excelライブラリを読み込めませんでした');
-      const pw = riyouPass || secRemembered(RIYOU_KEY);
-      if(!pw) throw new Error('いったん画面を閉じて開き直してから、もう一度お試しください');
-      const wb=XLSX.read(await f.arrayBuffer(),{type:'array', cellDates:true});
-      const sheet=await xlsChoose(b, wb, XLS_RIYOU);
-      if(!sheet){ riyouRenderSearch(''); return; }
-      const list=riyouParse(wb, sheet);
-      if(!confirm(`いまの${(riyouData||[]).length}名を、読み込んだ${list.length}名に入れ替えます。よろしいですか？`)){
-        riyouRenderSearch(''); return; }
-      await riyouSave(list, pw); riyouPass=pw; riyouData=list;
-      riyouRenderSearch('');
-      banner(`📇 受給者証データを${list.length}名に更新しました`);
-      logLine(`<b>利用者AI</b>：受給者証データを${list.length}名に更新（シート「${hkEsc(sheet)}」・この端末のみ）`);
+      await riyouImportFromWorkbook(XLSX.read(await f.arrayBuffer(),{type:'array', cellDates:true}));
     }catch(e){ alert('取り込みエラー：'+e.message); riyouRenderSearch(''); }
   });
   if(q!==undefined){ qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
+}
+
+// Excelブックから受給者証データを読み込み直す（保管中の写真は引き継ぐ）
+async function riyouImportFromWorkbook(wb){
+  const b=document.getElementById('riyouBody');
+  try{
+    const pw = riyouPw();
+    if(!pw) throw new Error('いったん画面を閉じて開き直してから、もう一度お試しください');
+    const sheet=await xlsChoose(b, wb, XLS_RIYOU);
+    if(!sheet){ riyouRenderSearch(''); return; }
+    const list=riyouParse(wb, sheet);
+    // いま保管している受給者証の写真は、受給者証番号（なければ氏名）で引き継ぐ
+    const byNo={}, byName={};
+    (riyouData||[]).forEach(u=>{ if(u.file){
+      if(u.no) byNo[String(u.no).replace(/[\s　]/g,'')]=u.file;
+      if(u.name) byName[String(u.name).replace(/[\s　]/g,'')]=u.file; } });
+    let kept=0;
+    list.forEach(u=>{
+      const f = byNo[String(u.no||'').replace(/[\s　]/g,'')] || byName[String(u.name||'').replace(/[\s　]/g,'')];
+      if(f){ u.file=f; kept++; }
+    });
+    if(!confirm(`いまの${(riyouData||[]).length}名を、読み込んだ${list.length}名に入れ替えます。\n`
+                + `保管中の受給者証の写真 ${kept}件は、そのまま引き継ぎます。\n\nよろしいですか？`)){
+      riyouRenderSearch(''); return; }
+    await riyouSave(list, pw); riyouPass=pw; riyouData=list;
+    await riyouGC();
+    riyouRenderSearch('');
+    banner(`📇 受給者証データを${list.length}名に更新しました`);
+    logLine(`<b>利用者AI</b>：受給者証データを${list.length}名に更新（シート「${hkEsc(sheet)}」・この端末のみ）`);
+  }catch(e){ alert('取り込みエラー：'+e.message); riyouRenderSearch(''); }
 }
 /* ▲▲▲ 利用者AI ここまで ▲▲▲ */
 
@@ -3987,12 +4138,35 @@ async function jinDecBytes(rec, pass){
   return new Uint8Array(pt);
 }
 // 使われていない添付ファイルを片づける
-async function jinGC(){
+// ★ファイル名の頭文字で持ち主を分けている（j＝従業員、r＝利用者）ので、
+//   片方だけを開いているときに、もう片方の添付を消してしまうことはない。
+async function aiosFileGC(prefixes, used){
   try{
-    const used=new Set();
-    (jinjiData||[]).forEach(p=>(p.quals||[]).forEach(q=>{ if(q.file&&q.file.id) used.add(q.file.id); }));
-    for(const k of (await jinFileKeys())||[]) if(!used.has(k)) await jinFileDel(k);
+    for(const k of (await jinFileKeys())||[]){
+      const key=String(k);
+      if(prefixes.some(p=>key.startsWith(p)) && !used.has(key)) await jinFileDel(k);
+    }
   }catch(e){}
+}
+async function jinGC(){
+  const used=new Set();
+  (jinjiData||[]).forEach(p=>(p.quals||[]).forEach(q=>{ if(q.file&&q.file.id) used.add(q.file.id); }));
+  await aiosFileGC(['j','f'], used);          // f＝以前の版で付けた添付
+}
+async function riyouGC(){
+  if(!riyouData) return;                       // 開いていないときは触らない
+  const used=new Set();
+  riyouData.forEach(u=>{ if(u.file&&u.file.id) used.add(u.file.id); });
+  await aiosFileGC(['r'], used);
+}
+// 写真・PDFを受け取り、PDFにして暗号化保存し、目印（メタ情報）を返す
+async function aiosAttachSave(file, pass, oldMeta, prefix){
+  const pdf = await jinToPdf(file);
+  if(pdf.bytes.length > 8*1024*1024) throw new Error('ファイルが大きすぎます（8MBまで）');
+  const id = (prefix||'j') + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+  await jinFilePut(id, await jinEncBytes(pdf.bytes, pass));
+  if(oldMeta && oldMeta.id){ try{ await jinFileDel(oldMeta.id); }catch(e){} }
+  return {meta:{id, name:pdf.name, size:pdf.bytes.length, src:pdf.src}, bytes:pdf.bytes};
 }
 
 // --- 写真を縮小して JPEG に ---
@@ -4235,6 +4409,24 @@ async function jinReadHint(pdfBytes, fileName, src){
 }
 
 
+
+// Excelブックから従業員名簿を取り込む（ファイル選択でも「いつものExcel」でも同じ流れ）
+async function jinImportFromWorkbook(wb){
+  const body=document.getElementById('jinBody');
+  const sheet=await xlsChoose(body, wb, XLS_JIN);
+  if(!sheet){ jinRenderList(); return; }
+  const got=jinParse(wb, sheet);
+  const mode=await jinImportConfirm(body, got, sheet, (jinjiData||[]).length);
+  if(!mode){ jinRenderList(); return; }
+  jinjiData = (mode==='replace') ? got.list : jinjiData.concat(got.list);
+  await jinPersist(); await jinGC(); jinRenderList();
+  banner(`🤝 ${got.list.length}名を${mode==='replace'?'読み込みました（入れ替え）':'追加しました'}`);
+  logLine(`<b>人事AI</b>：従業員名簿から${got.list.length}名を取り込み（シート「${hkEsc(sheet)}」`
+    + (got.qCols.length?`／資格欄：${got.qCols.map(hkEsc).join('・')}`:'') + '）');
+  if(got.skipped && got.skipped.length)
+    logLine(`<b>人事AI</b>：⚠ ${got.skipped.map(hkEsc).join('・')}の列は<b>取り込んでいません</b>（マイナンバーは扱いが特に厳しいため）`);
+}
+
 // 取り込む前に、何を読んだかを見せて「追加」か「入れ替え」かを選んでもらう
 function jinImportConfirm(bodyEl, got, sheet, have){
   return new Promise(resolve=>{
@@ -4398,6 +4590,7 @@ function jinRenderList(){
     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px">
       <button class="wpBtn primary" id="jinAdd">＋ 従業員を追加</button>
       <button class="wpBtn" id="jinImport">📗 従業員名簿Excelから取り込む</button>
+      ${aiosBookBtn('jinBook')}
       <span class="grow" style="flex:1"></span>
       <button class="wpBtn" id="jinLock" style="font-size:11px">🔒 閉じる</button>
       <button class="wpBtn" id="jinClear" style="font-size:11px; color:#d0503f; border-color:#e6b3ab">🗑 全部消す</button>
@@ -4432,20 +4625,13 @@ function jinRenderList(){
     try{
       if(typeof XLSX==='undefined') throw new Error('Excelライブラリを読み込めませんでした');
       const wb=XLSX.read(await f.arrayBuffer(),{type:'array', cellDates:true});
-      const body=document.getElementById('jinBody');
-      const sheet=await xlsChoose(body, wb, XLS_JIN);
-      if(!sheet){ jinRenderList(); return; }
-      const got=jinParse(wb, sheet);
-      const mode=await jinImportConfirm(body, got, sheet, (jinjiData||[]).length);
-      if(!mode){ jinRenderList(); return; }
-      jinjiData = (mode==='replace') ? got.list : jinjiData.concat(got.list);
-      await jinPersist(); await jinGC(); jinRenderList();
-      banner(`🤝 ${got.list.length}名を${mode==='replace'?'読み込みました（入れ替え）':'追加しました'}`);
-      logLine(`<b>人事AI</b>：従業員名簿から${got.list.length}名を取り込み（シート「${hkEsc(got.sheet)}」`
-        + (got.qCols.length?`／資格欄：${got.qCols.map(hkEsc).join('・')}`:'') + '）');
-      if(got.skipped && got.skipped.length)
-        logLine(`<b>人事AI</b>：⚠ ${got.skipped.map(hkEsc).join('・')}の列は<b>取り込んでいません</b>（マイナンバーは扱いが特に厳しいため）`);
+      await jinImportFromWorkbook(wb);
     }catch(e){ alert('取り込みエラー：'+e.message); }
+  });
+  const bookBtn=document.getElementById('jinBook');
+  if(bookBtn) bookBtn.addEventListener('click', async ()=>{
+    try{ await jinImportFromWorkbook(await aiosBookWorkbook()); }
+    catch(e){ if(e.name!=='AbortError') alert('読み込めませんでした：'+e.message); jinRenderList(); }
   });
 }
 
@@ -4635,13 +4821,9 @@ function jinRenderForm(idx, draft){
 
 // 写真・PDFを取り込んで、暗号化して保管する
 async function jinAttach(i, file, quals){
-  const pdf = await jinToPdf(file);
-  if(pdf.bytes.length > 8*1024*1024) throw new Error('ファイルが大きすぎます（8MBまで）');
-  const id  = 'f'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
-  await jinFilePut(id, await jinEncBytes(pdf.bytes, jinjiPass));
-  if(quals[i].file){ try{ await jinFileDel(quals[i].file.id); }catch(e){} }
-  quals[i].file  = {id, name:pdf.name, size:pdf.bytes.length, src:pdf.src};
-  quals[i]._hint = await jinReadHint(pdf.bytes, file.name, pdf.src);
+  const r = await aiosAttachSave(file, jinjiPass, quals[i].file, 'j');
+  quals[i].file  = r.meta;
+  quals[i]._hint = await jinReadHint(r.bytes, file.name, r.meta.src);
   if(!quals[i].name && quals[i]._hint.names[0]) quals[i].name = quals[i]._hint.names[0];
   if(!quals[i].date && quals[i]._hint.dates[0]) quals[i].date = quals[i]._hint.dates[0];
   const m=jinPresetMonths(quals[i].name);
@@ -4649,14 +4831,14 @@ async function jinAttach(i, file, quals){
   return quals[i];
 }
 // 添付PDFを取り出す（復号）
-async function jinFileBytes(meta){
+async function jinFileBytes(meta, pass){
   const rec = await jinFileGet(meta.id);
   if(!rec) throw new Error('この端末に添付が見つかりません');
-  return await jinDecBytes(rec, jinjiPass);
+  return await jinDecBytes(rec, pass || jinjiPass);
 }
-async function jinFileDownload(meta){
+async function jinFileDownload(meta, pass){
   try{
-    const bytes=await jinFileBytes(meta);
+    const bytes=await jinFileBytes(meta, pass);
     const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
     const a=document.createElement('a'); a.href=url; a.download=meta.name;
     document.body.appendChild(a); a.click(); a.remove();
