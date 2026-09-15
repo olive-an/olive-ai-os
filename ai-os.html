@@ -501,7 +501,7 @@
         ✅ <b>利用者AI</b>…受給者証の照会と有効期限アラート。<br>
         ✅ <b>人事AI</b>…従業員名簿と資格・研修・健康診断の期限アラート。<br>
         ✅ <b>車両AI</b>…車両台帳と車検・自賠責・任意保険の期限アラート。<br>
-        ✅ <b>会議室</b>…議事録フォルダ（Word取込・全文検索）。<br>
+        ✅ <b>会議室・議事録</b>…Word取込・全文検索・自動要約。<br>
         その他（給与・工房売上など）はまだ<b>見た目のデモ</b>で、1業務ずつ本物にしていきます。<br>
         <small>※個人情報を含むもの（利用者・職員・議事録）は合言葉で暗号化し、
         <b>使っている端末の中だけ</b>に保存します。公開ページには出ません。</small>
@@ -831,7 +831,7 @@ const ZONES = [
   {x:93, y:76, label:'ポチパス',   desk:'🐶'},
   {x:93, y:76, label:'プリンター', desk:'🖨️'},
   {x:92, y:9,  label:'書類棚',    desk:'🗄️'},
-  {x:50, y:72, label:'会議室',    desk:'🗣️'},
+  {x:50, y:72, label:'会議室・議事録', desk:'🗣️'},
 ];
 
 /* ---- 業務プラン（キーワード → 担当AIの流れ＋成果物） ---- */
@@ -896,7 +896,7 @@ for(const z of ZONES){
     d.style.pointerEvents='auto'; d.style.cursor='pointer'; d.title='ポチパスを開く・データを連携する';
     d.addEventListener('click', ()=>openPochiPanel());
   }
-  if(z.label==='会議室'){ // 会議室はクリックで議事録フォルダ
+  if(z.label==='会議室・議事録'){ // クリックで議事録フォルダ
     d.style.pointerEvents='auto'; d.style.cursor='pointer'; d.title='議事録フォルダを開く';
     d.addEventListener('click', ()=>openGijiPanel());
   }
@@ -1145,7 +1145,7 @@ function addDoc(plan){
 /* ---- 自律モード：手が空いていると勝手に動く ---- */
 const IDLE_SPOTS = [
   {x:90,y:74,act:'プリンターへ'},
-  {x:92,y:16,act:'書類棚へ'}, {x:50,y:66,act:'会議室へ'},
+  {x:92,y:16,act:'書類棚へ'}, {x:50,y:66,act:'会議室・議事録へ'},
 ];
 setInterval(()=>{
   if(busy || !autonomous) return;
@@ -5106,7 +5106,7 @@ function openGijiPanel(){
   if(!p){
     p=document.createElement('div'); p.className='modal'; p.id='gijiPanel';
     p.innerHTML=`<div class="sheet" style="max-width:680px">
-      <div class="sheetHead"><b>🗣️ 会議室（議事録フォルダ）</b><span class="grow"></span>
+      <div class="sheetHead"><b>🗣️ 会議室・議事録</b><span class="grow"></span>
         <button id="gijiLock" title="ロックする">🔒</button>
         <button onclick="document.getElementById('gijiPanel').hidden=true">✕</button></div>
       <div class="sheetBody" id="gijiBody"></div></div>`;
@@ -5239,15 +5239,174 @@ function gijiList(q){
   if(q!==undefined && qi){ qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
 }
 // --- 本文表示 ---
+/* ---------------------------------------------------------------
+   議事録の自動要約（この端末の中だけで処理します）
+   ・議事録には利用者さんの障害名や病状などが入るため、外部に送信しません。
+   ・言葉の出方と言い回しから、要点・決定事項・やること・次回予定を拾います。
+     （文章を書き換えるのではなく、本文から抜き出す方式です）
+   --------------------------------------------------------------- */
+const GIJI_STOP = new Set(['議事録','会議','出席','以上','場合','今回','内容','確認','実施',
+  'ついて','こと','ため','もの','とき','など','これ','それ','ところ','よう','さん','状況','報告']);
+// 文に区切る（箇条書きはそのまま1つとして扱う）
+function gijiSentences(text){
+  const out=[];
+  String(text||'').split(/\n+/).forEach(line=>{
+    const t=line.trim(); if(!t) return;
+    if(/^[・•·‣▪\-－—*＊●○◆■☆★※▲△◇>＞→⇒➡\d]/.test(t) && t.length<=140){ out.push(gijiClean(t)); return; }
+    t.replace(/([。！？!?])/g,'$1').split('').forEach(x=>{
+      const s=x.trim(); if(s) out.push(s);
+    });
+  });
+  return out;
+}
+// よく出てくる言葉を数える（形態素解析なしの簡易版）
+function gijiTerms(text){
+  const m = String(text||'').match(/[一-龥]{2,6}|[ァ-ヶー]{3,12}|[A-Za-z]{3,}/g) || [];
+  const f={};
+  m.forEach(w=>{ if(GIJI_STOP.has(w)) return; f[w]=(f[w]||0)+1; });
+  return f;
+}
+const GIJI_RE = {
+  decide: /(決定|決まり|決まっ|決め(た|る)|承認|了承|可決|合意|とすること|することに(した|なった)|見送(り|る)|中止|採用す)/,
+  todo:   /(お願いし|依頼|してください|対応(する|します)|準備(する|します)|作成(する|します)|提出|周知|報告(する|します)|手配|申請(する|します)|検討(する|します)|進める|記入|回収)/,
+  issue:  /(課題|問題|懸念|心配|不足|risk|リスク|要検討|改善|苦情|ヒヤリ)/,
+  next:   /(次回|次の会議|来月.*(開催|実施)|次年度|以降に)/,
+  when:   /(\d{1,2}\s*月\s*\d{1,2}\s*日|\d{1,2}\/\d{1,2}|今月末|来月|月末|月初|週明け|までに|まで(に|には)?)/,
+  who:    /([一-龥]{1,4}\s*(さん|氏|部長|課長|主任|管理者|所長|先生))/,
+};
+// 行頭の「・」「■」などを外す（コピーしたときに「・・」と重ならないように）
+function gijiClean(s){ return String(s||'').replace(/^[\s・•·‣▪\-－—*＊●○◆■☆★※▲△◇>＞→⇒➡]+/,'').trim(); }
+// 似た文が並んだときは、いちばん詳しいものだけ残す
+function gijiDedupe(arr){
+  const out=[], keys=[];
+  for(const raw of arr){
+    const s=gijiClean(raw);
+    const k=s.replace(/[^一-龥ぁ-んァ-ヶA-Za-z0-9]/g,'').slice(0,14);
+    if(!k){ continue; }
+    const hit=keys.indexOf(k);
+    if(hit>=0){ if(s.length>out[hit].length) out[hit]=s; continue; }
+    keys.push(k); out.push(s);
+  }
+  return out;
+}
+// 「氏名「知的障害」」のような一覧の断片は要点から外す
+function gijiIsFragment(s){
+  const t=gijiClean(s);
+  // 「氏名「障害名…」」のような名簿の行は要点に出さない（あとに一言添えてある場合だけ残す）
+  const m=t.match(/^[一-龥ぁ-んァ-ヶー\s　]{2,12}[「『][^」』]*[」』]\s*(.*)$/);
+  if(m && m[1].replace(/[\s　]/g,'').length < 8) return true;
+  if(t.length<12 && !/[、。]/.test(t)) return true;                                  // 短すぎる見出し
+  if(/^[（(【\[]/.test(t)) return true;
+  return false;
+}
+function gijiSummarize(text){
+  const sents = gijiSentences(text);
+  const freq  = gijiTerms(text);
+  const top   = Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,14);
+  const score = s=>{
+    let v=0;
+    for(const [w,n] of top) if(s.includes(w)) v += n;
+    v = v / Math.sqrt(Math.max(8, s.length));
+    if(GIJI_RE.decide.test(s)) v *= 1.9;
+    if(GIJI_RE.todo.test(s))   v *= 1.5;
+    if(GIJI_RE.issue.test(s))  v *= 1.4;
+    if(s.length < 10)  v *= 0.3;
+    if(s.length > 140) v *= 0.7;
+    if(/^[\s・•*●○◆■※]*(様子|論点|備考|状況)\s*[:：]/.test(s)) v *= 0.3;  // 人ごとの定型見出しは要点にしない
+    if(/(かどうか|でしょうか|できているか|できるか|か[。？]$)/.test(s)) v *= 0.4;   // 問いかけも要点にしない
+    return v;
+  };
+  const ranked = sents.map((s,i)=>({s, i, v:score(s)}))
+                      .filter(x=>!gijiIsFragment(x.s))          // 一覧の断片は要点にしない
+                      .sort((a,b)=>b.v-a.v);
+  const n = Math.min(8, Math.max(3, Math.round(sents.length/6)));
+  // 似た文をまとめてから、本文に出てくる順に並べ直す
+  const seen=new Set(); const chosen=[];
+  for(const x of ranked){
+    const k=gijiClean(x.s).replace(/[^一-龥ぁ-んァ-ヶA-Za-z0-9]/g,'').slice(0,14);
+    if(seen.has(k)) continue; seen.add(k); chosen.push(x);
+    if(chosen.length>=n) break;
+  }
+  const points = chosen.sort((a,b)=>a.i-b.i).map(x=>gijiClean(x.s));
+  const pick = (re, ng) => gijiDedupe(
+    sents.filter(s=>re.test(s) && gijiClean(s).length>=10 && !(ng && ng.test(s)))
+  ).slice(0,6);
+  const NG_Q = /(論点|かどうか|でしょうか|ますか[。？]?$|か[。？]$|できるか)/;   // 問いかけは「決定」にしない
+  const todos = pick(GIJI_RE.todo, NG_Q).map(s=>({
+    text: s,
+    who:  (s.match(GIJI_RE.who)  || [])[0] || '',
+    when: (s.match(GIJI_RE.when) || [])[0] || '',
+  }));
+  return {
+    at: new Date().toISOString(),
+    chars: String(text||'').length,
+    sentences: sents.length,
+    keywords: top.slice(0,8).map(x=>x[0]),
+    points,
+    decisions: pick(GIJI_RE.decide, NG_Q),
+    issues:    pick(GIJI_RE.issue, NG_Q),
+    todos,
+    next:      pick(GIJI_RE.next),
+  };
+}
+// 要約をそのままコピー・印刷できる文章にする
+function gijiSummaryText(g, sum){
+  const L=[];
+  L.push(`${g.title}（要約）`);
+  if(g.date) L.push(shaFmt(g.date));
+  L.push('');
+  const sec=(t,arr)=>{ if(!arr||!arr.length) return;
+    L.push('■ '+t); arr.forEach(x=>L.push('・'+gijiClean(x))); L.push(''); };
+  sec('要点', sum.points);
+  sec('決まったこと', sum.decisions);
+  sec('やること', sum.todos.map(t=>t.text
+     + ((t.who||t.when)?`（${[t.who?'担当：'+t.who:'',t.when?'期限：'+t.when:''].filter(Boolean).join('／')}）`:'')));
+  sec('課題・気になること', sum.issues);
+  sec('次回について', sum.next);
+  L.push('※本文から抜き出した下書きです。必ず本文とご確認ください。');
+  return L.join('\n');
+}
+// 要約を画面に出す
+function gijiSummaryHtml(g, sum){
+  const li = arr => arr.map(x=>`<li style="margin-bottom:3px">${hkEsc(x)}</li>`).join('');
+  const sec = (icon,title,inner,bg)=> inner ? `
+    <div style="margin-top:12px">
+      <div style="font-weight:800; font-size:12.5px; color:#1f3a28; margin-bottom:4px">${icon} ${title}</div>
+      <div style="background:${bg||'#fff'}; border:1px solid var(--line); border-radius:10px; padding:9px 12px">
+        <ul style="margin:0; padding-left:18px; font-size:12.5px; line-height:1.85; color:#2a3a4a">${inner}</ul>
+      </div></div>` : '';
+  const todoLi = sum.todos.map(t=>`<li style="margin-bottom:3px">${hkEsc(t.text)}${
+    (t.who||t.when)?`<br><span style="font-size:10.5px; color:#7a8b80">${
+      t.who?'担当：'+hkEsc(t.who)+'　':''}${t.when?'期限：'+hkEsc(t.when):''}</span>`:''}</li>`).join('');
+  return `
+    <div class="wpNote" style="background:#eef4e4; border-color:#cfe0b8">
+      📝 <b>${hkEsc(g.title)}</b>　${g.date?shaFmt(g.date):''}<br>
+      <span style="font-size:11px; color:#5a6f60">本文 ${sum.chars.toLocaleString()}文字／${sum.sentences}文
+      よく出た言葉：${sum.keywords.map(hkEsc).join('・')||'—'}</span>
+    </div>
+    ${sec('🔹','要点', li(sum.points))}
+    ${sec('✅','決まったこと', li(sum.decisions), '#f3f9f3')}
+    ${sec('📌','やること', todoLi, '#fbf7ec')}
+    ${sec('⚠️','課題・気になること', li(sum.issues), '#fdf3f3')}
+    ${sec('📅','次回について', li(sum.next))}
+    <div class="wpNote" style="margin-top:12px">
+      ※これは本文から<b>言い回しをたよりに抜き出した下書き</b>です。文章を書き直したものではありません。
+      抜けや取り違えがあるので、<b>必ず本文と見くらべて</b>ご確認ください。<br>
+      ※要約はこの端末の中だけで作っています。外部には一切送っていません。
+    </div>`;
+}
+
 function gijiView(i, backQ){
   const g=gijiData[i]; const b=document.getElementById('gijiBody');
   b.innerHTML = `
     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px">
       <button class="wpBtn" id="gijiBack">← 一覧にもどる</button>
       <span class="grow" style="flex:1"></span>
+      <button class="wpBtn primary" id="gijiSum">✨ 要約する</button>
       <button class="wpBtn" id="gijiPrint">🖨 印刷</button>
       <button class="wpBtn" id="gijiDel" style="color:#d0503f; border-color:#e6b3ab">🗑 削除</button>
     </div>
+    <div id="gijiSumBox"></div>
     <div style="background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px 16px">
       <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:6px">
         <input id="gijiDate" type="date" value="${hkEsc(g.date||'')}"
@@ -5260,6 +5419,48 @@ function gijiView(i, backQ){
       <div style="white-space:pre-wrap; font-size:12.5px; line-height:1.9; color:#2a3a4a; margin-top:10px">${hkEsc(g.body)}</div>
     </div>`;
   document.getElementById('gijiBack').addEventListener('click', ()=>gijiList(backQ));
+  const sumBox=document.getElementById('gijiSumBox');
+  const drawSum=(sum)=>{
+    sumBox.innerHTML = `<div style="border:2px solid var(--olive); border-radius:12px; padding:12px 14px; margin-bottom:10px; background:#fbfdf7">
+      <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:4px">
+        <b style="font-size:13.5px; color:#1f3a28">✨ 要約</b>
+        <span class="grow" style="flex:1"></span>
+        <button class="wpBtn" id="gijiSumCopy" style="font-size:11px">📋 文字をコピー</button>
+        <button class="wpBtn" id="gijiSumPrint" style="font-size:11px">🖨 要約を印刷</button>
+        <button class="wpBtn" id="gijiSumClose" style="font-size:11px">閉じる</button>
+      </div>
+      ${gijiSummaryHtml(g, sum)}</div>`;
+    document.getElementById('gijiSumClose').addEventListener('click', ()=>{ sumBox.innerHTML=''; });
+    document.getElementById('gijiSumCopy').addEventListener('click', async ()=>{
+      const txt = gijiSummaryText(g, sum);
+      try{ await navigator.clipboard.writeText(txt); banner('📋 要約をコピーしました'); }
+      catch(e){ alert('コピーできませんでした。画面の文字を選んでコピーしてください。'); }
+    });
+    document.getElementById('gijiSumPrint').addEventListener('click', ()=>{
+      const tmp=document.createElement('div'); tmp.className='aiosPrintArea';
+      tmp.innerHTML=`<h2 style="font-size:15px">${hkEsc(g.title)}（要約）</h2>
+        <p style="font-size:11px">${hkEsc(g.date?shaFmt(g.date):'')}</p>
+        <div style="white-space:pre-wrap; font-size:11.5px; line-height:1.8">${hkEsc(gijiSummaryText(g, sum))}</div>`;
+      document.body.appendChild(tmp);
+      const clean=()=>{ tmp.remove(); window.removeEventListener('afterprint', clean); };
+      window.addEventListener('afterprint', clean);
+      setTimeout(()=>window.print(), 60);
+    });
+    sumBox.scrollIntoView({behavior:'smooth', block:'nearest'});
+  };
+  if(g.summary) drawSum(g.summary);                      // 一度作った要約は残しておく
+  document.getElementById('gijiSum').addEventListener('click', async ()=>{
+    const btn=document.getElementById('gijiSum');
+    btn.disabled=true; btn.textContent='要約中…';
+    try{
+      await new Promise(r=>setTimeout(r,30));
+      g.summary = gijiSummarize(g.body);
+      await gijiPersist();
+      drawSum(g.summary);
+      logLine(`<b>会議室・議事録</b>：「${hkEsc(g.title)}」を要約（この端末のみ）`);
+    }catch(e){ alert('要約できませんでした：'+e.message); }
+    finally{ btn.disabled=false; btn.textContent='✨ 要約する'; }
+  });
   document.getElementById('gijiFix').addEventListener('click', async ()=>{   // 日付・タイトルの手直し
     g.date  = document.getElementById('gijiDate').value;
     g.title = document.getElementById('gijiTitle').value.trim() || g.title;
