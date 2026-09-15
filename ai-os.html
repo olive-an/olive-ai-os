@@ -3199,6 +3199,31 @@ function aiosBookBtn(id){
 }
 (async()=>{ try{ const h=await idbGet('bookHandle'); if(h) aiosBookCached=h.name; }catch(e){} })();
 
+
+/* ---------------------------------------------------------------
+   検索欄の共通処理
+   ★日本語を打っているあいだ（漢字などに変換している途中）に画面を
+     作り直すと、入力が途切れてしまうため、変換が終わるまで待ちます。
+   --------------------------------------------------------------- */
+function aiosBindSearch(input, run){
+  if(!input) return;
+  let composing=false, timer=null;
+  const fire=()=>{ clearTimeout(timer); timer=setTimeout(()=>run(input.value), 220); };
+  input.addEventListener('compositionstart', ()=>{ composing=true; clearTimeout(timer); });
+  input.addEventListener('compositionend',   ()=>{ composing=false; fire(); });
+  input.addEventListener('input', e=>{ if(composing || e.isComposing) return; fire(); });
+  input.addEventListener('keydown', e=>{
+    if(e.key==='Enter' && !composing && !e.isComposing){ clearTimeout(timer); run(input.value); }
+  });
+}
+// 作り直したあと、入力欄の同じ位置にカーソルを戻す
+function aiosRefocus(id, pos){
+  const el=document.getElementById(id); if(!el) return;
+  el.focus();
+  const n = (pos===undefined || pos===null) ? el.value.length : pos;
+  try{ el.setSelectionRange(n, n); }catch(e){}
+}
+
 /* =========================================================================
    ▼▼▼ 複数シートのExcelに対応する共通部品 ▼▼▼
    1つのExcelに「従業員名簿」「利用者受給者証」「車両台帳」などが
@@ -3582,7 +3607,7 @@ function riyouRenderSearch(q){
   if(rfc) rfc.addEventListener('click',()=>{ riyouFHome=riyouFKubun=''; riyouRenderSearch(q); });
   riyouBindAtt(b, q);
   const qi=document.getElementById('riyouQ');
-  qi.addEventListener('input', ()=>riyouRenderSearch(qi.value));
+  aiosBindSearch(qi, v=>riyouRenderSearch(v));
   document.getElementById('riyouClear').addEventListener('click', ()=>riyouRenderSearch(''));
   document.getElementById('riyouReload').addEventListener('click',()=>document.getElementById('riyouReFile').click());
   const rbook=document.getElementById('riyouBook');
@@ -4726,8 +4751,7 @@ function jinRenderList(){
   const fc=document.getElementById('jinFClear');
   if(fc) fc.addEventListener('click',()=>{ jinFHome=jinFJob=jinFEmp=''; jinRenderList(); });
   const qEl=document.getElementById('jinQ');
-  qEl.addEventListener('input', ()=>{ jinQuery=qEl.value; const at=qEl.selectionStart;
-    jinRenderList(); const n=document.getElementById('jinQ'); n.focus(); n.setSelectionRange(at,at); });
+  aiosBindSearch(qEl, v=>{ const at=qEl.selectionStart; jinQuery=v; jinRenderList(); aiosRefocus('jinQ', at); });
   document.getElementById('jinAdd').addEventListener('click', ()=>jinRenderForm(-1));
   b.querySelectorAll('[data-edit]').forEach(btn=>btn.addEventListener('click',()=>jinRenderForm(+btn.dataset.edit)));
   document.getElementById('jinLock').addEventListener('click', ()=>{
@@ -5233,7 +5257,7 @@ function gijiList(q){
     if(ng.length) alert('読み込めなかったファイル：\n'+ng.join('\n'));
   });
   const qi=document.getElementById('gijiQ');
-  qi.addEventListener('input', ()=>gijiList(qi.value));
+  aiosBindSearch(qi, v=>gijiList(v));
   document.getElementById('gijiClear').addEventListener('click', ()=>gijiList(''));
   b.querySelectorAll('.gijiRow').forEach(el=>el.addEventListener('click', ()=>gijiView(+el.dataset.i, q)));
   if(q!==undefined && qi){ qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
