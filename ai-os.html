@@ -3430,6 +3430,17 @@ function riyouRender(){
 }
 // --- 検索画面 ---
 
+// 一覧にある値から絞り込みプルダウンを作る
+function riyouSel(id, label, list, field, cur){
+  const m={};
+  (list||[]).forEach(u=>{ const v=String(u[field]||'').trim(); if(v) m[v]=(m[v]||0)+1; });
+  const pairs=Object.entries(m).sort((a,b)=> field==='kubun' ? String(a[0]).localeCompare(String(b[0])) : b[1]-a[1]);
+  if(!pairs.length) return '';
+  return `<select id="${id}" style="padding:8px; border:1px solid #cfe0ee; border-radius:8px; font-size:12.5px; background:#fff">
+    <option value="">${label}すべて</option>
+    ${pairs.map(([v,n])=>`<option value="${hkEsc(v)}"${cur===v?' selected':''}>${hkEsc(v)}（${n}名）</option>`).join('')}
+  </select>`;
+}
 // --- 受給者証の写真・PDF（この端末に暗号化して保管）---
 function riyouPw(){ return riyouPass || secRemembered(RIYOU_KEY); }
 function riyouAttHtml(u){
@@ -3497,14 +3508,16 @@ function riyouBindAtt(b, q){
   }));
 }
 
+let riyouFHome='', riyouFKubun='';           // 絞り込みプルダウンの選択
 function riyouRenderSearch(q){
   const b=document.getElementById('riyouBody');
   const list=riyouData||[];
   const key=(q||'').replace(/[\s　]/g,'');
   list.forEach((u,i)=>u._i=i);                 // 添付の出し入れに使う通し番号
-  const hit = key ? list.filter(u=>
-      u.name.replace(/[\s　]/g,'').includes(key) || u.no.includes(key) || u.home.includes(key)
-    ) : list;
+  const hit = list.filter(u=>
+       (!key || u.name.replace(/[\s　]/g,'').includes(key) || String(u.no||'').includes(key) || String(u.home||'').includes(key))
+    && (!riyouFHome  || String(u.home ||'')===riyouFHome)
+    && (!riyouFKubun || String(u.kubun||'')===riyouFKubun));
   const card=(u)=>{
     const bd=u.birth?new Date(u.birth):null, mi=u.moveIn?new Date(u.moveIn):null;
     const d=shaDays(u.limTo), bg=shaBadge(d);
@@ -3552,14 +3565,25 @@ function riyouRenderSearch(q){
         style="flex:1; padding:10px; border:1px solid #cfe0ee; border-radius:8px; font-size:14px">
       <button class="wpBtn" id="riyouClear">×</button>
     </div>
+    <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap">
+      ${riyouSel('riyouFHome','ホーム', list, 'home', riyouFHome)}
+      ${riyouSel('riyouFKubun','区分', list, 'kubun', riyouFKubun)}
+      ${(riyouFHome||riyouFKubun)?'<button class="wpBtn" id="riyouFClear" style="font-size:11px">絞り込みを外す</button>':''}
+    </div>
     <div style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap">
       <button class="wpBtn" id="riyouReload">📗 Excelから最新に更新</button>
       ${aiosBookBtn('riyouBook')}
       <input type="file" id="riyouReFile" accept=".xlsx,.xlsm" hidden>
     </div>
     ${alertHtml}
-    <div class="wpNote" style="margin-bottom:8px">${key?`「${hkEsc(q)}」の検索結果：<b>${hit.length}名</b>`:`在籍 <b>${list.length}名</b>（氏名を入れると絞り込めます）`}</div>
+    <div class="wpNote" style="margin-bottom:8px">在籍 <b>${list.length}名</b>${
+      (key||riyouFHome||riyouFKubun)?`　→ <b>${hit.length}名</b>に絞り込み`:'（氏名・ホーム・区分で絞り込めます）'}</div>
     ${hit.length? hit.map(card).join('') : '<p class="wpNote">見つかりませんでした。</p>'}`;
+  const setR=(id,fn)=>{ const el=document.getElementById(id);
+    if(el) el.addEventListener('change',()=>{ fn(el.value); riyouRenderSearch(q); }); };
+  setR('riyouFHome', v=>riyouFHome=v); setR('riyouFKubun', v=>riyouFKubun=v);
+  const rfc=document.getElementById('riyouFClear');
+  if(rfc) rfc.addEventListener('click',()=>{ riyouFHome=riyouFKubun=''; riyouRenderSearch(q); });
   riyouBindAtt(b, q);
   const qi=document.getElementById('riyouQ');
   qi.addEventListener('input', ()=>riyouRenderSearch(qi.value));
@@ -3844,10 +3868,16 @@ function shaRenderList(){
 function shaRenderForm(idx){
   const b=document.getElementById('shaBody');
   const v = idx>=0 ? sharyouData[idx] : {};
-  const field = ([k,label,type])=>`
+  const SHA_CHIP = { belong:{opts:JIN_HOMES, multi:false},
+                     kind:{opts:['送迎','業務','自家用','リース','その他'], multi:false} };
+  const field = ([k,label,type])=>{
+    const c=SHA_CHIP[k];
+    return `
     <label style="display:block; font-size:11.5px; font-weight:700; color:#2b5d8a; margin-top:8px">${label}</label>
     <input data-k="${k}" type="${type}" value="${hkEsc(v[k]||'')}"
-      style="width:100%; padding:8px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px">`;
+      style="width:100%; padding:8px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px">
+    ${c ? jinChipsHtml(k, c.opts, c.multi) : ''}`;
+  };
   b.innerHTML = `
     <button class="wpBtn" id="shaBack">← 一覧にもどる</button>
     <div style="font-weight:800; font-size:14px; color:#1f3a28; margin:10px 0 2px">${idx>=0?'車両の編集':'車両の追加'}</div>
@@ -3858,6 +3888,7 @@ function shaRenderForm(idx){
       <button class="wpBtn primary" id="shaSave" style="flex:1; padding:11px">💾 保存</button>
       ${idx>=0?'<button class="wpBtn" id="shaDel" style="color:#d0503f; border-color:#e6b3ab">🗑 この車両を削除</button>':''}
     </div>`;
+  jinBindChips(b);
   document.getElementById('shaBack').addEventListener('click', shaRenderList);
   document.getElementById('shaSave').addEventListener('click', async ()=>{
     const obj={};
@@ -3922,8 +3953,63 @@ const JIN_PRESETS = [
   ['准看護師', 0], ['防火管理者', 0], ['衛生管理者', 0],
   ['その他', 0],
 ];
-const JIN_JOBS = ['管理者','サービス管理責任者','管理者兼サービス管理責任者',
-                  '世話人','生活支援員','看護師','事務','その他'];
+// 役職・拠点などの選びやすい候補（おりーぶ庵で実際に使われている言葉）
+const JIN_JOBS = ['管理者','サービス管理責任者','世話人','生活支援員','日中支援員',
+                  '夜勤','準夜勤','看護師','事務員','事務員（総務）','事務員（経理）',
+                  '指導員','代表取締役','会長'];
+const JIN_HOMES = ['本部','西九条','九条','酉島','新郡山','春日出','出来島'];
+const JIN_EMPS  = ['常勤','非常勤'];
+const JIN_SEXES = ['男性','女性'];
+const JIN_SPLIT = /[\s　・\/／、,]+/;                 // 「世話人・事務員」などを分ける
+// いま登録されている内容からも候補を集める（取り込んだ言葉がそのまま選べる）
+function jinChipOptions(){
+  const grab=(base, field)=>{
+    const set=new Set(base);
+    (jinjiData||[]).forEach(p=>String(p[field]||'').split(JIN_SPLIT)
+      .map(x=>x.trim()).filter(Boolean).forEach(x=>set.add(x)));
+    return [...set];
+  };
+  return { job:grab(JIN_JOBS,'job'), home:grab(JIN_HOMES,'home'),
+           emp:grab(JIN_EMPS,'emp'), sex:grab(JIN_SEXES,'sex') };
+}
+// 入力欄の下に並べる「選ぶボタン」。押すたびに入れる／外すが切り替わります
+function jinChipsHtml(key, opts, multi){
+  return `<div class="jinChips" data-for="${key}" data-multi="${multi?1:0}"
+    style="display:flex; gap:4px; flex-wrap:wrap; margin-top:4px">
+    ${opts.map(o=>`<button type="button" data-v="${hkEsc(o)}"
+      style="font-size:11px; padding:3px 10px; border-radius:999px; cursor:pointer;
+             border:1px solid #cfe0ee; background:#fff; color:#2b5d8a">${hkEsc(o)}</button>`).join('')}
+  </div>`;
+}
+// 選ぶボタンと入力欄をつなぐ
+function jinBindChips(root){
+  const paint=(box)=>{
+    const key=box.dataset.for;
+    const inp=root.querySelector(`[data-k="${key}"]`); if(!inp) return;
+    const cur=String(inp.value||'').split(JIN_SPLIT).map(x=>x.trim()).filter(Boolean);
+    box.querySelectorAll('button').forEach(btn=>{
+      const on=cur.includes(btn.dataset.v);
+      btn.style.background = on ? 'var(--olive)' : '#fff';
+      btn.style.color      = on ? '#fff' : '#2b5d8a';
+      btn.style.borderColor= on ? 'var(--olive)' : '#cfe0ee';
+    });
+  };
+  root.querySelectorAll('.jinChips').forEach(box=>{
+    const key=box.dataset.for, multi=box.dataset.multi==='1';
+    const inp=root.querySelector(`[data-k="${key}"]`); if(!inp) return;
+    box.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>{
+      let cur=String(inp.value||'').split(JIN_SPLIT).map(x=>x.trim()).filter(Boolean);
+      const v=btn.dataset.v;
+      if(!multi){ cur = cur.includes(v) ? [] : [v]; }
+      else if(cur.includes(v)) cur = cur.filter(x=>x!==v);
+      else cur.push(v);
+      inp.value = cur.join('・');
+      paint(box);
+    }));
+    inp.addEventListener('input', ()=>paint(box));
+    paint(box);
+  });
+}
 
 // 資格・研修の名前から有効期間（月数）を推測する。0＝期限なし
 function jinPresetMonths(name){
@@ -4536,13 +4622,37 @@ function jinRender(){
 
 // --- 一覧（期限の近い順）---
 let jinQuery = '';
+let jinFHome = '', jinFJob = '', jinFEmp = '';       // 絞り込みプルダウンの選択
+// 「西九条・九条」のような欄から、ちょうどその言葉が入っているかを見る
+// （「九条」で絞ったときに「西九条」まで出てしまわないように、区切って照合する）
+function jinHasToken(value, want){
+  if(!want) return true;
+  return String(value||'').split(JIN_SPLIT).map(x=>x.trim()).includes(want);
+}
+// 値の出てくる回数を数えて、プルダウンの中身を作る
+function jinCountBy(list, field){
+  const m={};
+  (list||[]).forEach(p=>String(p[field]||'').split(JIN_SPLIT).map(x=>x.trim()).filter(Boolean)
+    .forEach(x=>m[x]=(m[x]||0)+1));
+  return Object.entries(m).sort((a,b)=>b[1]-a[1]);
+}
+function jinSelectHtml(id, label, pairs, cur){
+  return `<select id="${id}" style="padding:7px 8px; border:1px solid #cfe0ee; border-radius:8px; font-size:12.5px; background:#fff">
+    <option value="">${label}すべて（${pairs.reduce((s,x)=>s+0,0)||''}）</option>
+    ${pairs.map(([v,n])=>`<option value="${hkEsc(v)}"${cur===v?' selected':''}>${hkEsc(v)}（${n}）</option>`).join('')}
+  </select>`.replace('（）','');
+}
 function jinRenderList(){
   const b=document.getElementById('jinBody');
   const all=jinjiData||[];
   all.forEach((p,i)=>p._i=i);
   const q = jinQuery.trim();
-  const hit = p => !q || [p.no,p.name,p.kana,p.home,p.job,p.emp,p.sex,p.ape,p.memo,
-                          ...(p.quals||[]).map(x=>x.name)].join(' ').includes(q);
+  const hit = p =>
+       (!q || [p.no,p.name,p.kana,p.home,p.job,p.emp,p.sex,p.ape,p.memo,
+               ...(p.quals||[]).map(x=>x.name)].join(' ').includes(q))
+    && jinHasToken(p.home, jinFHome)
+    && jinHasToken(p.job,  jinFJob)
+    && jinHasToken(p.emp,  jinFEmp);
   const list = all.filter(hit);
   const soonest = p => Math.min(99999, ...(p.quals||[]).map(x=>{
     const d=shaDays(x.exp); return d===null? 99999 : d; }));
@@ -4600,13 +4710,25 @@ function jinRenderList(){
         ⚠ <b>期限が近い資格・研修（90日以内）</b><br>${alerts.map(a=>
           `${hkEsc(a.p.name)}：${hkEsc(a.q.name)} ${a.d<0?`<b style="color:#d0503f">${-a.d}日超過</b>`:`あと<b>${a.d}日</b>`}`).join('<br>')}</div>`
       : (all.length?`<div class="wpNote" style="background:#eef7f0">✅ 90日以内に期限が来る資格・研修はありません。</div>`:'')}
+    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px">
+      ${jinSelectHtml('jinFHome','拠点', jinCountBy(all,'home'), jinFHome)}
+      ${jinSelectHtml('jinFJob','役職',  jinCountBy(all,'job'),  jinFJob)}
+      ${jinSelectHtml('jinFEmp','勤務',  jinCountBy(all,'emp'),  jinFEmp)}
+      ${(jinFHome||jinFJob||jinFEmp)?'<button class="wpBtn" id="jinFClear" style="font-size:11px">絞り込みを外す</button>':''}
+    </div>
     <input id="jinQ" type="search" placeholder="🔍 氏名・カナ・拠点・役職・資格名で探す" value="${hkEsc(jinQuery)}"
       style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin-bottom:8px">
-    <div class="wpNote" style="margin-bottom:8px">登録従業員：<b>${all.length}名</b>${q?`（「${hkEsc(q)}」に${list.length}名該当）`:''}（期限の近い順）</div>
+    <div class="wpNote" style="margin-bottom:8px">登録従業員：<b>${all.length}名</b>${
+      (q||jinFHome||jinFJob||jinFEmp)?`　→ <b>${list.length}名</b>に絞り込み`:''}（期限の近い順）</div>
     ${sorted.length ? sorted.map(card).join('')
       : (all.length? '<p class="wpNote">該当する方が見つかりません。</p>'
                    : '<p class="wpNote">まだ従業員が登録されていません。「＋ 従業員を追加」から登録してください。</p>')}`;
 
+  const setF=(id,fn)=>{ const el=document.getElementById(id);
+    if(el) el.addEventListener('change',()=>{ fn(el.value); jinRenderList(); }); };
+  setF('jinFHome', v=>jinFHome=v); setF('jinFJob', v=>jinFJob=v); setF('jinFEmp', v=>jinFEmp=v);
+  const fc=document.getElementById('jinFClear');
+  if(fc) fc.addEventListener('click',()=>{ jinFHome=jinFJob=jinFEmp=''; jinRenderList(); });
   const qEl=document.getElementById('jinQ');
   qEl.addEventListener('input', ()=>{ jinQuery=qEl.value; const at=qEl.selectionStart;
     jinRenderList(); const n=document.getElementById('jinQ'); n.focus(); n.setSelectionRange(at,at); });
@@ -4640,22 +4762,23 @@ function jinRenderForm(idx, draft){
   const b=document.getElementById('jinBody');
   const p = draft ? draft.p : (idx>=0 ? jinjiData[idx] : {});
   let quals = draft ? draft.quals : JSON.parse(JSON.stringify(p.quals||[]));
+  const OPT = jinChipOptions();
+  const CHIP = { job:{opts:OPT.job, multi:true},  home:{opts:OPT.home, multi:true},
+                 emp:{opts:OPT.emp, multi:false}, sex:{opts:OPT.sex,  multi:false} };
   const field = ([k,label,type])=>{
-    if(k==='job') return `
-      <label style="display:block; font-size:11.5px; font-weight:700; color:#2b5d8a; margin-top:8px">${label}</label>
-      <input data-k="job" list="jinJobs" value="${hkEsc(p.job||'')}"
-        style="width:100%; padding:8px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px">`;
+    const c = CHIP[k];
     return `
-      <label style="display:block; font-size:11.5px; font-weight:700; color:#2b5d8a; margin-top:8px">${label}</label>
+      <label style="display:block; font-size:11.5px; font-weight:700; color:#2b5d8a; margin-top:8px">${label}${
+        c&&c.multi?'<span style="font-weight:400; color:#7a8b80">（複数えらべます）</span>':''}</label>
       <input data-k="${k}" type="${type}" value="${hkEsc(p[k]||'')}"
-        style="width:100%; padding:8px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px">`;
+        style="width:100%; padding:8px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px">
+      ${c ? jinChipsHtml(k, c.opts, c.multi) : ''}`;
   };
   b.innerHTML = `
     <button class="wpBtn" id="jinBack">← 一覧にもどる</button>
-    <datalist id="jinJobs">${JIN_JOBS.map(j=>`<option value="${j}">`).join('')}</datalist>
     <div style="font-weight:800; font-size:14px; color:#1f3a28; margin:10px 0 2px">${idx>=0?'従業員の編集':'従業員の追加'}</div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 12px">
-      ${JIN_FIELDS.map(f=>`<div>${field(f)}</div>`).join('')}
+      ${JIN_FIELDS.map(f=>`<div${CHIP[f[0]]&&CHIP[f[0]].multi?' style="grid-column:1/-1"':''}>${field(f)}</div>`).join('')}
     </div>
     <div style="font-weight:800; font-size:13px; color:#1f3a28; margin:16px 0 4px">資格・研修（有効期限と資格証）</div>
     <div class="wpNote" style="margin-bottom:8px">
@@ -4668,6 +4791,7 @@ function jinRenderForm(idx, draft){
       ${idx>=0?'<button class="wpBtn" id="jinDel" style="color:#d0503f; border-color:#e6b3ab">🗑 この方を削除</button>':''}
     </div>`;
 
+  jinBindChips(b);
   const qbox=document.getElementById('jinQuals');
   const readFields = ()=>{                       // 入力途中の基本情報を控える
     const o={}; b.querySelectorAll('[data-k]').forEach(i=>o[i.dataset.k]=i.value); return o;
@@ -4712,11 +4836,20 @@ function jinRenderForm(idx, draft){
   const drawQuals = ()=>{
     qbox.innerHTML = quals.length ? quals.map((x,i)=>`
       <div data-qi="${i}" style="border:1px solid var(--line); border-radius:10px; padding:8px 10px; margin-bottom:6px; background:#fbfcf8">
-        <div style="display:flex; gap:6px; align-items:center">
-          <input data-q="name" list="jinPresets" value="${hkEsc(x.name||'')}" placeholder="資格・研修の名前"
-            style="flex:1; min-width:120px; padding:7px; border:1px solid #cfe0ee; border-radius:8px; font-size:12.5px">
+        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap">
+          <select data-qsel="${i}" style="flex:1; min-width:150px; padding:7px; border:1px solid #cfe0ee; border-radius:8px; font-size:12.5px; background:#fff">
+            <option value="">▼ 資格・研修をえらぶ</option>
+            <optgroup label="期限があるもの（自動で計算します）">
+              ${JIN_PRESETS.filter(pr=>pr[1]>0).map(pr=>`<option value="${hkEsc(pr[0])}"${x.name===pr[0]?' selected':''}>${hkEsc(pr[0])}（${pr[1]>=12?(pr[1]/12)+'年':pr[1]+'か月'}）</option>`).join('')}
+            </optgroup>
+            <optgroup label="期限のないもの">
+              ${JIN_PRESETS.filter(pr=>pr[1]===0).map(pr=>`<option value="${hkEsc(pr[0])}"${x.name===pr[0]?' selected':''}>${hkEsc(pr[0])}</option>`).join('')}
+            </optgroup>
+          </select>
           <button class="wpBtn" data-qdel="${i}" style="font-size:11px; color:#d0503f; border-color:#e6b3ab">削除</button>
         </div>
+        <input data-q="name" list="jinPresets" value="${hkEsc(x.name||'')}" placeholder="（自由に入力もできます）"
+          style="width:100%; margin-top:5px; padding:7px; border:1px solid #cfe0ee; border-radius:8px; font-size:12.5px">
         <div style="display:flex; gap:8px; margin-top:6px; flex-wrap:wrap">
           <div style="flex:1; min-width:130px">
             <div style="font-size:10.5px; color:#7a8b80">取得日・受講日</div>
@@ -4746,6 +4879,12 @@ function jinRenderForm(idx, draft){
     qbox.querySelectorAll('[data-qi]').forEach(row=>{
       row.querySelector('[data-q="name"]').addEventListener('change',()=>auto(row));
       row.querySelector('[data-q="date"]').addEventListener('change',()=>auto(row));
+      const sel=row.querySelector('[data-qsel]');
+      if(sel) sel.addEventListener('change',()=>{                 // プルダウンで選んだら名前欄に入れる
+        if(!sel.value) return;
+        row.querySelector('[data-q="name"]').value = sel.value;
+        auto(row);
+      });
     });
     // 読み取り候補を入れるボタン
     qbox.querySelectorAll('[data-hn]').forEach(btn=>btn.addEventListener('click',()=>{
