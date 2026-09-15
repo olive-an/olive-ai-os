@@ -3529,6 +3529,125 @@ function riyouBindAtt(b, q){
   }));
 }
 
+/* ---------------------------------------------------------------
+   利用者AI：受給者証データを画面で直す／Excelへ書き出す（別名保存）
+   ・原本のExcelは変更しません。複製して、値を入れたセルだけ書き換えます。
+   ・ホームの欄はExcelのグループ分け（まとまりの先頭だけに書く形）なので、
+     取り違えを避けるため書き出しません。
+   --------------------------------------------------------------- */
+const RIYOU_FIELDS = [
+  ['name','氏名','text'],            ['kubun','区分','chip'],
+  ['no','受給者証番号','text'],      ['home','ホーム','chip'],
+  ['limFrom','受給者証の期限（開始）','date'], ['limTo','受給者証の期限（終了）','date'],
+  ['birth','誕生日','date'],         ['moveIn','おりーぶ庵入居','date'],
+];
+const RIYOU_KUBUN = ['1','2','3','4','5','6','非該当'];
+// 入力・編集の画面
+function riyouRenderForm(idx, backQ){
+  const b=document.getElementById('riyouBody');
+  const u = idx>=0 ? riyouData[idx] : {};
+  const homes = [...new Set([...JIN_HOMES.filter(h=>h!=='本部'),
+                  ...(riyouData||[]).map(x=>x.home).filter(Boolean)])];
+  const field = ([k,label,type])=>`
+    <label style="display:block; font-size:11.5px; font-weight:700; color:#2b5d8a; margin-top:8px">${label}</label>
+    <input data-k="${k}" type="${type==='date'?'date':'text'}" value="${hkEsc(u[k]||'')}"
+      style="width:100%; padding:8px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px">
+    ${type==='chip' ? jinChipsHtml(k, k==='kubun'?RIYOU_KUBUN:homes, false) : ''}`;
+  b.innerHTML = `
+    <button class="wpBtn" id="riyouFBack2">← 一覧にもどる</button>
+    <div style="font-weight:800; font-size:14px; color:#1f3a28; margin:10px 0 2px">${idx>=0?'利用者の編集':'利用者の追加'}</div>
+    <div class="wpNote" style="margin-bottom:6px">
+      受給者証の期限を入れておくと、<b>30日前にお知らせ</b>します。<br>
+      <small>※ここで直した内容は、この端末の中に保存されます。Excelには「📤 Excelへ書き出す」で反映します。</small></div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 12px">
+      ${RIYOU_FIELDS.map(f=>`<div${f[2]==='chip'?' style="grid-column:1/-1"':''}>${field(f)}</div>`).join('')}
+    </div>
+    <div style="display:flex; gap:8px; margin-top:14px; flex-wrap:wrap">
+      <button class="wpBtn primary" id="riyouSave2" style="flex:1; padding:11px">💾 保存</button>
+      ${idx>=0?'<button class="wpBtn" id="riyouDel2" style="color:#d0503f; border-color:#e6b3ab">🗑 この方を削除</button>':''}
+    </div>`;
+  jinBindChips(b);
+  document.getElementById('riyouFBack2').addEventListener('click', ()=>riyouRenderSearch(backQ||''));
+  document.getElementById('riyouSave2').addEventListener('click', async ()=>{
+    const o={}; b.querySelectorAll('[data-k]').forEach(i=>o[i.dataset.k]=i.value.trim());
+    if(!o.name){ alert('氏名を入れてください'); return; }
+    const keep = idx>=0 ? riyouData[idx].file : null;
+    if(keep) o.file = keep;                       // 受給者証の写真はそのまま引き継ぐ
+    if(idx>=0) riyouData[idx]=o; else riyouData.push(o);
+    await riyouSave(riyouData, riyouPw());
+    riyouRenderSearch(backQ||'');
+    banner('📇 利用者情報を保存しました');
+    logLine(`<b>利用者AI</b>：利用者を${idx>=0?'更新':'登録'}（この端末のみ・暗号化）`);
+  });
+  const del=document.getElementById('riyouDel2');
+  if(del) del.addEventListener('click', async ()=>{
+    if(!confirm('この方を一覧から削除します。受給者証の写真も消えます。\nよろしいですか？')) return;
+    const f=riyouData[idx].file;
+    if(f){ try{ await jinFileDel(f.id); }catch(e){} }
+    riyouData.splice(idx,1);
+    await riyouSave(riyouData, riyouPw()); await riyouGC();
+    riyouRenderSearch(backQ||'');
+  });
+}
+
+/* --- Excelへ書き出す（別名保存） --- */
+// Excelの「利用者受給者証」シートの行の位置をつかむ
+function riyouLocate(wb, sheetName){
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, raw:true, defval:null});
+  let hdr=-1;
+  for(let r=0;r<Math.min(rows.length,12);r++)
+    if((rows[r]||[]).some(c=>typeof c==='string' && c.replace(/\s/g,'')==='氏名')){ hdr=r; break; }
+  if(hdr<0) throw new Error('「氏名」の見出し行が見つかりません');
+  const H = rows[hdr].map(c=>(c==null?'':String(c)).replace(/[\s　]/g,''));
+  const col=(...ns)=>{ for(const n of ns){ const i=H.indexOf(n); if(i>=0) return i; } return -1; };
+  const cLim=H.indexOf('期限');
+  const c = { home:col('ホーム'), name:col('氏名'), kubun:col('区分','障害支援区分'),
+              no:col('受給者証番号'), moveIn:col('おりーぶ庵入居','入居日','入居'),
+              birth:col('誕生日','生年月日'),
+              limFrom:cLim, limTo:(cLim>=0?cLim+1:-1) };
+  if(c.name<0 || c.no<0) throw new Error('「氏名」「受給者証番号」の列が見つかりません');
+  const people=[]; let left=false;
+  for(let r=hdr+1;r<rows.length;r++){
+    const row=rows[r]||[];
+    const a = row[c.home]==null?'':String(row[c.home]).trim();
+    if(/^退去/.test(a)){ left=true; continue; }
+    const nm = row[c.name]==null?'':String(row[c.name]).replace(/[\s　]+/g,'').trim();
+    if(!nm || left) continue;
+    people.push({row:r+1, name:nm, no:String(row[c.no]==null?'':row[c.no]).replace(/[\s　]/g,''), raw:row});
+  }
+  return {hdr, H, col:c, people, sheetName};
+}
+// 画面とExcelをくらべる（ホームは書き出さない）
+const RIYOU_OUT = [
+  ['name','氏名','text'], ['kubun','区分','text'], ['no','受給者証番号','text'],
+  ['limFrom','期限（開始）','date'], ['limTo','期限（終了）','date'],
+  ['birth','誕生日','date'], ['moveIn','おりーぶ庵入居','date'],
+];
+function riyouDiff(loc, list){
+  const norm = v => String(v==null?'':v).replace(/[\s　]/g,'');
+  const cur = (row,i)=>{ if(i<0||row[i]==null) return '';
+    const v=row[i];
+    if(v instanceof Date) return shaToYmd(v);
+    return String(v).replace(/[\r\n]+/g,' ').trim(); };
+  const byNo={}, byName={};
+  loc.people.forEach(p=>{ if(p.no) byNo[p.no]=p; byName[p.name]=p; });
+  const changes=[], notInExcel=[];
+  for(const u of list){
+    const hit = byNo[norm(u.no)] || byName[norm(u.name)];
+    if(!hit){ notInExcel.push(u.name); continue; }
+    for(const [k,label,type] of RIYOU_OUT){
+      const i=loc.col[k]; if(i===undefined||i<0) continue;
+      const before=cur(hit.raw,i), after=String(u[k]||'').trim();
+      if(norm(before)===norm(after)) continue;
+      changes.push({row:hit.row, colIdx:i, label:loc.H[i]||label, name:u.name, before, after, type});
+    }
+  }
+  const keys=new Set(list.map(u=>norm(u.no)||norm(u.name)));
+  const onlyExcel = loc.people.filter(p=>!keys.has(p.no) && !keys.has(p.name))
+                              .map(p=>String(p.raw[loc.col.name]).trim());
+  return {changes, notInExcel, onlyExcel, noColumn:[]};
+}
+
 let riyouFHome='', riyouFKubun='';           // 絞り込みプルダウンの選択
 function riyouRenderSearch(q){
   const b=document.getElementById('riyouBody');
@@ -3552,6 +3671,8 @@ function riyouRenderSearch(q){
         <b style="font-size:15px; color:#1f3a28">${hkEsc(u.name)}</b>
         ${u.home?`<span style="font-size:10.5px; background:var(--olive); color:#fff; border-radius:999px; padding:2px 9px">${hkEsc(u.home)}</span>`:''}
         ${u.kubun?`<span style="font-size:10.5px; background:#4a7fae; color:#fff; border-radius:999px; padding:2px 9px">区分 ${hkEsc(u.kubun)}</span>`:''}
+        <span class="grow" style="flex:1"></span>
+        <button class="wpBtn" data-redit="${u._i}" style="font-size:11px; padding:3px 9px">編集</button>
       </div>
       <table style="width:100%; font-size:12.5px; margin-top:7px; border-collapse:collapse">
         <tr><td style="color:#7a8b80; width:8em; padding:2px 0">受給者証番号</td><td><b style="font-size:14px; letter-spacing:.5px">${hkEsc(u.no)}</b></td></tr>
@@ -3592,9 +3713,12 @@ function riyouRenderSearch(q){
       ${(riyouFHome||riyouFKubun)?'<button class="wpBtn" id="riyouFClear" style="font-size:11px">絞り込みを外す</button>':''}
     </div>
     <div style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap">
+      <button class="wpBtn primary" id="riyouAdd">＋ 利用者を追加</button>
       <button class="wpBtn" id="riyouReload">📗 Excelから最新に更新</button>
       ${aiosBookBtn('riyouBook')}
+      <button class="wpBtn" id="riyouExport">📤 Excelへ書き出す（別名）</button>
       <input type="file" id="riyouReFile" accept=".xlsx,.xlsm" hidden>
+      <input type="file" id="riyouExpFile" accept=".xlsx,.xlsm" hidden>
     </div>
     ${alertHtml}
     <div class="wpNote" style="margin-bottom:8px">在籍 <b>${list.length}名</b>${
@@ -3605,6 +3729,35 @@ function riyouRenderSearch(q){
   setR('riyouFHome', v=>riyouFHome=v); setR('riyouFKubun', v=>riyouFKubun=v);
   const rfc=document.getElementById('riyouFClear');
   if(rfc) rfc.addEventListener('click',()=>{ riyouFHome=riyouFKubun=''; riyouRenderSearch(q); });
+  b.querySelectorAll('[data-redit]').forEach(x=>x.addEventListener('click',()=>riyouRenderForm(+x.dataset.redit, q)));
+  document.getElementById('riyouAdd').addEventListener('click', ()=>riyouRenderForm(-1, q));
+  const rexp=document.getElementById('riyouExport');
+  if(rexp) rexp.addEventListener('click', async ()=>{
+    if(!(riyouData||[]).length){ alert('先に受給者証データを取り込んでください。'); return; }
+    try{
+      let bytes=null, fname='受給者証.xlsx';
+      const f = await aiosBookFile(true);
+      if(f){ bytes=new Uint8Array(await f.arrayBuffer()); fname=f.name; }
+      else {
+        const picked = await new Promise(res=>{
+          const inp=document.getElementById('riyouExpFile');
+          inp.onchange=function(){ const x=this.files[0]; this.value=''; res(x||null); };
+          inp.click();
+        });
+        if(!picked) return;
+        bytes=new Uint8Array(await picked.arrayBuffer()); fname=picked.name;
+      }
+      if(typeof XLSX==='undefined') throw new Error('Excelライブラリを読み込めませんでした');
+      const wb = XLSX.read(bytes,{type:'array', cellDates:true});
+      const sheet = await xlsChoose(b, wb, XLS_RIYOU);
+      if(!sheet){ riyouRenderSearch(q); return; }
+      const loc = riyouLocate(wb, sheet);
+      const diff = riyouDiff(loc, riyouData);
+      aiosExportConfirm(diff, bytes, sheet, fname, {
+        bodyId:'riyouBody', back:()=>riyouRenderSearch(q), tag:'利用者AI', unit:'方',
+        notes:'<b>ホームの欄は書き出しません</b>（Excelではまとまりの先頭だけに書く形のため）。年齢・数式のセルも書き換えません。'});
+    }catch(e){ if(e.name!=='AbortError') alert('書き出せませんでした：'+e.message); riyouRenderSearch(q); }
+  });
   riyouBindAtt(b, q);
   const qi=document.getElementById('riyouQ');
   aiosBindSearch(qi, v=>riyouRenderSearch(v));
@@ -4710,8 +4863,8 @@ async function jinWriteBook(bytes, sheetName, changes){
 
 
 // 書き出す前に「どこが変わるか」を見てもらう画面
-function jinExportConfirm(diff, loc, bytes, sheet, fname){
-  const b=document.getElementById('jinBody');
+function aiosExportConfirm(diff, bytes, sheet, fname, opt){
+  const b=document.getElementById(opt.bodyId||'jinBody');
   const g={}; diff.changes.forEach(c=>(g[c.name]=g[c.name]||[]).push(c));
   const people=Object.keys(g);
   const cell = v => v==='' ? '<span style="color:#b04a3a">（空にします）</span>' : hkEsc(v);
@@ -4734,12 +4887,10 @@ function jinExportConfirm(diff, loc, bytes, sheet, fname){
     <div class="wpNote" style="margin-bottom:10px">
       元のファイル：<b>${hkEsc(fname)}</b>／シート：<b>${hkEsc(sheet)}</b><br>
       <b>原本は変更しません。</b>同じ内容の新しいファイルを作り、変わったセルだけ書き換えます。<br>
-      <small>罫線・列幅・数式・ほかのシートはそのままです。
-      <b>個人番号（マイナンバー）の列はさわりません。</b>
-      年齢・在籍期間・数式のセルも書き換えません。</small></div>
-    ${note('⚠','Excelに行がないので書き出さない人', diff.notInExcel, '; background:#fbf7ec; border-color:#e6cfa5')}
+      <small>罫線・列幅・数式・ほかのシートはそのままです。${opt.notes||''}</small></div>
+    ${note('⚠','Excelに行がないので書き出さない'+(opt.unit||'人')+'', diff.notInExcel, '; background:#fbf7ec; border-color:#e6cfa5')}
     ${note('ℹ','Excelに対応する列がない資格', diff.noColumn)}
-    ${note('ℹ','画面に無いがExcelに残っている人（そのままにします）', diff.onlyExcel)}
+    ${note('ℹ','画面に無いがExcelに残っている'+(opt.unit||'人')+'（そのままにします）', diff.onlyExcel)}
     ${diff.changes.length
       ? `<div class="wpNote" style="margin-bottom:8px">変更するところ：<b>${diff.changes.length}か所</b>（${people.length}名）</div>${list}`
       : '<div class="wpNote" style="background:#eef7f0">✅ Excelと画面の内容は同じです。書き出すところはありません。</div>'}
@@ -4748,8 +4899,8 @@ function jinExportConfirm(diff, loc, bytes, sheet, fname){
       <button class="wpBtn" id="jinExpNo">やめる</button>
     </div>
     <div id="jinExpMsg" style="margin-top:10px"></div>`;
-  document.getElementById('jinExpBack').addEventListener('click', jinRenderList);
-  document.getElementById('jinExpNo').addEventListener('click', jinRenderList);
+  document.getElementById('jinExpBack').addEventListener('click', ()=>opt.back());
+  document.getElementById('jinExpNo').addEventListener('click', ()=>opt.back());
   const go=document.getElementById('jinExpGo');
   if(go) go.addEventListener('click', async ()=>{
     go.disabled=true; go.textContent='書き出し中…';
@@ -4766,7 +4917,7 @@ function jinExportConfirm(diff, loc, bytes, sheet, fname){
           ${r.skipped.length?`<br><span style="font-size:11px; color:#b04a3a">書けなかったところ：${r.skipped.map(hkEsc).join('／')}</span>`:''}
           <br><small>中身をご確認のうえ、よければ原本と差し替えてください。</small></div>`;
       banner('📤 Excelを別名で書き出しました');
-      logLine(`<b>人事AI</b>：Excelへ書き出し（別名）${r.written}か所／${hkEsc(out)}`);
+      logLine(`<b>${hkEsc(opt.tag||'AI-OS')}</b>：Excelへ書き出し（別名）${r.written}か所／${hkEsc(out)}`);
     }catch(e){
       document.getElementById('jinExpMsg').innerHTML=`<p class="wpNote" style="background:#fdf3f3">⚠ ${hkEsc(e.message)}</p>`;
     }finally{ go.disabled=false; go.textContent='💾 別名で書き出す'; }
@@ -5033,7 +5184,9 @@ function jinRenderList(){
       if(!sheet){ jinRenderList(); return; }
       const loc = jinLocate(wb, sheet);
       const diff = jinDiff(loc, jinjiData);
-      jinExportConfirm(diff, loc, bytes, sheet, fname);
+      aiosExportConfirm(diff, bytes, sheet, fname, {
+        bodyId:'jinBody', back:jinRenderList, tag:'人事AI', unit:'人',
+        notes:'<b>個人番号（マイナンバー）の列はさわりません。</b>年齢・在籍期間・数式のセルも書き換えません。'});
     }catch(e){ if(e.name!=='AbortError') alert('書き出せませんでした：'+e.message); jinRenderList(); }
   });
   const bookBtn=document.getElementById('jinBook');
