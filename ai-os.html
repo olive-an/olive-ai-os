@@ -4087,6 +4087,23 @@ async function jinPersist(){
   await secSave(JINJI_KEY, jinjiData, jinjiPass);
 }
 
+// 「介護福祉士（改行）重度訪問介護従事者（改行）（基礎・追加課程）」のような書き方をほどく
+function jinSplitQuals(v){
+  const lines = String(v||'').split(/[\r\n]+/).map(t=>t.trim()).filter(Boolean);
+  const merged = [];
+  for(const L of lines){
+    if(/^[（(]/.test(L) && merged.length) merged[merged.length-1] += L;   // 「（基礎・実践）」は前の行の続き
+    else merged.push(L);
+  }
+  const out = [];
+  for(const t of merged) for(const x of t.split(/[、,]/)){
+    const s2 = x.trim();
+    if(!s2) continue;
+    if(/^(資格なし|なし|ほかなし|ほか無し|無し|特になし|未提出|—|ー|-)$/.test(s2.replace(/[\s　]/g,''))) continue;
+    out.push(s2);
+  }
+  return out;
+}
 // --- 従業員名簿Excelの取り込み（見出しの言葉から列を推測します）---
 // ★個人番号（マイナンバー）は法律上の取扱いが特に厳しいため、取り込みません。
 function jinParse(wb, sheetName){
@@ -4146,23 +4163,7 @@ function jinParse(wb, sheetName){
   const etcCols = [];
   for(let i=0;i<Math.max(H.length,(rows[hdr]||[]).length);i++) if(!used.has(i)) etcCols.push({i, label:H[i]||''});
 
-  // 「介護福祉士（改行）重度訪問介護従事者（改行）（基礎・追加課程）」のような書き方をほどく
-  const splitQuals = (v)=>{
-    const lines = String(v).split(/[\r\n]+/).map(t=>t.trim()).filter(Boolean);
-    const merged = [];
-    for(const L of lines){
-      if(/^[（(]/.test(L) && merged.length) merged[merged.length-1] += L;   // 「（基礎・実践）」は前の行の続き
-      else merged.push(L);
-    }
-    const out = [];
-    for(const t of merged) for(const x of t.split(/[、,]/)){
-      const s = x.trim();
-      if(!s) continue;
-      if(/^(資格なし|なし|ほかなし|ほか無し|無し|特になし|未提出|—|ー|-)$/.test(s.replace(/[\s　]/g,''))) continue;
-      out.push(s);
-    }
-    return out;
-  };
+  const splitQuals = jinSplitQuals;
 
   const list=[];
   for(let r=hdr+1; r<rows.length; r++){
@@ -4170,7 +4171,11 @@ function jinParse(wb, sheetName){
     const nm = c.name>=0 ? norm(row[c.name]) : '';
     if(!nm) continue;
     if(/^(合計|以上|計|小計)$/.test(nm)) continue;
-    const g = i => (i>=0 && row[i]!=null) ? String(row[i]).replace(/[\r\n]+/g,' ').trim() : '';
+    const g = i => {                       // 日付のセルは「2026-04-01」の形にそろえる
+      if(i<0 || row[i]==null) return '';
+      if(row[i] instanceof Date) return shaToYmd(row[i]);
+      return String(row[i]).replace(/[\r\n]+/g,' ').trim();
+    };
     const quals=[]; const seen=new Set();
     for(const q of qCols){
       const raw = row[q.i]; if(raw==null || String(raw).trim()==='') continue;
@@ -4534,6 +4539,240 @@ async function jinImportFromWorkbook(wb){
     logLine(`<b>人事AI</b>：⚠ ${got.skipped.map(hkEsc).join('・')}の列は<b>取り込んでいません</b>（マイナンバーは扱いが特に厳しいため）`);
 }
 
+/* =========================================================================
+   人事AI：画面で直した内容を Excel へ書き出す（★別名で保存・原本は変更しません）
+   ・元のExcelをそのまま複製し、値を入れたセルだけ書き換えます。
+     罫線・列幅・行の高さ・数式・印刷設定・ほかのシートは一切さわりません。
+   ・★個人番号（マイナンバー）の列は読みも書きもしないので、原本のまま残ります。
+   ・年齢・在籍期間・数式の入ったセルは書き換えません（Excel側の計算にまかせます）。
+   ・Excelに行がない人（画面で新しく足した人）は書き出しません。一覧でお知らせします。
+   ========================================================================= */
+// ブックの中の「どのファイルがそのシートか」を、属性の並び順に関係なく探す
+async function xlsSheetPathOf(zip){
+  const wbxml = await zip.file('xl/workbook.xml').async('string');
+  const rels  = await zip.file('xl/_rels/workbook.xml.rels').async('string');
+  return (name)=>{
+    const sm=[...wbxml.matchAll(/<sheet\b[^>]*?\/?>/g)].find(t=>{
+      const nm=t[0].match(/\bname="([^"]*)"/); return nm && nm[1]===name; });
+    if(!sm) return null;
+    const rid=(sm[0].match(/\br:id="([^"]*)"/)||[])[1]; if(!rid) return null;
+    const rm=[...rels.matchAll(/<Relationship\b[^>]*?\/?>/g)].find(t=>{
+      const id=t[0].match(/\bId="([^"]*)"/); return id && id[1]===rid; });
+    if(!rm) return null;
+    const tg=(rm[0].match(/\bTarget="([^"]*)"/)||[])[1];
+    return tg ? ('xl/'+tg.replace(/^\//,'').replace(/^xl\//,'')) : null;
+  };
+}
+// 日付 → Excelの日付の数（1900年から数えた日数）
+function xlsSerial(ymd){
+  if(!ymd) return null;
+  const d=new Date(ymd+'T00:00:00Z'); if(isNaN(d)) return null;
+  return Math.round((d.getTime() - Date.UTC(1899,11,30))/86400000);
+}
+// 書き出す項目（画面の項目 → Excelの見出し）
+const JIN_OUT = [
+  ['name','氏名','text'], ['kana','ふりがな','text'], ['sex','性別','text'],
+  ['birth','生年月日','date'], ['job','役職','text'], ['emp','常勤・非常勤','text'],
+  ['home','拠点','text'], ['zip','郵便番号','text'], ['addr','住所','text'],
+  ['tel','電話番号','text'], ['mobile','携帯電話','text'], ['mail','メールアドレス','text'],
+  ['hire','入社年月日','date'], ['kenpo','けんぽ','text'], ['ape','類人猿分類','text'],
+  ['dbl','ダブルワーク','text'],
+];
+// Excelのその列が「どの画面項目か」を、取り込みと同じ見出しの見方で決める
+function jinLocate(wb, sheetName){
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, raw:true, defval:null});
+  const norm = c => (c==null || c instanceof Date) ? '' : String(c).replace(/[\s　\n\r]/g,'');
+  const NAME_RE = /^(氏名|社員氏名|職員氏名|従業員氏名|職員名|従業員名|名前)$/;
+  let hdr=-1;
+  for(let r=0;r<Math.min(rows.length,25);r++)
+    if((rows[r]||[]).some(c=>NAME_RE.test(norm(c)))){ hdr=r; break; }
+  if(hdr<0) throw new Error('「氏名」の見出しが見つかりませんでした');
+  const H=(rows[hdr]||[]).map(norm);
+  const used=new Set();
+  H.forEach((h,i)=>{ if(h && /(個人番号|マイナンバー|ﾏｲﾅﾝﾊﾞｰ)/.test(h)) used.add(i); });   // ★さわらない
+  H.forEach((h,i)=>{ if(h && /^(年齢|在籍期間|勤続年数|勤続)$/.test(h)) used.add(i); });
+  const pick=(re)=>{ for(let i=0;i<H.length;i++){ if(used.has(i)||!H[i]) continue;
+    if(re.test(H[i])){ used.add(i); return i; } } return -1; };
+  const col = {
+    name:  pick(NAME_RE),
+    kana:  pick(/(ふりがな|フリガナ|カナ|ｶﾅ|よみ)/),
+    no:    pick(/(社員番号|職員番号|従業員番号|^No$|^列1$|^番号$)/i),
+    sex:   pick(/性別/),
+    birth: pick(/(生年月日|誕生日)/),
+    job:   pick(/(役職|職種|職名)/),
+    emp:   pick(/(常勤|雇用形態|勤務形態|雇用区分)/),
+    home:  pick(/(拠点|所属|事業所|ホーム|勤務先|配属)/),
+    zip:   pick(/郵便/),
+    addr:  pick(/住所/),
+    mobile:pick(/(携帯|ケータイ)/),
+    tel:   pick(/(電話|連絡先|TEL)/i),
+    mail:  pick(/(メール|ﾒｰﾙ|mail)/i),
+    hire:  pick(/(入社|採用|入職|雇入)/),
+    kenpo: pick(/(けんぽ|健保|健康保険|社会保険|社保)/),
+    ape:   pick(/類人猿/),
+    dbl:   pick(/(ダブルワーク|兼業|副業)/),
+  };
+  const qCols=[];
+  H.forEach((h,i)=>{ if(!used.has(i) && h && /(資格|研修|免許|健康診断|講習|聞き取り|修了)/.test(h)){
+    used.add(i); qCols.push({i, label:h, said:/聞き取り|自己申告|申告/.test(h)}); } });
+  // 行番号（Excelの行は1から）と、いまの値
+  const people=[];
+  for(let r=hdr+1;r<rows.length;r++){
+    const row=rows[r]||[];
+    const nm = col.name>=0 ? norm(row[col.name]) : '';
+    if(!nm || /^(合計|以上|計|小計)$/.test(nm)) continue;
+    people.push({row:r+1, key:nm, raw:row});
+  }
+  return {hdr, H, col, qCols, people, sheetName};
+}
+// 画面の内容と、Excelのいまの内容をくらべる
+function jinDiff(loc, list){
+  const norm = v => String(v==null?'':v).replace(/[\s　]/g,'');
+  const cur = (row, i) => {
+    if(i<0 || row[i]==null) return '';
+    const v=row[i];
+    if(v instanceof Date) return shaToYmd(v);
+    return String(v).replace(/[\r\n]+/g,' ').trim();
+  };
+  const byKey={}; loc.people.forEach(p=>byKey[p.key]=p);
+  const changes=[], notInExcel=[], noColumn=[];
+  for(const p of list){
+    const key=norm(p.name);
+    const hit=byKey[key];
+    if(!hit){ notInExcel.push(p.name); continue; }
+    for(const [k,label,type] of JIN_OUT){
+      const i=loc.col[k]; if(i===undefined || i<0) continue;
+      const before = cur(hit.raw, i);
+      const after  = String(p[k]||'').trim();
+      if(type==='date'){
+        if(norm(before)===norm(after)) continue;
+      }else{
+        if(norm(before)===norm(after)) continue;
+      }
+      changes.push({row:hit.row, colIdx:i, label:loc.H[i]||label, name:p.name,
+                    before, after, type});
+    }
+    // 資格の列（提出ずみ／聞き取り）にまとめ直す
+    const subCol = loc.qCols.find(c=>!c.said), saidCol = loc.qCols.find(c=>c.said);
+    const bucket = {};
+    for(const q of (p.quals||[])){
+      let label = q.note;
+      if(!label) label = q.file ? (subCol&&subCol.label) : (saidCol&&saidCol.label);
+      if(!label){ noColumn.push(`${p.name}：${q.name}`); continue; }
+      const c = loc.qCols.find(x=>x.label===label);
+      if(!c){ noColumn.push(`${p.name}：${q.name}`); continue; }
+      if(q.exp || q.date){ noColumn.push(`${p.name}：${q.name}（期限つき）`); }
+      (bucket[c.i]=bucket[c.i]||[]).push(q.name);
+    }
+    for(const c of loc.qCols){
+      const afterList  = bucket[c.i] || [];
+      // Excel側も、取り込みと同じ見方（「資格なし」などは無いものとして扱う）でくらべる
+      const beforeList = jinSplitQuals(String(hit.raw[c.i]==null?'':hit.raw[c.i]));
+      const key = a => a.map(x=>String(x).replace(/[\s　]/g,'')).sort().join('|');
+      if(key(beforeList)===key(afterList)) continue;
+      // 同じ資格が2つの列に書かれている場合、画面では1つにまとめているため、
+      // 片方の列が空に見えることがある。中身のある欄を空にしてしまわないようにする。
+      if(!afterList.length && beforeList.length && (p.quals||[]).length) continue;
+      changes.push({row:hit.row, colIdx:c.i, label:c.label, name:p.name,
+                    before:cur(hit.raw, c.i), after:afterList.join('\n'), type:'text'});
+    }
+  }
+  const screenKeys=new Set(list.map(p=>norm(p.name)));
+  const onlyExcel = loc.people.filter(p=>!screenKeys.has(p.key)).map(p=>p.raw[loc.col.name]);
+  return {changes, notInExcel, noColumn:[...new Set(noColumn)], onlyExcel};
+}
+// 別名のExcelを作る（元のファイルは変更しません）
+async function jinWriteBook(bytes, sheetName, changes){
+  const zip = await JSZip.loadAsync(bytes);
+  const pathOf = await xlsSheetPathOf(zip);
+  const path = pathOf(sheetName);
+  if(!path) throw new Error('シート「'+sheetName+'」が見つかりませんでした');
+  let xml = await zip.file(path).async('string');
+  let written=0; const skipped=[];
+  for(const c of changes){
+    const ref = shColLetters(c.colIdx+1) + c.row;   // 列番号は1から数える
+    if(kmHasFormula(xml, ref)){ skipped.push(`${c.name}：${c.label}（数式が入っているセル）`); continue; }
+    let ok=false;
+    if(c.type==='date'){
+      const n=xlsSerial(c.after);
+      if(n==null){ [xml, ok]=kmSetStr(xml, ref, c.after); }
+      else       { [xml, ok]=kmSetNum(xml, ref, n); }
+    }else{
+      [xml, ok]=kmSetStr(xml, ref, c.after);
+    }
+    if(ok) written++; else skipped.push(`${c.name}：${c.label}`);
+  }
+  zip.file(path, xml);
+  const blob = await zip.generateAsync({type:'blob',
+    mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  return {blob, written, skipped};
+}
+
+
+// 書き出す前に「どこが変わるか」を見てもらう画面
+function jinExportConfirm(diff, loc, bytes, sheet, fname){
+  const b=document.getElementById('jinBody');
+  const g={}; diff.changes.forEach(c=>(g[c.name]=g[c.name]||[]).push(c));
+  const people=Object.keys(g);
+  const cell = v => v==='' ? '<span style="color:#b04a3a">（空にします）</span>' : hkEsc(v);
+  const list = people.map(n=>`
+    <div style="border:1px solid var(--line); border-radius:10px; padding:8px 10px; margin-bottom:6px; background:#fff">
+      <b style="font-size:13px; color:#1f3a28">${hkEsc(n)}</b>
+      <table style="width:100%; font-size:11.5px; margin-top:4px; border-collapse:collapse">
+        ${g[n].map(c=>`<tr>
+          <td style="color:#7a8b80; width:8em; padding:2px 0; vertical-align:top">${hkEsc(c.label)}</td>
+          <td style="padding:2px 0"><span style="color:#9aa38c; text-decoration:line-through">${
+            hkEsc(String(c.before||'（空）')).replace(/\n/g,' / ')}</span>
+            　→　<b>${cell(String(c.after).replace(/\n/g,' / '))}</b></td></tr>`).join('')}
+      </table></div>`).join('');
+  const note = (icon,title,arr,extra)=> arr.length ? `
+    <div class="wpNote" style="margin-bottom:8px${extra||''}">${icon} <b>${title}：${arr.length}件</b><br>
+      <span style="font-size:11px">${arr.map(hkEsc).join('／')}</span></div>` : '';
+  b.innerHTML = `
+    <button class="wpBtn" id="jinExpBack">← 一覧にもどる</button>
+    <div style="font-weight:800; font-size:14px; color:#1f3a28; margin:10px 0 4px">📤 Excelへ書き出す（別名で保存）</div>
+    <div class="wpNote" style="margin-bottom:10px">
+      元のファイル：<b>${hkEsc(fname)}</b>／シート：<b>${hkEsc(sheet)}</b><br>
+      <b>原本は変更しません。</b>同じ内容の新しいファイルを作り、変わったセルだけ書き換えます。<br>
+      <small>罫線・列幅・数式・ほかのシートはそのままです。
+      <b>個人番号（マイナンバー）の列はさわりません。</b>
+      年齢・在籍期間・数式のセルも書き換えません。</small></div>
+    ${note('⚠','Excelに行がないので書き出さない人', diff.notInExcel, '; background:#fbf7ec; border-color:#e6cfa5')}
+    ${note('ℹ','Excelに対応する列がない資格', diff.noColumn)}
+    ${note('ℹ','画面に無いがExcelに残っている人（そのままにします）', diff.onlyExcel)}
+    ${diff.changes.length
+      ? `<div class="wpNote" style="margin-bottom:8px">変更するところ：<b>${diff.changes.length}か所</b>（${people.length}名）</div>${list}`
+      : '<div class="wpNote" style="background:#eef7f0">✅ Excelと画面の内容は同じです。書き出すところはありません。</div>'}
+    <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap">
+      <button class="wpBtn primary" id="jinExpGo" style="flex:1; padding:11px"${diff.changes.length?'':' disabled'}>💾 別名で書き出す</button>
+      <button class="wpBtn" id="jinExpNo">やめる</button>
+    </div>
+    <div id="jinExpMsg" style="margin-top:10px"></div>`;
+  document.getElementById('jinExpBack').addEventListener('click', jinRenderList);
+  document.getElementById('jinExpNo').addEventListener('click', jinRenderList);
+  const go=document.getElementById('jinExpGo');
+  if(go) go.addEventListener('click', async ()=>{
+    go.disabled=true; go.textContent='書き出し中…';
+    try{
+      const r=await jinWriteBook(bytes, sheet, diff.changes);
+      const base=fname.replace(/\.(xlsx|xlsm)$/i,'');
+      const out=`${base}_更新_${aiosStamp()}.xlsx`;
+      const res=await aiosSaveBlob(r.blob, out);
+      document.getElementById('jinExpMsg').innerHTML=`
+        <div class="wpNote" style="background:#eef7f0; border-color:#bcd9c2">
+          ✅ <b>${hkEsc(out)}</b> を書き出しました（${r.written}か所）<br>
+          <span style="font-size:11px">${res.folder?('保存先：'+hkEsc(res.folder)):'ダウンロードフォルダに保存しました'}
+          ${res.backup?('／控え：'+hkEsc(res.backup.name)):''}</span>
+          ${r.skipped.length?`<br><span style="font-size:11px; color:#b04a3a">書けなかったところ：${r.skipped.map(hkEsc).join('／')}</span>`:''}
+          <br><small>中身をご確認のうえ、よければ原本と差し替えてください。</small></div>`;
+      banner('📤 Excelを別名で書き出しました');
+      logLine(`<b>人事AI</b>：Excelへ書き出し（別名）${r.written}か所／${hkEsc(out)}`);
+    }catch(e){
+      document.getElementById('jinExpMsg').innerHTML=`<p class="wpNote" style="background:#fdf3f3">⚠ ${hkEsc(e.message)}</p>`;
+    }finally{ go.disabled=false; go.textContent='💾 別名で書き出す'; }
+  });
+}
+
 // 取り込む前に、何を読んだかを見せて「追加」か「入れ替え」かを選んでもらう
 function jinImportConfirm(bodyEl, got, sheet, have){
   return new Promise(resolve=>{
@@ -4722,10 +4961,12 @@ function jinRenderList(){
       <button class="wpBtn primary" id="jinAdd">＋ 従業員を追加</button>
       <button class="wpBtn" id="jinImport">📗 従業員名簿Excelから取り込む</button>
       ${aiosBookBtn('jinBook')}
+      <button class="wpBtn" id="jinExport">📤 Excelへ書き出す（別名）</button>
       <span class="grow" style="flex:1"></span>
       <button class="wpBtn" id="jinLock" style="font-size:11px">🔒 閉じる</button>
       <button class="wpBtn" id="jinClear" style="font-size:11px; color:#d0503f; border-color:#e6b3ab">🗑 全部消す</button>
       <input type="file" id="jinFile" accept=".xlsx,.xlsm" hidden>
+      <input type="file" id="jinExpFile" accept=".xlsx,.xlsm" hidden>
     </div>
     ${alerts.length ? `<div class="wpNote" style="background:#fdf3f3; border-color:#e6b3ab; margin-bottom:10px">
         ⚠ <b>期限が近い資格・研修（90日以内）</b><br>${alerts.map(a=>
@@ -4769,6 +5010,31 @@ function jinRenderList(){
       const wb=XLSX.read(await f.arrayBuffer(),{type:'array', cellDates:true});
       await jinImportFromWorkbook(wb);
     }catch(e){ alert('取り込みエラー：'+e.message); }
+  });
+  const expBtn=document.getElementById('jinExport');
+  if(expBtn) expBtn.addEventListener('click', async ()=>{
+    if(!(jinjiData||[]).length){ alert('先に従業員名簿を取り込んでください。'); return; }
+    try{
+      let wb=null, bytes=null, fname='従業員名簿.xlsx';
+      const f = await aiosBookFile(true);                 // 覚えているExcelがあればそれを使う
+      if(f){ bytes=new Uint8Array(await f.arrayBuffer()); fname=f.name; }
+      else {
+        const picked = await new Promise(res=>{
+          const inp=document.getElementById('jinExpFile');
+          inp.onchange=function(){ const x=this.files[0]; this.value=''; res(x||null); };
+          inp.click();
+        });
+        if(!picked) return;
+        bytes=new Uint8Array(await picked.arrayBuffer()); fname=picked.name;
+      }
+      if(typeof XLSX==='undefined') throw new Error('Excelライブラリを読み込めませんでした');
+      wb = XLSX.read(bytes,{type:'array', cellDates:true});
+      const sheet = await xlsChoose(document.getElementById('jinBody'), wb, XLS_JIN);
+      if(!sheet){ jinRenderList(); return; }
+      const loc = jinLocate(wb, sheet);
+      const diff = jinDiff(loc, jinjiData);
+      jinExportConfirm(diff, loc, bytes, sheet, fname);
+    }catch(e){ if(e.name!=='AbortError') alert('書き出せませんでした：'+e.message); jinRenderList(); }
   });
   const bookBtn=document.getElementById('jinBook');
   if(bookBtn) bookBtn.addEventListener('click', async ()=>{
