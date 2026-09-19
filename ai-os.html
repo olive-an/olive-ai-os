@@ -1191,14 +1191,29 @@ function banner(text){
 }
 function pickLine(id, i){ if(!S[id]) return ''; const L=S[id].def.lines; return L[Math.min(i,L.length-1)]; }
 
+// 指示に「中身のある業務」が含まれていたら、その画面を開く
+function openRealPanel(kind){
+  if(kind==='shift')        openShiftPanel();
+  else if(kind==='henkou')  openHenkouPanel();
+  else if(kind==='keikaku') openKeikakuPanel();
+  else if(kind==='f12')     openF12Panel();
+  else if(kind==='riyou')   openRiyouPanel();
+  else if(kind==='sharyou') openSharyouPanel();
+  else return false;
+  return true;
+}
 /* ---- 業務ワークフロー実行 ---- */
 function resolvePlan(text){
   for(const p of PLANS){ if(p.key.some(k=>text.includes(k))) return p; }
   return null;
 }
 async function runWorkflow(text){
-  if(busy) return;
   const plan = resolvePlan(text);
+  if(busy){                                  // ほかの指示を処理中
+    if(plan && plan.real){ openRealPanel(plan.real); return; }   // 画面だけ先に開く
+    banner('いま別の指示を処理しています。少し待ってからもう一度お願いします');
+    return;
+  }
   if(!plan){
     // 分からないときは画面上で聞き返す
     banner('🙏「変更届」「給与」「請求」「工房売上」など、もう一度お願いします');
@@ -1208,6 +1223,8 @@ async function runWorkflow(text){
   busy = true;
   banner(plan.title);
   logLine(`👑 <b>社長</b>：「${text}」`);
+  // ★中身のある業務は、AI社員の動きを待たずにすぐ画面を開く（動きは裏で続きます）
+  if(plan.real) openRealPanel(plan.real);
 
   let prev = null;
   for(let i=0;i<plan.flow.length;i++){
@@ -1230,14 +1247,6 @@ async function runWorkflow(text){
   addDoc(plan);
   banner('✅ 完成しました');
   logLine(`📄 成果物「<b>${plan.output}</b>」が完成`);
-
-  // ★中身のある業務は、ここで本物の処理パネルを開く
-  if(plan.real === 'shift'){ openShiftPanel(); }
-  else if(plan.real === 'henkou'){ openHenkouPanel(); }
-  else if(plan.real === 'keikaku'){ openKeikakuPanel(); }
-  else if(plan.real === 'f12'){ openF12Panel(); }
-  else if(plan.real === 'riyou'){ openRiyouPanel(); }
-  else if(plan.real === 'sharyou'){ openSharyouPanel(); }
 
   await wait(700);
 
@@ -1267,14 +1276,7 @@ function addDoc(plan){
   d.innerHTML = `<span class="ic">${plan.icon}</span>
      <div><div>${plan.output}${openable}</div><small>${plan.outNote}</small></div>`;
   if(plan.real){ d.style.cursor='pointer'; d.title='クリックで開く';
-    d.addEventListener('click', ()=>{
-      if(plan.real==='shift') openShiftPanel();
-      else if(plan.real==='henkou') openHenkouPanel();
-      else if(plan.real==='keikaku') openKeikakuPanel();
-      else if(plan.real==='f12') openF12Panel();
-      else if(plan.real==='riyou') openRiyouPanel();
-      else if(plan.real==='sharyou') openSharyouPanel();
-    }); }
+    d.addEventListener('click', ()=>openRealPanel(plan.real)); }
   tray.prepend(d);
   while(tray.children.length>6) tray.lastChild.remove();
 }
@@ -1487,47 +1489,121 @@ function shNormSym(s){
   if(/[△▲]/.test(s)) return "△";
   return "";
 }
+// 名前として扱わない行（案内文・区切り線・日付だけの行）かどうか
+function shIsNameLike(s){
+  if(!s) return false;
+  if(s.length>30) return false;
+  if(/\d+\s*\/\s*\d+/.test(s)) return false;        // 日付を含む行は名前ではない
+  if(/^[―ー\-—=＝_＿\s　]+$/.test(s)) return false;  // 区切り線
+  if(/^(期間|シフト希望|お名前|氏名)$/.test(s)) return false;
+  return true;
+}
+// 「お名前」以降だけを取り出して、案内文・記号を落とす
+function shCleanNamePart(s){
+  return String(s)
+    .replace(/.*(?:お名前|氏名)/,"")
+    .replace(/をご記入ください|ご記入ください|を記入してください|を教えてください|をお書きください/g,"")
+    .replace(/[）)（(：:＊*📝【】🍀🌼🌸🕊️🌿]/g,"")
+    .trim();
+}
 function shExtractName(block){
+  const lines = block.split(/\n/).map(x=>x.trim()).filter(Boolean);
+  // ① 【シフト希望】フルネーム（行末まで）
   let m = block.match(/【[^】]*】\s*([^\n\r]{1,30})/);
   if(m){ const n=m[1].trim(); if(n && !/^[\d\/]/.test(n)) return n; }
-  m = block.match(/[）\)]\s*([^\n\r（()]{1,30})/);
-  if(m && m[1].trim().length>0) return m[1].trim();
-  m = block.match(/(?:お名前[^\n]*?ください|お名前)[　\s]+([^\n\r]+)/);
-  if(m) return m[1].trim();
-  const first = block.split(/\n/).map(x=>x.trim()).filter(Boolean)[0] || "";
-  if(first && !/\d+\/\d+/.test(first) && first.length<=30)
-    return first.replace(/[）\)（\(🍀🌼🌸🕊️🌿📝【】]/g,"").trim();
+  // ② 「お名前」「氏名」を含む行から取り出す
+  //    （お名前）田中　太郎 ／ 📝お名前をご記入ください　佐藤　花子 の両方に対応。
+  //    ※以前は「）の後ろ」を無条件に名前としていたため、
+  //      「9/16（土）〇 9/17…」の（土）に反応して記号を名前と誤認していた。
+  for(let i=0;i<lines.length;i++){
+    if(!/(?:お名前|氏名)/.test(lines[i])) continue;
+    const n = shCleanNamePart(lines[i]);
+    if(shIsNameLike(n)) return n;
+    for(let j=i+1;j<lines.length;j++){            // 同じ行に無ければ次の行を見る
+      const nx = lines[j].replace(/[）)（(：:＊*📝【】🍀🌼🌸🕊️🌿]/g,"").trim();
+      if(shIsNameLike(nx)) return nx;
+      break;
+    }
+  }
+  // ③ 最初の行
+  const first = (lines[0]||"").replace(/[）\)（\(🍀🌼🌸🕊️🌿📝【】]/g,"").trim();
+  if(shIsNameLike(first)) return first;
   return "（不明）";
 }
-function shExtractMarks(block, y){
+// 集計期間内の「M/D」→「YYYY-MM-DD」の対応表を作る。
+// 12/16〜1/15 のように年をまたぐ期間でも、1月分が正しく翌年になる。
+function shDateResolver(start, end){
+  const map={};
+  for(let d=new Date(start); d<=end; d.setDate(d.getDate()+1)){
+    const k = (d.getMonth()+1)+"/"+d.getDate();
+    if(map[k]==null) map[k]=shFmt(d);
+  }
+  return map;
+}
+function shExtractMarks(block, resolver){
   const res = {};
-  // 記号のあとに続く 💬コメント も拾う。末尾は「次の日付／改行／文末」の手前で止める
-  // （1行に複数日をスペース区切りで書いても全日拾えるように堅牢化）
+  // 記号と💬コメントを同時に抽出。末尾は「次の日付の手前」または「行末」まで。
+  // ※以前は行末まで貪欲に取り込んでいたため、
+  //   「9/16○ 9/17△ 9/18×」のように1行に複数日を書くと先頭の1日しか読めなかった。
   const re = /(\d{1,2})\/(\d{1,2})\s*(?:[（(][^）)]*[）)])?\s*([○◯⭕✅◎〇×✕✖❌☓✗△▲])([^\n\r]*?)(?=\s*\d{1,2}\/\d{1,2}|[\r\n]|$)/g;
   let m;
   while((m = re.exec(block)) !== null){
-    const sym = shNormSym(m[3]); if(!sym) continue;
-    const key = `${y}-${("0"+parseInt(m[1])).slice(-2)}-${("0"+parseInt(m[2])).slice(-2)}`;
-    res[key] = sym;
-    const cmt = (m[4]||"").match(/💬(.+)/);
-    if(cmt) res[key+"__comment"] = cmt[1].trim();
+    const sym = shNormSym(m[3]);
+    if(sym){
+      const key = resolver[parseInt(m[1])+"/"+parseInt(m[2])];
+      if(key){                                   // 集計期間の外の日付は取り込まない
+        res[key] = sym;
+        const cmt = (m[4]||"").match(/💬(.+)/);
+        if(cmt) res[key+"__comment"] = cmt[1].trim();
+      }
+    }
+    if(re.lastIndex === m.index) re.lastIndex++;  // 空回り防止
   }
   return res;
 }
-function shParse(raw, year){
-  const blocks = raw.split(/\n\s*\n+/).map(x=>x.trim()).filter(Boolean);
-  const byName = {};
+// 「送信：2026/9/18（金）PM 10:05」のような行から送信日時を読む
+function shParseStamp(text){
+  const m = /送信[：:]\s*(\d{4})\/(\d{1,2})\/(\d{1,2})(?:（.）)?\s*(AM|PM)?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(String(text||""));
+  if(!m) return null;
+  let h = Number(m[5]);
+  if(m[4]==="AM" && h===12) h=0;
+  if(m[4]==="PM" && h<12) h+=12;
+  const d = new Date(Number(m[1]), Number(m[2])-1, Number(m[3]), h, Number(m[6]), Number(m[7]||0));
+  return isNaN(d.getTime()) ? null : d;
+}
+// 貼り付けた本文を、対象期間に合わせて読み取る
+// 戻り値：{byName, counts（人ごとの提出回数）, stamps（採用した提出の送信日時）}
+function shParse(raw, start, end){
+  const resolver = shDateResolver(start, end);
+  const blocks = String(raw||"").split(/\n\s*\n+/).map(x=>x.trim()).filter(Boolean);
+  const byName={}, counts={}, stamps={};
   for(const b of blocks){
     const name  = shExtractName(b);
-    const marks = shExtractMarks(b, year);
-    if(Object.keys(marks).length === 0) continue;
-    byName[name] = Object.assign(byName[name]||{}, marks);
+    const marks = shExtractMarks(b, resolver);
+    const days  = Object.keys(marks).filter(k=>!k.endsWith('__comment'));
+    if(days.length === 0) continue;
+    counts[name] = (counts[name]||0) + 1;
+    const t = shParseStamp(b);
+    // 同じ人が出し直している場合は、送信日時が新しい方だけを採用する。
+    // 日時が分からない古い提出は、後に出てきた方を採用する（従来どおり）。
+    if(byName[name]){
+      const prev = stamps[name];
+      if(prev && t && t.getTime() < prev.getTime()) continue;
+    }
+    // 前の提出は残さず入れ替える。○を空欄に直した場合も正しく反映させるため。
+    byName[name] = marks;
+    stamps[name] = t;
   }
-  return byName;
+  return {byName, counts, stamps};
 }
 
 // ---- 日付ユーティリティ ----
 function shFmt(d){ return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2); }
+function shStampText(d){
+  if(!d) return '';
+  const h=d.getHours(), ap=h<12?'AM':'PM', h12=(h%12)||12;
+  return `${d.getMonth()+1}/${d.getDate()} ${ap} ${h12}:${("0"+d.getMinutes()).slice(-2)}`;
+}
 function shParseYMD(s){ const [y,m,d]=s.split("-").map(Number); return new Date(y,m-1,d); }
 function shDefaultRange(){
   const t=new Date(), y=t.getFullYear(), m=t.getMonth();
@@ -1549,20 +1625,28 @@ document.getElementById('workPanel').addEventListener('click', ev=>{ if(ev.targe
 // ---- データ元ボタン ----
 document.getElementById('wpSample').addEventListener('click', ()=>{
   const s = shParseYMD(document.getElementById('wpStart').value);
-  const m = s.getMonth()+1, d = s.getDate();
+  const e = shParseYMD(document.getElementById('wpEnd').value);
+  // 対象期間ぜんぶにサンプルを作る（月をまたいでも、年をまたいでも正しい日付になる）
+  const days=[]; for(let d=new Date(s); d<=e; d.setDate(d.getDate()+1)) days.push(new Date(d));
+  const md = d => (d.getMonth()+1)+"/"+d.getDate();
+  // 人ごとの出し方のくせ（曜日や周期で ○△× を変えて、それらしい希望表にする）
+  const mk = (pat, cmt) => days.map((d,i)=>{
+    const sym = pat(d, i);
+    return md(d)+sym+((cmt && i===0) ? cmt : '');
+  }).join(' ');
   // ※ 氏名はテンプレート「シフト集計」の名簿と一致させてあります（Excel反映を確認できます）
   document.getElementById('wpPaste').value =
 `【シフト希望】山田　太郎
-${m}/${d}○ ${m}/${d+1}× ${m}/${d+2}○ ${m}/${d+3}△ ${m}/${d+4}○
+${mk((d,i)=> d.getDay()===0 ? '×' : (i%5===3 ? '△' : '○'))}
 
 （お名前）高橋　次郎
-${m}/${d}⭕💬午前のみ ${m}/${d+1}❌ ${m}/${d+2}⭕ ${m}/${d+3}△ ${m}/${d+4}❌
+${mk((d,i)=> (d.getDay()===6||d.getDay()===0) ? '⭕' : (i%3===1 ? '❌' : '△'), '💬午前のみ')}
 
 渡辺　花子
-${m}/${d}〇 ${m}/${d+1}○ ${m}/${d+2}× ${m}/${d+3}○ ${m}/${d+4}○
+${mk((d,i)=> i%4===2 ? '×' : '〇')}
 
 田中　美咲
-${m}/${d}× ${m}/${d+1}○ ${m}/${d+2}○ ${m}/${d+3}○ ${m}/${d+4}△`;
+${mk((d,i)=> d.getDay()===1 ? '×' : (i%6===0 ? '△' : '○'))}`;
   shRun();
 });
 document.getElementById('wpGAS').addEventListener('click', async ()=>{
@@ -1607,9 +1691,18 @@ function shRun(){
   if(!raw){ out.innerHTML = '<p class="wpNote">データがありません。「サンプルで試す」か「フォームから取得」を押すか、テキストを貼り付けてください。</p>'; return; }
   if(end < start){ out.innerHTML = '<p class="wpNote">期間が逆になっています。開始日と終了日を確認してください。</p>'; return; }
 
-  const byName = shParse(raw, start.getFullYear());
+  const parsed = shParse(raw, start, end);
+  const byName = parsed.byName;
   const names = Object.keys(byName);
-  if(names.length === 0){ out.innerHTML = '<p class="wpNote">氏名やシフト記号（○△×）を読み取れませんでした。書式をご確認ください。</p>'; return; }
+  if(names.length === 0){
+    out.innerHTML = `<p class="wpNote">有効なデータがありませんでした。<br>
+      上の対象期間（${start.getMonth()+1}/${start.getDate()}〜${end.getMonth()+1}/${end.getDate()}）と、
+      貼り付けた本文の日付が合っているかご確認ください。<br>
+      <small>※期間の外の日付は、取り違えを防ぐため読み飛ばします。</small></p>`;
+    return;
+  }
+  // 出し直し（同じ人から2回以上届いている分）は、送信日時の新しい方を採用
+  const redo = names.filter(n=>(parsed.counts[n]||0) > 1);
 
   // 日付ごとに集計
   const rows = [];
@@ -1633,9 +1726,16 @@ function shRun(){
 
   // 個人別の出勤可能日数
   const perName = names.map(n=>{
-    let o=0, s=0;
-    for(const k in byName[n]){ if(byName[n][k]==='○') o++; else if(byName[n][k]==='△') s++; }
-    return { name:n, o, s };
+    let o=0, s=0; const cmts=[];
+    for(const k in byName[n]){
+      if(k.endsWith('__comment')){
+        const d=k.replace('__comment','').split('-');
+        cmts.push(`${+d[1]}/${+d[2]}：${byName[n][k]}`);
+      }
+      else if(byName[n][k]==='○') o++;
+      else if(byName[n][k]==='△') s++;
+    }
+    return { name:n, o, s, cmts, stamp:parsed.stamps[n], times:parsed.counts[n]||1 };
   }).sort((a,b)=> b.o - a.o);
 
   // 描画
@@ -1658,9 +1758,19 @@ function shRun(){
   html += `</tbody></table></div>`;
 
   html += `<ul class="names">` +
-    perName.map(p=>`<li><b>${p.name}</b> ○${p.o}日${p.s?` / △${p.s}日`:''}</li>`).join('') +
-    `</ul>`;
+    perName.map(p=>`<li><b>${p.name}</b> ○${p.o}日${p.s?` / △${p.s}日`:''}`
+      + `<span style="font-size:10.5px; color:#7a8b80">`
+      + (p.stamp ? `　${shStampText(p.stamp)}に提出` : '　提出日時なし')
+      + (p.times>1 ? `（${p.times}回中の最新）` : '') + `</span>`
+      + (p.cmts.length ? `<div style="font-size:11px; color:#5a6f60">💬 ${p.cmts.map(hkEsc).join(' ／ ')}</div>` : '')
+      + `</li>`).join('') + `</ul>`;
 
+  if(redo.length){
+    html += `<div class="wpNote" style="background:#fbf7ec; border-color:#e6cfa5">
+      🔁 <b>出し直しがありました：${redo.length}名</b><br>
+      ${redo.map(n=>`${n}（${parsed.counts[n]}回）${parsed.stamps[n]?'　採用：'+shStampText(parsed.stamps[n]):''}`).join('<br>')}
+      <br><small>※同じ方から複数届いている場合は、<b>送信日時がいちばん新しいもの</b>だけを集計しています。</small></div>`;
+  }
   html += `<div class="wpNote">
      ⚠ の日は「出勤可(○)」が最低人数（${minStaff}名）に足りていません。
      <br>この結果はブラウザ内で集計したものです（会社のデータは変更しません）。
@@ -1668,9 +1778,17 @@ function shRun(){
      <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
        <button class="wpBtn primary" id="wpXlsx">📊 このシフト集計Excelに反映</button>
        <button class="wpBtn" id="wpCsv">CSVダウンロード</button>
+       <span class="grow" style="flex:1"></span>
+       <button class="wpBtn" id="wpReset" style="font-size:11px">🧹 集計をリセット</button>
      </div>`;
 
   out.innerHTML = html;
+  document.getElementById('wpReset').addEventListener('click', ()=>{
+    if(!confirm('貼り付けた内容と集計結果を消して、最初からやり直します。よろしいですか？')) return;
+    document.getElementById('wpPaste').value='';
+    out.innerHTML='<p class="wpNote">集計をリセットしました。「サンプルで試す」か「フォームから取得」を押すか、テキストを貼り付けてください。</p>';
+    shLastRows=null; window._aiosAgg=null; shGasCache=null;
+  });
   document.getElementById('wpCsv').addEventListener('click', shDownloadCsv);
   document.getElementById('wpXlsx').addEventListener('click', ()=>{
     if(typeof JSZip === 'undefined'){
@@ -1692,6 +1810,27 @@ document.getElementById('wpTmpl').addEventListener('change', function(){
   if(f) shExportExcel(f);
 });
 
+// シフト集計の様式で「ここから下はホームの割り当て欄」を示す見出し
+const SH_HOME_LABELS = ["西九条","九条","酉島","春日出","新郡山","出来島","研修"];
+// フルネームから苗字だけを取り出す（テンプレのA列は苗字だけで揃っているため）
+// ★苗字の一覧はこのファイルに書かず、テンプレのA列（＝会社の名簿）から読み取ります。
+//   そうすれば3文字以上の苗字も正しく切れ、公開ファイルに氏名を持たせずに済みます。
+function shSurname(fullName, roster){
+  const t = String(fullName==null?"":fullName).trim();
+  if(!t) return t;
+  // ①名簿にある苗字で始まっていれば、それを使う（いちばん長く一致するもの）
+  let best='';
+  for(const nm of (roster||[])){
+    const n=String(nm).replace(/[\s　]/g,'');
+    if(n && n.length>=2 && t.replace(/[\s　]/g,'').indexOf(n)===0 && n.length>best.length) best=n;
+  }
+  if(best) return best;
+  // ②「山田　太郎」のように姓と名がスペースで分かれている
+  const head = t.split(/[\s　]+/)[0];
+  if(head && head !== t) return head;
+  if(!/[一-鿿]/.test(t)) return t;                  // ③漢字を含まない（カタカナ等）は切らない
+  return t.length>2 ? t.slice(0,2) : t;            // ④それ以外は先頭2文字
+}
 /* ---- 集計結果を「シフト集計」Excelテンプレートに反映して出力 ----
    ★元フォーマット完全維持：SheetJSでは書き出さず、JSZipでシートXMLの
    「該当セルの値だけ」を書き換える（罫線・結合・列幅・行高・印刷設定に一切触れない）。
@@ -1726,7 +1865,19 @@ function shXmlSetCell(xml, ref, val, formula){
   if(sc) return xml.replace(scRe, '<row r="'+rowN+'"'+sc[1]+'>'+cellStr(attrs)+'</row>');
   const rowRe=new RegExp('<row r="'+rowN+'"([^>]*)>([\\s\\S]*?)</row>');
   const rm=xml.match(rowRe);
-  if(!rm) return xml;                                                                  // 行そのものが無ければ書かない（構造維持）
+  if(!rm){
+    // 行そのものがXMLに無い（まったくの空行）ときは、行を作って正しい位置に差し込む
+    const newRow='<row r="'+rowN+'">'+cellStr(attrs)+'</row>';
+    const sdRe=/<sheetData\b[^>]*>([\s\S]*?)<\/sheetData>/;
+    const sd=xml.match(sdRe);
+    if(!sd) return xml.replace(/<sheetData\s*\/>/, '<sheetData>'+newRow+'</sheetData>');
+    const openTag=sd[0].slice(0, sd[0].indexOf('>')+1);
+    const body=sd[1];
+    let at=-1;
+    for(const r of body.matchAll(/<row\b[^>]*\br="(\d+)"/g)){ if(+r[1] > +rowN){ at=r.index; break; } }
+    const merged = at>=0 ? body.slice(0,at)+newRow+body.slice(at) : body+newRow;
+    return xml.replace(sdRe, ()=> openTag+merged+'</sheetData>');
+  }
   const parts=[...rm[2].matchAll(/<c r="([A-Z]+)\d+"[^>]*?(?:\/>|>[\s\S]*?<\/c>)/g)];
   let body='', done=false;
   for(const p of parts){ if(!done && shColIdx(p[1])>colN){ body+=cellStr(attrs); done=true; } body+=p[0]; }
@@ -1805,10 +1956,36 @@ async function shExportExcel(file){
       return null;
     };
 
+    /* A列に氏名が無い人の置き場所。
+       表の中の「何も入っていない行」を上から順に使う。
+       A列が空でも、ほかの列に何か入っている行は、その人の行かもしれないので使わない。
+       ホーム名（西九条〜出来島）や「研修」が始まる行から下は割り当て欄なので触らない。 */
+    const rowHas={}, colAText={};
+    let maxRow=hdrRow;
+    cells.forEach(c=>{
+      if(c.row>maxRow) maxRow=c.row;
+      if(c.txt!=null && String(c.txt).trim()!=='') rowHas[c.row]=true;
+      if(c.col===1 && c.txt) colAText[c.row]=String(c.txt).trim();
+    });
+    let limitRow=maxRow+1;
+    for(let r=hdrRow+1;r<=maxRow;r++){
+      if(colAText[r] && SH_HOME_LABELS.indexOf(colAText[r])>=0){ limitRow=r; break; }
+    }
+    const freeRows=[];
+    for(let r=hdrRow+1;r<limitRow;r++) if(!rowHas[r]) freeRows.push(r);
+    let freePos=0; const added=[], noRoom=[];
+
     let written=0; const skipped=[], ambiguous=[], cmtMiss=[], noDateCol=new Set();
     for(const csvName of Object.keys(agg.byName)){
-      const key=resolve(csvName);
-      if(!key){ skipped.push(csvName); continue; }
+      let key=resolve(csvName);
+      if(!key){
+        // 名簿に無い人は、表の中の空き行に苗字を書いて、その行に記入する
+        if(freePos >= freeRows.length){ noRoom.push(csvName); continue; }
+        const R2=freeRows[freePos++], sur=shSurname(csvName, tmplNames);
+        xml=shXmlSetCell(xml, 'A'+R2, sur);
+        nameRows[sur]=[R2]; key=sur;
+        added.push((sur===csvName?csvName:`${sur}（${csvName}）`)+`＝${R2}行目`);
+      }
       const rowsFor=nameRows[key], R=rowsFor[0];
       if(rowsFor.length>1) ambiguous.push(csvName+'（「'+key+'」が'+rowsFor.length+'行→'+R+'行目に記入）');
       const marks=agg.byName[csvName], commentParts=[];
@@ -1849,6 +2026,9 @@ async function shExportExcel(file){
     await aiosDeliver(blob, `シフト集計_反映済_${shFmt(agg.dates[0])}.xlsx`, 'wpResult', null);
 
     const notes=[];
+    if(added.length)   notes.push('名簿に無い方を空き行に追加：'+added.join('、'));
+    if(noRoom.length)  notes.push('空き行が足りず記入できなかった方：'+noRoom.join('、')
+                                  +'（テンプレの表に空き行を作ってから、もう一度お試しください）');
     if(skipped.length)   notes.push('照合できなかった名前：'+skipped.join('、')+'（テンプレA列の名簿と氏名を合わせてください）');
     if(ambiguous.length) notes.push('同じ名字が複数行にあり要確認：'+ambiguous.join('、'));
     if(cmtMiss.length)   notes.push('コメント欄（右ブロック）に氏名が見つからず未記入：'+cmtMiss.join('、'));
