@@ -5778,6 +5778,129 @@ const POCHI_LINKS = [
   ['🐶 ポチパス ライフを開く',   'https://pochipass.com/',            'ログイン画面が開きます'],
   ['❓ サポートページ',          'https://pochipass.com/kanri079.php','操作マニュアル(PDF)・FAQ・問い合わせ先'],
 ];
+/* -------------------------------------------------------------------------
+   ブラウザ拡張機能との連携
+   ポチパスには公開APIが無いので、「すでにポチパスにログインしているブラウザ」で
+   動く拡張機能へ、AI-OS から入力用のデータを渡します。入力は拡張機能が行います。
+   ★ポチパスのIDやパスワードは、AI-OSでは一切あつかいません。
+   つなぎ方は2通り。拡張機能がどちらでも受け取れるよう、両方へ同時に送ります。
+     (A) ページからの postMessage … 拡張機能IDは不要。
+         manifest の content_scripts にこのページのURLを足すだけで受け取れます。
+     (B) chrome.runtime.sendMessage … 拡張機能IDが必要。
+         manifest の externally_connectable にこのページのURLを書くと使えます。
+   ------------------------------------------------------------------------- */
+const AIOS_EXT_KEY = 'aiosExtIdV1';
+const aiosExtId    = ()=> { try{ return localStorage.getItem(AIOS_EXT_KEY)||''; }catch(e){ return ''; } };
+const aiosExtSetId = v => { try{ v ? localStorage.setItem(AIOS_EXT_KEY, v) : localStorage.removeItem(AIOS_EXT_KEY); }catch(e){} };
+
+// 拡張機能へ送る。返事が来れば {ok:true}、来なければ待ち時間ののち {ok:false}
+function aiosExtSend(action, payload, ms){
+  const msg = {source:'olive-ai-os', v:1, action, payload, at:new Date().toISOString()};
+  return new Promise(resolve=>{
+    let done=false;
+    const finish = r =>{ if(done) return; done=true; window.removeEventListener('message', onMsg); resolve(r); };
+    const onMsg = ev =>{
+      if(ev.source !== window) return;
+      const d = ev.data;
+      if(d && d.source==='olive-ai-os-ext' && (d.reply===action || d.reply==='*'))
+        finish({ok:true, via:'ページ経由', data:d.data});
+    };
+    window.addEventListener('message', onMsg);
+    try{ window.postMessage(msg, '*'); }catch(e){}
+    const id = aiosExtId();
+    if(id && typeof chrome!=='undefined' && chrome.runtime && chrome.runtime.sendMessage){
+      try{
+        chrome.runtime.sendMessage(id, msg, res=>{
+          if(chrome.runtime.lastError) return;        // 拡張機能が見つからない
+          if(res) finish({ok:true, via:'拡張機能ID経由', data:res});
+        });
+      }catch(e){}
+    }
+    setTimeout(()=>finish({ok:false}), ms||1500);
+  });
+}
+// 個別支援計画（様式1-1）の入力内容を、そのまま渡せる形にまとめる
+function aiosKeikakuPayload(){
+  const head={}; KK_HEAD.forEach(([id])=>head[id.replace(/^k_/,'')]=kkVal(id));
+  const body={}; KK_BODY.forEach(([id])=>body[id.replace(/^k_/,'')]=kkVal(id));
+  const rows=[];
+  for(let i=1;i<=6;i++){
+    const r={}; let any=false;
+    for(const [key] of KK_COLS){ const v=kkVal(`kk_${i}_${key}`); r[key]=v; if(v) any=true; }
+    if(any) rows.push(Object.assign({priority:i}, r));
+  }
+  return {kind:'個別支援計画（様式1-1）', head, body, rows};
+}
+// 利用者（受給者証）の一覧。★合言葉で開いているときだけ渡せます
+function aiosRiyouPayload(){
+  if(!riyouData) return null;
+  return {kind:'利用者・受給者証', count:riyouData.length,
+    list: riyouData.map(u=>({home:u.home, name:u.name, kubun:u.kubun, no:u.no,
+                             limFrom:u.limFrom, limTo:u.limTo, birth:u.birth, moveIn:u.moveIn}))};
+}
+// 画面下の状態表示
+function pochiSay(html, tone){
+  const el=document.getElementById('pochiMsg'); if(!el) return;
+  el.style.display='block';
+  el.style.background = tone==='ng' ? '#fdf0ee' : tone==='ok' ? '#eef7ee' : '#f4f6f8';
+  el.style.borderColor = tone==='ng' ? '#e0b4ab' : tone==='ok' ? '#b9d6b9' : '#d8dee5';
+  el.innerHTML = html;
+}
+// つながっているか確認（拡張機能に ping を送る）
+async function pochiPing(quiet){
+  const dot=document.getElementById('pochiDot'); if(dot) dot.textContent='🕐 確認中…';
+  const r = await aiosExtSend('ping', {app:'olive-ai-os'}, 1200);
+  if(dot) dot.textContent = r.ok ? '🟢 つながっています（'+r.via+'）' : '⚪ 拡張機能が見つかりません';
+  if(!quiet){
+    if(r.ok) pochiSay('拡張機能とつながりました。下のボタンでデータを渡せます。','ok');
+    else pochiSay('拡張機能からの返事がありませんでした。<br>'
+      +'・ポチパス自動化の拡張機能が<b>オン</b>になっているか<br>'
+      +'・拡張機能がこのページ（'+location.host+'）を<b>受け取る設定</b>になっているか<br>'
+      +'をご確認ください。下の「受け取り方（開発者向け）」に必要な設定を書いています。','ng');
+  }
+  return r.ok;
+}
+// データを渡す（届かなければコピーに切り替え）
+async function pochiSend(kind){
+  let payload=null;
+  if(kind==='keikaku'){
+    if(!document.getElementById('k_name')){
+      pochiSay('先に「📘 個別支援計画」を開いて入力してください。','ng'); return;
+    }
+    payload = aiosKeikakuPayload();
+    if(!payload.head.name){ pochiSay('利用者氏名が空です。個別支援計画に入力してから送ってください。','ng'); return; }
+  }else{
+    payload = aiosRiyouPayload();
+    if(!payload){ pochiSay('先に「📇 利用者・受給者証データ」を合言葉で開いてください。','ng'); return; }
+    if(!confirm(payload.count+'名分の利用者情報を、この端末のポチパス自動化の拡張機能に渡します。\n（インターネットには送りません）\n\nよろしいですか？')) return;
+  }
+  window.__aiosLastPayload = payload;
+  pochiSay('送っています…');
+  const r = await aiosExtSend('fill', payload, 2000);
+  if(r.ok){
+    const m = r.data && r.data.message;
+    pochiSay('✅ 拡張機能に渡しました（'+r.via+'）。ポチパスの画面をご確認ください。'
+             + (m ? '<br><small>'+String(m).replace(/[<>]/g,'')+'</small>' : ''), 'ok');
+  }else{
+    pochiSay('拡張機能からの返事がありませんでした。<br>'
+      +'下の<b>「📋 送るデータをコピー」</b>を押すと、同じ内容をクリップボードにコピーできます。', 'ng');
+  }
+  const dot=document.getElementById('pochiDot');
+  if(dot) dot.textContent = r.ok ? '🟢 つながっています（'+r.via+'）' : '⚪ 拡張機能が見つかりません';
+}
+// 手渡し用：同じ内容をクリップボードへ
+async function pochiCopy(){
+  const payload = window.__aiosLastPayload || aiosKeikakuPayload();
+  const txt = JSON.stringify({source:'olive-ai-os', v:1, action:'fill', payload}, null, 2);
+  try{
+    await navigator.clipboard.writeText(txt);
+    pochiSay('📋 コピーしました。拡張機能の貼り付け欄に貼ってください。','ok');
+  }catch(e){
+    const ta=document.getElementById('pochiRaw');
+    if(ta){ ta.style.display='block'; ta.value=txt; ta.focus(); ta.select(); }
+    pochiSay('コピーできなかったので、下の枠に出しました。長押しして選択・コピーしてください。','ng');
+  }
+}
 function openPochiPanel(){
   let p=document.getElementById('pochiPanel');
   if(!p){
@@ -5792,6 +5915,61 @@ function openPochiPanel(){
              style="display:block; text-align:left; padding:11px; text-decoration:none; margin-bottom:8px">
             ${t}<br><small style="font-weight:400">${s}</small></a>`).join('')}
 
+        <div style="font-weight:800; font-size:13px; color:#1f3a28; margin:14px 0 6px">
+          🔌 ブラウザ拡張機能と連携（ポチパス自動入力）</div>
+        <div style="background:#f4f6f8; border:1px solid #d8dee5; border-radius:10px; padding:10px">
+          <div id="pochiDot" style="font-weight:700; font-size:13px">⚪ 未確認</div>
+          <button class="wpBtn" id="pochiPing" style="margin-top:8px">つながっているか確認</button>
+          <div style="margin-top:8px; display:flex; gap:6px; align-items:center; flex-wrap:wrap">
+            <input id="pochiExtId" placeholder="拡張機能ID（わかれば。空でも可）"
+                   style="flex:1 1 220px; min-width:0; padding:7px; border:1px solid #cfd6de; border-radius:8px; font-size:13px">
+            <button class="wpBtn" id="pochiSaveId">保存</button>
+          </div>
+          <div style="font-size:11px; color:#5d6b7a; margin-top:5px">
+            ※この端末のブラウザにだけ覚えます。<b>ポチパスのIDとパスワードは、AI-OSでは一切あつかいません。</b>
+          </div>
+        </div>
+        <button class="wpBtn primary" id="pochiSendK" style="width:100%; text-align:left; padding:11px; margin-top:8px">
+          📘 個別支援計画を拡張機能に渡す<br><small style="font-weight:400">開いている様式1-1の入力内容を、そのまま渡します</small>
+        </button>
+        <button class="wpBtn" id="pochiSendR" style="width:100%; text-align:left; padding:11px; margin-top:8px">
+          📇 利用者データを拡張機能に渡す<br><small style="font-weight:400">合言葉で開いているときだけ。氏名・受給者番号・有効期限など</small>
+        </button>
+        <button class="wpBtn" id="pochiCopyBtn" style="width:100%; padding:10px; margin-top:8px">📋 送るデータをコピー（手渡し用）</button>
+        <div id="pochiMsg" style="display:none; margin-top:8px; font-size:12.5px; line-height:1.6;
+             border:1px solid #d8dee5; background:#f4f6f8; border-radius:10px; padding:9px"></div>
+        <textarea id="pochiRaw" readonly style="display:none; width:100%; height:120px; margin-top:8px;
+             font-size:11px; border:1px solid #cfd6de; border-radius:8px; padding:6px"></textarea>
+
+        <details style="margin-top:10px">
+          <summary style="cursor:pointer; font-size:12.5px; font-weight:700; color:#1f3a28">受け取り方（開発者向け）</summary>
+          <div style="font-size:11.5px; line-height:1.7; color:#33414f; margin-top:6px">
+            AI-OS は下の形で <code>window.postMessage</code> を出します（拡張機能IDを入れた場合は
+            <code>chrome.runtime.sendMessage</code> にも同じものを送ります）。
+<pre style="background:#f4f6f8; border:1px solid #d8dee5; border-radius:8px; padding:8px; overflow:auto; font-size:11px">{ source:"olive-ai-os", v:1,
+  action:"ping" | "fill",
+  payload:{ kind, head, body, rows }   // 個別支援計画
+          { kind, count, list:[…] },   // 利用者データ
+  at:"2026-01-01T00:00:00.000Z" }</pre>
+            拡張機能の content script で受け取り、返事を返してください。
+<pre style="background:#f4f6f8; border:1px solid #d8dee5; border-radius:8px; padding:8px; overflow:auto; font-size:11px">window.addEventListener("message", e =&gt; {
+  if (e.source !== window) return;
+  const m = e.data;
+  if (!m || m.source !== "olive-ai-os") return;
+  // …ポチパスの入力処理…
+  window.postMessage({ source:"olive-ai-os-ext",
+                       reply:m.action, data:{ message:"受け取りました" } }, "*");
+});</pre>
+            manifest.json に、このページを足してください。<br>
+            <code>"content_scripts":[{"matches":["https://olive-an.github.io/*"], "js":["bridge.js"]}]</code><br>
+            （拡張機能ID方式を使う場合は
+            <code>"externally_connectable":{"matches":["https://olive-an.github.io/*"]}</code>）<br>
+            そのまま使える見本 →
+            <a href="pochipass-bridge.js" target="_blank" rel="noopener"><b>pochipass-bridge.js</b></a>
+            （拡張機能のフォルダに置いて manifest に足すだけ）
+          </div>
+        </details>
+
         <div style="font-weight:800; font-size:13px; color:#1f3a28; margin:14px 0 6px">ポチパスのExcelを使う</div>
         <button class="wpBtn" style="width:100%; text-align:left; padding:11px" onclick="document.getElementById('pochiPanel').hidden=true; openKeikakuPanel();">
           📘 個別支援計画（様式1-1）<br><small style="font-weight:400">ポチパスの様式1-1を読み込み → 編集 → 書き出し（連携用データ列にも書き込み）</small>
@@ -5802,7 +5980,8 @@ function openPochiPanel(){
 
         <div class="wpNote" style="margin-top:12px">
           ℹ️ ポチパスには外部システムから接続できる<b>公開API（自動でデータを取りにいく仕組み）がありません</b>。
-          そのため、ポチパスの画面で<b>Excelに書き出して</b>から、ここで読み込む流れになります。<br>
+          そのため、<b>ブラウザ拡張機能に渡して入力してもらう</b>か、ポチパスの画面で<b>Excelに書き出して</b>から
+          ここで読み込む流れになります。<br>
           もしポチパス側で連携の仕組みが用意できるか確認したい場合は、サポート
           （一次受付 050-1809-4588／10:00〜16:00）に「外部システムとのAPI連携は可能か」と
           お問い合わせいただくと確実です。
@@ -5810,8 +5989,20 @@ function openPochiPanel(){
       </div></div>`;
     p.addEventListener('click',ev=>{ if(ev.target.id==='pochiPanel') p.hidden=true; });
     document.body.appendChild(p);
+    p.querySelector('#pochiPing').onclick   = ()=>pochiPing(false);
+    p.querySelector('#pochiSendK').onclick  = ()=>pochiSend('keikaku');
+    p.querySelector('#pochiSendR').onclick  = ()=>pochiSend('riyou');
+    p.querySelector('#pochiCopyBtn').onclick= ()=>pochiCopy();
+    p.querySelector('#pochiSaveId').onclick = ()=>{
+      const v=document.getElementById('pochiExtId').value.trim();
+      aiosExtSetId(v);
+      pochiSay(v ? '拡張機能IDを覚えました。' : '拡張機能IDを消しました。ページ経由でのやりとりは続けられます。','ok');
+      pochiPing(true);
+    };
   }
   p.hidden=false;
+  document.getElementById('pochiExtId').value = aiosExtId();
+  pochiPing(true);
 }
 /* ▲▲▲ ポチパス連携 ここまで ▲▲▲ */
 
