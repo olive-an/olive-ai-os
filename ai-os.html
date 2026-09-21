@@ -325,6 +325,14 @@
     border-radius:8px; padding:5px 10px; cursor:pointer; font-size:12px; font-weight:700
   }
   .wpBtn.primary{background:var(--olive); color:#fff; border-color:var(--olive)}
+  #wpFix{
+    margin:6px 0 2px; padding:9px 10px; border-radius:10px;
+    background:#fff6e5; border:1px solid #e6c98a; font-size:12.5px; line-height:1.6; color:#5a4413;
+  }
+  #wpFix button{
+    margin-top:6px; padding:8px 12px; border-radius:9px; border:0; cursor:pointer;
+    background:var(--olive-d,#5a7d3c); color:#fff; font-weight:800; font-size:13px;
+  }
   #wpPaste{
     width:100%; min-height:70px; border:1px solid var(--line); border-radius:10px;
     padding:8px; font-size:12px; font-family:inherit; resize:vertical; margin-bottom:8px
@@ -561,6 +569,7 @@
         <button id="wpGAS">フォームから取得</button>
       </div>
       <textarea id="wpPaste" placeholder="シフト希望のテキストをここに貼り付けてもOK（○＝可 / △＝応相談 / ×＝不可）"></textarea>
+      <div id="wpFix" hidden></div>
       <button id="wpRun" class="wpBtn primary">この内容で集計する</button>
       <input type="file" id="wpTmpl" accept=".xlsx" style="display:none">
       <div id="wpResult"></div>
@@ -1605,6 +1614,57 @@ function shStampText(d){
   return `${d.getMonth()+1}/${d.getDate()} ${ap} ${h12}:${("0"+d.getMinutes()).slice(-2)}`;
 }
 function shParseYMD(s){ const [y,m,d]=s.split("-").map(Number); return new Date(y,m-1,d); }
+
+/* ---- 貼り付けた本文から「期間：7/16〜8/15」を読み取る -----------------------
+   シフト希望フォームの本文には期間が書いてあるのに、上の対象期間が別の月のままだと
+   1件も読み取れません。本文の期間を読み取って、ワンタップで合わせられるようにします。
+   （年は本文に書かれていないので、送信日時があればその年、無ければ今日にいちばん近い年）*/
+const shZen = t => String(t||'').replace(/[０-９]/g, c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
+function shDetectRange(raw){
+  const t = shZen(raw);
+  const m = t.match(/期間[：:\s]*(\d{1,2})\s*[\/月]\s*(\d{1,2})\s*日?\s*[〜～~\-ー－–—]\s*(\d{1,2})\s*[\/月]\s*(\d{1,2})/);
+  if(!m) return null;
+  const sm=+m[1], sd=+m[2], em=+m[3], ed=+m[4];
+  if(sm<1||sm>12||em<1||em>12||sd<1||sd>31||ed<1||ed>31) return null;
+
+  // 基準日：本文に「送信：2026/9/18」があればその日、無ければ今日
+  let ref = new Date();
+  const st = t.match(/送信[：:\s]*(\d{4})\s*[\/年]\s*(\d{1,2})\s*[\/月]\s*(\d{1,2})/);
+  if(st) ref = new Date(+st[1], +st[2]-1, +st[3]);
+
+  // 基準日にいちばん近い年を選ぶ
+  let best=null;
+  for(const dy of [-1,0,1]){
+    const y = ref.getFullYear()+dy;
+    const a = new Date(y, sm-1, sd);
+    const b = new Date(em<sm ? y+1 : y, em-1, ed);
+    if(isNaN(a) || isNaN(b) || b<a) continue;
+    const gap = Math.abs(a-ref);
+    if(!best || gap<best.gap) best={gap, a, b};
+  }
+  return best ? [best.a, best.b] : null;
+}
+const shRangeLabel = (a,b) => (a.getMonth()+1)+'/'+a.getDate()+'〜'+(b.getMonth()+1)+'/'+b.getDate();
+
+// 本文の期間と上の対象期間がちがうときだけ、合わせるボタンを出す
+function shCheckRange(){
+  const box = document.getElementById('wpFix');
+  if(!box) return null;
+  const r = shDetectRange(document.getElementById('wpPaste').value);
+  const sv = document.getElementById('wpStart').value, ev = document.getElementById('wpEnd').value;
+  if(!r || (sv===shFmt(r[0]) && ev===shFmt(r[1]))){ box.hidden=true; box.innerHTML=''; return r; }
+  box.hidden=false;
+  box.innerHTML = `⚠️ 上の対象期間（${sv&&ev ? shRangeLabel(shParseYMD(sv), shParseYMD(ev)) : '未設定'}）と、
+    貼り付けた本文の期間（<b>${shRangeLabel(r[0], r[1])}</b>）がちがいます。<br>
+    <button type="button" id="wpFixBtn">本文の期間 ${shRangeLabel(r[0], r[1])} に合わせる</button>`;
+  document.getElementById('wpFixBtn').onclick = ()=>{
+    document.getElementById('wpStart').value = shFmt(r[0]);
+    document.getElementById('wpEnd').value   = shFmt(r[1]);
+    box.hidden=true; box.innerHTML='';
+    shRun();
+  };
+  return r;
+}
 function shDefaultRange(){
   const t=new Date(), y=t.getFullYear(), m=t.getMonth();
   const sM = t.getDate()>=16 ? m+1 : m;               // 16日始まりの給与/シフト期間に合わせる
@@ -1666,6 +1726,10 @@ document.getElementById('wpGAS').addEventListener('click', async ()=>{
   }finally{ btn.textContent = 'フォームから取得'; btn.disabled = false; }
 });
 document.getElementById('wpRun').addEventListener('click', shRun);
+['input','change','paste'].forEach(ev=>
+  document.getElementById('wpPaste').addEventListener(ev, ()=>setTimeout(shCheckRange,0)));
+['wpStart','wpEnd'].forEach(id=>
+  document.getElementById(id).addEventListener('change', ()=>setTimeout(shCheckRange,0)));
 
 // JSONPでGASからシフト希望を取得（index.html と同一方式）
 function shFetchGAS(){
@@ -1695,10 +1759,15 @@ function shRun(){
   const byName = parsed.byName;
   const names = Object.keys(byName);
   if(names.length === 0){
+    const det = shDetectRange(raw);
+    const same = det && shFmt(det[0])===startEl.value && shFmt(det[1])===endEl.value;
     out.innerHTML = `<p class="wpNote">有効なデータがありませんでした。<br>
-      上の対象期間（${start.getMonth()+1}/${start.getDate()}〜${end.getMonth()+1}/${end.getDate()}）と、
-      貼り付けた本文の日付が合っているかご確認ください。<br>
+      上の対象期間（${shRangeLabel(start, end)}）と、
+      貼り付けた本文の日付が合っているかご確認ください。${
+        det && !same ? `<br>本文には<b>期間 ${shRangeLabel(det[0], det[1])}</b>と書かれています。`
+                     : ''}<br>
       <small>※期間の外の日付は、取り違えを防ぐため読み飛ばします。</small></p>`;
+    shCheckRange();
     return;
   }
   // 出し直し（同じ人から2回以上届いている分）は、送信日時の新しい方を採用
@@ -1786,6 +1855,7 @@ function shRun(){
   document.getElementById('wpReset').addEventListener('click', ()=>{
     if(!confirm('貼り付けた内容と集計結果を消して、最初からやり直します。よろしいですか？')) return;
     document.getElementById('wpPaste').value='';
+    const fx=document.getElementById('wpFix'); if(fx){ fx.hidden=true; fx.innerHTML=''; }
     out.innerHTML='<p class="wpNote">集計をリセットしました。「サンプルで試す」か「フォームから取得」を押すか、テキストを貼り付けてください。</p>';
     shLastRows=null; window._aiosAgg=null; shGasCache=null;
   });
