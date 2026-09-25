@@ -3632,6 +3632,40 @@ async function aiosShareNewest(re, ask){
   }
   return best;
 }
+// 共有フォルダに新しいExcelがあれば、画面の上に1タップのお知らせを出す
+// （人事AI・利用者AIは大事なデータなので、勝手には書き換えずに確認してから読み込みます）
+const AIOS_SEEN_KEY = 'aiosShareSeenV1';
+function aiosSeen(){ try{ return JSON.parse(localStorage.getItem(AIOS_SEEN_KEY)||'{}'); }catch(e){ return {}; } }
+function aiosSetSeen(key, f){
+  const o=aiosSeen(); o[key]={name:f.name, mtime:f.lastModified};
+  try{ localStorage.setItem(AIOS_SEEN_KEY, JSON.stringify(o)); }catch(e){}
+}
+async function aiosShareBar(key, re, hostId, label, run){
+  const host=document.getElementById(hostId); if(!host) return;
+  host.querySelectorAll('[data-sharebar]').forEach(x=>x.remove());
+  if(!aiosCanShare() || !aiosShareName) return;
+  let f=null; try{ f = await aiosShareNewest(re, false); }catch(e){ return; }
+  if(!f) return;
+  const seen = aiosSeen()[key];
+  if(seen && seen.name===f.name && seen.mtime===f.lastModified) return;
+  const bar=document.createElement('div');
+  bar.className='wpNote'; bar.setAttribute('data-sharebar','1');
+  bar.style.cssText='background:#fff6e5; border-color:#e6c98a; margin-bottom:8px';
+  bar.innerHTML=`📂 共有フォルダに新しい${label}があります：<b>${hkEsc(f.name)}</b>
+    （${aiosShareStamp(new Date(f.lastModified))}）<br>
+    <button class="wpBtn primary" data-go style="margin-top:6px">この内容で更新する</button>
+    <button class="wpBtn" data-later style="margin-top:6px">あとで</button>`;
+  host.prepend(bar);
+  bar.querySelector('[data-later]').onclick = ()=>{ aiosSetSeen(key,f); bar.remove(); };
+  bar.querySelector('[data-go]').onclick = async ()=>{
+    bar.querySelectorAll('button').forEach(x=>x.disabled=true);
+    try{
+      if(typeof XLSX==='undefined') throw new Error('Excelライブラリを読み込めませんでした');
+      await run(XLSX.read(await f.arrayBuffer(), {type:'array', cellDates:true}), f);
+      aiosSetSeen(key,f);
+    }catch(e){ if(e.name!=='AbortError') alert('読み込めませんでした：'+(e.message||e)); }
+  };
+}
 const aiosShareStamp = d => `${d.getMonth()+1}/${d.getDate()} ${('0'+d.getHours()).slice(-2)}:${('0'+d.getMinutes()).slice(-2)}`;
 (async()=>{ try{ const h=await idbGet('shareDir'); if(h) aiosShareName=h.name;
   else aiosShareName = localStorage.getItem('aiosShareName')||null; }catch(e){} })();
@@ -4213,6 +4247,8 @@ function riyouRenderSearch(q){
     }catch(e){ alert('取り込みエラー：'+e.message); riyouRenderSearch(''); }
   });
   if(q!==undefined){ qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
+  aiosShareBar('riyou', /受給者証|利用者|master|マスタ/i, 'riyouBody', '受給者証データ',
+    wb=>riyouImportFromWorkbook(wb));
 }
 
 // Excelブックから受給者証データを読み込み直す（保管中の写真は引き継ぐ）
@@ -5784,6 +5820,8 @@ function jinRenderList(){
     try{ await jinImportFromWorkbook(await aiosBookWorkbook()); }
     catch(e){ if(e.name!=='AbortError') alert('読み込めませんでした：'+e.message); jinRenderList(); }
   });
+  aiosShareBar('jin', /従業員|職員|名簿|スタッフ|master|マスタ/i, 'jinBody', '従業員名簿',
+    wb=>jinImportFromWorkbook(wb));
 }
 
 // --- 登録・編集フォーム ---
