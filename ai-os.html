@@ -4588,8 +4588,9 @@ function shaRenderList(){
     }).join('');
     return `<div style="border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:8px; background:#fff">
       <div style="display:flex; gap:8px; align-items:baseline; flex-wrap:wrap">
-        <b style="font-size:14.5px; color:#1f3a28">${hkEsc(v.name||'（車名なし）')}</b>
-        <span style="font-size:12px; color:#455038">${hkEsc(v.no||'')}</span>
+        <b data-detail="${v._i}" title="押すと詳しい内容が出ます"
+           style="font-size:14.5px; color:#1f3a28; cursor:pointer; text-decoration:underline; text-decoration-color:#c3d3c0; text-underline-offset:3px">${hkEsc(v.name||'（車名なし）')}</b>
+        <span data-detail="${v._i}" style="font-size:12px; color:#455038; cursor:pointer">${hkEsc(v.no||'')}</span>
         ${v.belong?`<span style="font-size:10.5px; background:var(--olive); color:#fff; border-radius:999px; padding:2px 9px">${hkEsc(v.belong)}</span>`:''}
         ${v.staff?`<span style="font-size:11px; color:#7a8b80">担当：${hkEsc(v.staff)}</span>`:''}
         <span class="grow" style="flex:1"></span>
@@ -4619,6 +4620,7 @@ function shaRenderList(){
     ${sorted.length ? sorted.map(row).join('') : '<p class="wpNote">まだ車両が登録されていません。「＋ 車両を追加」から登録してください。</p>'}`;
   document.getElementById('shaAdd').addEventListener('click', ()=>shaRenderForm(-1));
   b.querySelectorAll('[data-edit]').forEach(btn=>btn.addEventListener('click',()=>shaRenderForm(+btn.dataset.edit)));
+  b.querySelectorAll('[data-detail]').forEach(el=>el.addEventListener('click',()=>shaRenderDetail(+el.dataset.detail)));
   document.getElementById('shaClear').addEventListener('click', async ()=>{
     if(!confirm('登録した車両データをこのパソコンからすべて消します。よろしいですか？')) return;
     sharyouData=[]; await shaPersist(); shaRenderList();
@@ -4662,6 +4664,44 @@ function shaRenderList(){
   });
 }
 // --- 登録・編集フォーム ---
+// --- 1台の詳しい内容（車名を押すと開きます）---
+function shaRenderDetail(idx){
+  const b=document.getElementById('shaBody');
+  const v=(sharyouData||[])[idx];
+  if(!v){ shaRenderList(); return; }
+  const lim = SHA_LIMITS.map(([k,label])=>{
+    const d=shaDays(v[k]), bg=shaBadge(d);
+    return `<div style="flex:1; min-width:150px; border:1px solid var(--line); border-radius:10px; padding:9px 11px; background:#fff">
+      <div style="font-size:11px; color:#7a8b80">${label}の満了日</div>
+      <div style="font-size:14px; font-weight:700; color:#1f3a28">${shaFmt(v[k])}</div>
+      <span style="display:inline-block; font-size:10.5px; color:#fff; background:${bg.color}; border-radius:999px; padding:1px 9px; margin-top:3px">${bg.txt}</span>
+    </div>`;
+  }).join('');
+  const LIMIT_KEYS = SHA_LIMITS.map(x=>x[0]);
+  const rows = SHA_FIELDS.filter(([k])=>!LIMIT_KEYS.includes(k)).map(([k,label])=>{
+    const val=String(v[k]==null?'':v[k]).trim();
+    const show = /^\d{4}-\d{2}-\d{2}$/.test(val) ? shaFmt(val) : (val || '—');
+    return `<div style="display:flex; gap:10px; padding:7px 2px; border-bottom:1px solid var(--line)">
+      <div style="flex:0 0 130px; font-size:11.5px; color:#7a8b80">${label}</div>
+      <div style="flex:1; font-size:13px; color:#1f3a28; word-break:break-all; white-space:pre-wrap">${hkEsc(show)}</div>
+    </div>`;
+  }).join('');
+  b.innerHTML = `
+    <button class="wpBtn" id="shaBack2">← 一覧にもどる</button>
+    <div style="display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; margin:10px 0 2px">
+      <b style="font-size:17px; color:#1f3a28">${hkEsc(v.name||'（車名なし）')}</b>
+      <span style="font-size:13px; color:#455038">${hkEsc(v.no||'')}</span>
+      ${v.belong?`<span style="font-size:10.5px; background:var(--olive); color:#fff; border-radius:999px; padding:2px 9px">${hkEsc(v.belong)}</span>`:''}
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 12px">${lim}</div>
+    <div style="border-top:1px solid var(--line)">${rows}</div>
+    <div style="display:flex; gap:8px; margin-top:14px; flex-wrap:wrap">
+      <button class="wpBtn primary" id="shaEdit2" style="flex:1; padding:11px">✏️ この車両を編集する</button>
+    </div>`;
+  document.getElementById('shaBack2').addEventListener('click', shaRenderList);
+  document.getElementById('shaEdit2').addEventListener('click', ()=>shaRenderForm(idx));
+}
+
 function shaRenderForm(idx){
   const b=document.getElementById('shaBody');
   const v = idx>=0 ? sharyouData[idx] : {};
