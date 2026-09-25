@@ -4240,45 +4240,114 @@ function shaToYmd(v){
   const d = riyouYmd(v);
   return d ? new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10) : '';
 }
-// 車両台帳Excel（シート「車両台帳データ」）から取り込む
+// 車両台帳Excelから取り込む
+// おりーぶ庵の「車両管理表」（メーカー／車種名／ナンバー…の1行見出し）と、
+// 旧様式（車　名／自動車検査証―有効期間の2行見出し）の両方を読みます。
+const shaNz = c => String(c==null?'':c).replace(/[\s　\n]/g,'').replace(/[（）()]/g,'');
+function shaCell(v){
+  if(v==null) return '';
+  if(v instanceof Date) return shaToYmd(v);
+  return String(v).trim();
+}
+function shaYm(v){                                   // 初度登録年月（2012-08-01 → 2012/8）
+  if(v==null) return '';
+  if(v instanceof Date) return v.getFullYear()+'/'+(v.getMonth()+1);
+  return String(v).trim();
+}
 function shaParse(wb){
-  const sn = wb.SheetNames.find(n=>/車両台帳/.test(n));
-  if(!sn) throw new Error('シート「車両台帳データ」が見つかりません');
+  const sn = wb.SheetNames.find(n=>/車両台帳|車両管理/.test(n)) || wb.SheetNames[0];
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, raw:true, defval:null});
-  // 見出し行（「車　名」を含む行）を探す
+
+  // 見出し行を探す（車名・車種名・ナンバー・登録番号のどれかがある行）
+  const HEAD_HINT = ['車名','車種名','ナンバー','登録番号','登録番号車両番号'];
   let hdr=-1;
   for(let r=0;r<Math.min(rows.length,20);r++){
-    if((rows[r]||[]).some(c=>typeof c==='string' && c.replace(/[\s　]/g,'')==='車名')){ hdr=r; break; }
+    const cells=(rows[r]||[]).map(shaNz);
+    if(HEAD_HINT.some(h=>cells.includes(h))){ hdr=r; break; }
   }
-  if(hdr<0) throw new Error('見出し行（車　名）が見つかりません');
-  const H  = (rows[hdr]||[]).map(c=>(c==null?'':String(c)).replace(/[\s　\n]/g,''));
-  const H2 = (rows[hdr+1]||[]).map(c=>(c==null?'':String(c)).replace(/[\s　\n]/g,''));
+  if(hdr<0) throw new Error('見出しの行（車名・車種名・ナンバーなど）が見つかりません');
+
+  const H  = (rows[hdr]||[]).map(shaNz);
+  const H2 = (rows[hdr+1]||[]).map(shaNz);
   const ci = (...names)=>{ for(const n of names){ const i=H.indexOf(n); if(i>=0) return i; } return -1; };
   const c = {
-    no:ci('登録番号車両番号','登録番号'), name:ci('車名'), chassis:ci('車台番号'), model:ci('型式'),
-    kind:ci('種別'), use:ci('用途'), seats:ci('乗車定員'), belong:ci('所属'), staff:ci('担当者'),
-    place:ci('保管場所'),
+    mgr:   ci('管理No','No','管理番号'),
+    maker: ci('メーカー'),
+    name:  ci('車名','車種名','車種'),
+    no:    ci('登録番号車両番号','登録番号','ナンバー','車両番号'),
+    belong:ci('使用拠点','所属','拠点','ホーム'),
+    staff: ci('担当者','担当'),
+    place: ci('保管場所','保管所','駐車場'),
+    kind:  ci('主な用途','種別','用途'),
+    kind2: ci('用途'),
+    own:   ci('所有区分'),
+    seats: ci('乗車定員','定員'),
+    model: ci('型式'),
+    fuel:  ci('燃料種別','燃料'),
+    first: ci('初度登録年月','初度登録'),
+    chassis:ci('車台番号'),
+    shaken:ci('車検満了日','車検有効期限','車検満了'),
+    jibai: ci('自賠責満了日','自賠責保険満了日','自賠責満了'),
+    hoken: ci('任意保険満了日','任意保険満了'),
+    hokenCo:ci('任意保険会社','保険会社'),
+    hokenNo:ci('任意保険証券番号','証券番号'),
+    buy:   ci('購入日取得日','購入日','取得日','購入リース開始日'),
+    price: ci('購入金額円','購入金額'),
+    lease: ci('リース満了日'),
+    age:   ci('運転者年齢条件','年齢条件'),
   };
-  // 「自動車検査証（1）」の下に「有効期間」がある構成 → 最初の有効期間列を車検満了日とみなす
-  const shakenTop = H.findIndex(h=>/自動車検査証/.test(h));
-  const shakenCol = shakenTop>=0 ? H2.indexOf('有効期間', shakenTop) : -1;
+  // 旧様式：「自動車検査証（1）」の下に「有効期間」がある構成
+  if(c.shaken<0){
+    const top = H.findIndex(h=>/自動車検査証/.test(h));
+    if(top>=0) c.shaken = H2.indexOf('有効期間', top);
+  }
+  // 見出しのすぐ下が小見出し（有効期間など）なら、その次から読む
+  const sub = (rows[hdr+1]||[]).map(shaNz).some(x=>x==='有効期間');
+  const first = hdr + (sub ? 2 : 1);
+
   const list=[];
-  for(let r=hdr+2; r<rows.length; r++){
+  for(let r=first; r<rows.length; r++){
     const row=rows[r]||[];
-    const nm = c.name>=0 ? row[c.name] : null;
-    const no = c.no>=0 ? row[c.no] : null;
+    const g = i => (i>=0) ? shaCell(row[i]) : '';
+    const nm = [g(c.maker), g(c.name)].filter(Boolean).join(' ');
+    const no = g(c.no);
     if(!nm && !no) continue;
-    const g = i => (i>=0 && row[i]!=null) ? String(row[i]).trim() : '';
+    if(/^合計|^計$/.test(nm)) continue;
+    // 台帳にしかない項目は、消えないように備考へまとめる
+    const price = c.price>=0 && row[c.price]!=null && row[c.price]!=='' ?
+      Number(row[c.price]).toLocaleString('ja-JP')+'円' : '';
+    const memo = [
+      g(c.own)   && '所有区分：'+g(c.own),
+      g(c.fuel)  && '燃料：'+g(c.fuel),
+      c.first>=0 && shaYm(row[c.first]) && '初度登録：'+shaYm(row[c.first]),
+      g(c.age)   && '年齢条件：'+g(c.age),
+      price      && '購入金額：'+price,
+      g(c.lease) && 'リース満了日：'+g(c.lease),
+      g(c.mgr)   && '管理No.'+g(c.mgr),
+    ].filter(Boolean).join('／');
     list.push({
-      no:g(c.no), name:g(c.name), chassis:g(c.chassis), model:g(c.model),
-      kind:[g(c.kind),g(c.use)].filter(Boolean).join('・'), seats:g(c.seats),
-      belong:g(c.belong), staff:g(c.staff), place:g(c.place),
-      shaken: shakenCol>=0 ? shaToYmd(row[shakenCol]) : '',
-      jibai:'', hoken:'', hokenCo:'', hokenNo:'', buy:'', memo:'',
+      no, name:nm, chassis:g(c.chassis), model:g(c.model),
+      kind:[g(c.kind), c.kind2!==c.kind?g(c.kind2):''].filter(Boolean).join('・'),
+      seats:g(c.seats), belong:g(c.belong), staff:g(c.staff), place:g(c.place),
+      shaken:g(c.shaken), jibai:g(c.jibai), hoken:g(c.hoken),
+      hokenCo:g(c.hokenCo), hokenNo:g(c.hokenNo), buy:g(c.buy), memo,
     });
   }
   if(!list.length) throw new Error('車両の行を読み取れませんでした');
   return list;
+}
+// 同じナンバーの車両は上書き（取り込み直しても増えません）
+const shaKey = v => (v.no || v.chassis || ((v.name||'')+'|'+(v.buy||''))).replace(/[\s　]/g,'');
+function shaMerge(base, got){
+  const out = base.slice();
+  let add=0, upd=0;
+  for(const v of got){
+    const k = shaKey(v);
+    const i = k ? out.findIndex(x=>shaKey(x)===k) : -1;
+    if(i>=0){ out[i]=Object.assign({}, out[i], v); upd++; }
+    else { out.push(v); add++; }
+  }
+  return {list:out, add, upd};
 }
 
 function openSharyouPanel(){
@@ -4418,10 +4487,12 @@ function shaRenderList(){
       if(typeof XLSX==='undefined') throw new Error('Excelライブラリを読み込めませんでした');
       const wb=XLSX.read(await f.arrayBuffer(),{type:'array', cellDates:true});
       const got=shaParse(wb);
-      sharyouData = sharyouData.concat(got);
+      const m=shaMerge(sharyouData||[], got);
+      sharyouData = m.list;
       await shaPersist(); shaRenderList();
-      banner(`🚗 ${got.length}台を取り込みました`);
-      logLine(`<b>車両AI</b>：車両台帳から${got.length}台を取り込み`);
+      const msg = m.upd ? `新規${m.add}台・更新${m.upd}台` : `${m.add}台`;
+      banner(`🚗 ${msg}を取り込みました`);
+      logLine(`<b>車両AI</b>：車両台帳から${msg}を取り込み`);
     }catch(e){ alert('取り込みエラー：'+e.message); }
   });
 }
@@ -4433,17 +4504,20 @@ function shaRenderForm(idx){
                      kind:{opts:['送迎','業務','自家用','リース','その他'], multi:false} };
   const field = ([k,label,type])=>{
     const c=SHA_CHIP[k];
+    const box = `style="width:100%; padding:8px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px"`;
+    const input = k==='memo'
+      ? `<textarea data-k="${k}" rows="2" ${box}>${hkEsc(v[k]||'')}</textarea>`
+      : `<input data-k="${k}" type="${type}" value="${hkEsc(v[k]||'')}" ${box}>`;
     return `
     <label style="display:block; font-size:11.5px; font-weight:700; color:#2b5d8a; margin-top:8px">${label}</label>
-    <input data-k="${k}" type="${type}" value="${hkEsc(v[k]||'')}"
-      style="width:100%; padding:8px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px">
+    ${input}
     ${c ? jinChipsHtml(k, c.opts, c.multi) : ''}`;
   };
   b.innerHTML = `
     <button class="wpBtn" id="shaBack">← 一覧にもどる</button>
     <div style="font-weight:800; font-size:14px; color:#1f3a28; margin:10px 0 2px">${idx>=0?'車両の編集':'車両の追加'}</div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 12px">
-      ${SHA_FIELDS.map(f=>`<div>${field(f)}</div>`).join('')}
+      ${SHA_FIELDS.map(f=>`<div${f[0]==='memo'?' style="grid-column:1 / -1"':''}>${field(f)}</div>`).join('')}
     </div>
     <div style="display:flex; gap:8px; margin-top:14px; flex-wrap:wrap">
       <button class="wpBtn primary" id="shaSave" style="flex:1; padding:11px">💾 保存</button>
