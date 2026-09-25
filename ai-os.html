@@ -3586,6 +3586,56 @@ function aiosBookBtn(id){
 }
 (async()=>{ try{ const h=await idbGet('bookHandle'); if(h) aiosBookCached=h.name; }catch(e){} })();
 
+/* ---- 共有フォルダ（\\192.168.10.100\kyoutsu\AI作成 など）を覚えておく ----------
+   フォルダを一度だけ選んでおくと、AIを開いたときに、そのフォルダにある
+   いちばん新しいExcelを自動で読み直します。ファイルを選ぶ操作が要りません。
+   ★中身はこの端末の中だけで読みます。公開ページには何も送りません。
+   ※パソコンのEdge/Chromeの機能です。iPadでは使えないので、
+     これまでどおり「Excelから取り込む」でお使いいただけます。 */
+let aiosShareName = null;                          // 覚えているフォルダ名（表示用）
+const aiosCanShare = ()=> !!window.showDirectoryPicker;
+async function aiosPickShare(){
+  if(!window.showDirectoryPicker) throw new Error('この端末では使えません（パソコンのEdge/Chromeでお使いください）');
+  const h = await window.showDirectoryPicker({ mode:'read', id:'aios-share' });
+  await idbSet('shareDir', h);
+  aiosShareName = h.name;
+  try{ localStorage.setItem('aiosShareName', h.name); }catch(e){}
+  return h;
+}
+// ask=false のときは許可を聞かない（勝手にダイアログを出さないため）
+async function aiosShareHandle(ask){
+  let h=null; try{ h=await idbGet('shareDir'); }catch(e){}
+  if(!h) return null;
+  try{
+    let perm = await h.queryPermission({mode:'read'});
+    if(perm!=='granted' && ask) perm = await h.requestPermission({mode:'read'});
+    return perm==='granted' ? h : null;
+  }catch(e){ return null; }
+}
+async function aiosShareForget(){
+  aiosShareName=null;
+  try{ await idbSet('shareDir', null); }catch(e){}
+  try{ localStorage.removeItem('aiosShareName'); }catch(e){}
+}
+// フォルダの中から、名前が合っていていちばん新しいExcelを1つ取り出す
+async function aiosShareNewest(re, ask){
+  const dir = await aiosShareHandle(!!ask);
+  if(!dir) return null;
+  let best=null;
+  for await (const [name, h] of dir.entries()){
+    if(h.kind!=='file') continue;
+    if(/^~\$/.test(name)) continue;                 // Excelを開いている間の一時ファイル
+    if(!/\.(xlsx|xlsm)$/i.test(name)) continue;
+    if(re && !re.test(name)) continue;
+    let f; try{ f = await h.getFile(); }catch(e){ continue; }
+    if(!best || f.lastModified > best.lastModified) best=f;
+  }
+  return best;
+}
+const aiosShareStamp = d => `${d.getMonth()+1}/${d.getDate()} ${('0'+d.getHours()).slice(-2)}:${('0'+d.getMinutes()).slice(-2)}`;
+(async()=>{ try{ const h=await idbGet('shareDir'); if(h) aiosShareName=h.name;
+  else aiosShareName = localStorage.getItem('aiosShareName')||null; }catch(e){} })();
+
 
 /* ---------------------------------------------------------------
    検索欄の共通処理
@@ -4350,6 +4400,35 @@ function shaMerge(base, got){
   return {list:out, add, upd};
 }
 
+// --- 共有フォルダから自動で読み直す --------------------------------------
+const SHA_SRC_KEY = 'aiosSharyouSrcV1';        // 最後に読んだファイルの記録
+const SHA_FILE_RE = /車両(管理|台帳)/;          // 「車両管理表〜.xlsx」「車両台帳〜.xlsx」
+const shaSrc = ()=>{ try{ return JSON.parse(localStorage.getItem(SHA_SRC_KEY)||'null'); }catch(e){ return null; } };
+let shaAutoBusy = false;
+// ask=false：画面を開いたときの自動更新（許可ダイアログは出しません）
+// ask=true ：ボタンを押したとき（必要なら許可を聞きます）
+async function shaAutoUpdate(ask){
+  if(shaAutoBusy || !aiosCanShare()) return null;
+  shaAutoBusy = true;
+  try{
+    const f = await aiosShareNewest(SHA_FILE_RE, ask);
+    if(!f) return null;
+    const prev = shaSrc();
+    if(!ask && prev && prev.name===f.name && prev.mtime===f.lastModified) return {same:true, name:f.name};
+    if(typeof XLSX==='undefined') return null;
+    const wb  = XLSX.read(await f.arrayBuffer(), {type:'array', cellDates:true});
+    const got = shaParse(wb);
+    const m   = shaMerge(sharyouData||[], got);
+    sharyouData = m.list;
+    await shaPersist();
+    try{ localStorage.setItem(SHA_SRC_KEY, JSON.stringify(
+      {name:f.name, mtime:f.lastModified, at:Date.now()})); }catch(e){}
+    return {name:f.name, add:m.add, upd:m.upd, at:new Date()};
+  }catch(e){
+    return {err: e.message||String(e)};
+  }finally{ shaAutoBusy = false; }
+}
+
 function openSharyouPanel(){
   let p=document.getElementById('sharyouPanel');
   if(!p){
@@ -4362,6 +4441,14 @@ function openSharyouPanel(){
     document.body.appendChild(p);
   }
   p.hidden=false; shaRender();
+  // 共有フォルダを覚えていれば、開いたときに自動で読み直す
+  shaAutoUpdate(false).then(r=>{
+    if(!r || r.same || r.err) return;
+    if(!r.add && !r.upd) return;
+    shaRenderList();
+    banner(`📂 共有フォルダから更新しました（${r.name}）`);
+    logLine(`<b>車両AI</b>：共有フォルダの「${hkEsc(r.name)}」から自動更新`);
+  });
 }
 function shaNote(){
   return `<div class="wpNote">🚗 車両の情報は<b>このパソコンの中だけ</b>に保存されます（公開ページには出ません）。</div>`;
@@ -4425,6 +4512,22 @@ function shaRenderTakeOver(old){
 async function shaPersist(){ localStorage.setItem(SHARYOU_PLAIN, JSON.stringify(sharyouData)); }
 
 // --- 一覧（期限の近い順）---
+// 共有フォルダの状態表示
+function shaShareNote(){
+  if(!aiosCanShare())
+    return `<div class="wpNote" style="margin-bottom:8px">📱 この端末（iPadなど）では共有フォルダの自動読み込みは使えません。
+      「📗 車両台帳Excelから取り込む」でファイルを選んでください。</div>`;
+  if(!aiosShareName)
+    return `<div class="wpNote" style="margin-bottom:8px">📂 <b>共有フォルダを覚える</b>と、次からは画面を開くだけで
+      いちばん新しい車両管理表を自動で読み込みます（ファイルを選ぶ操作が要りません）。<br>
+      <small>共有フォルダ（例：\\\\192.168.10.100\\kyoutsu\\AI作成）を選んでください。
+      中身はこのパソコンの中だけで読み、公開ページには一切送りません。</small></div>`;
+  const src = shaSrc();
+  return `<div class="wpNote" style="margin-bottom:8px; background:#eef7f0">
+    📂 共有フォルダ：<b>${hkEsc(aiosShareName)}</b>${
+      src ? `<br>最後に読み込み：<b>${hkEsc(src.name)}</b>（${aiosShareStamp(new Date(src.at))}）` : ''}
+    <button class="wpBtn" id="shaForget" style="font-size:10.5px; padding:2px 8px; margin-left:6px">解除</button></div>`;
+}
 function shaRenderList(){
   const b=document.getElementById('shaBody');
   const list=sharyouData||[];
@@ -4464,6 +4567,9 @@ function shaRenderList(){
     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px">
       <button class="wpBtn primary" id="shaAdd">＋ 車両を追加</button>
       <button class="wpBtn" id="shaImport">📗 車両台帳Excelから取り込む</button>
+      ${aiosCanShare() ? (aiosShareName
+        ? `<button class="wpBtn" id="shaShare" title="${hkEsc(aiosShareName)}">🔁 共有フォルダから更新</button>`
+        : `<button class="wpBtn" id="shaShare">📂 共有フォルダを覚える</button>`) : ''}
       <span class="grow" style="flex:1"></span>
       <button class="wpBtn" id="shaClear" style="font-size:11px; color:#d0503f; border-color:#e6b3ab">🗑 全部消す</button>
       <input type="file" id="shaFile" accept=".xlsx,.xlsm" hidden>
@@ -4472,6 +4578,7 @@ function shaRenderList(){
         ⚠ <b>期限が近い車両（90日以内）</b><br>${alerts.map(a=>
           `${hkEsc(a.v.name||a.v.no)}：${a.label} ${a.d<0?`<b style="color:#d0503f">${-a.d}日超過</b>`:`あと<b>${a.d}日</b>`}`).join('<br>')}</div>`
       : (list.length?`<div class="wpNote" style="background:#eef7f0">✅ 90日以内に期限が来る車両はありません。</div>`:'')}
+    ${shaShareNote()}
     <div class="wpNote" style="margin-bottom:8px">登録車両：<b>${list.length}台</b>（期限の近い順）</div>
     ${sorted.length ? sorted.map(row).join('') : '<p class="wpNote">まだ車両が登録されていません。「＋ 車両を追加」から登録してください。</p>'}`;
   document.getElementById('shaAdd').addEventListener('click', ()=>shaRenderForm(-1));
@@ -4481,6 +4588,28 @@ function shaRenderList(){
     sharyouData=[]; await shaPersist(); shaRenderList();
   });
   document.getElementById('shaImport').addEventListener('click',()=>document.getElementById('shaFile').click());
+  const shr=document.getElementById('shaShare');
+  if(shr) shr.addEventListener('click', async ()=>{
+    const first = !aiosShareName;
+    shr.disabled=true; shr.textContent='読み込み中…';
+    try{
+      if(first) await aiosPickShare();
+      const r = await shaAutoUpdate(true);
+      if(!r){ alert(first ? 'フォルダの中に「車両管理表（または車両台帳）」のExcelが見つかりませんでした。'
+                          : '共有フォルダを読めませんでした。フォルダを覚え直してください。'); }
+      else if(r.err){ alert('読み込みエラー：'+r.err); }
+      else banner(r.add||r.upd ? `📂 ${r.name} から更新しました（新規${r.add}台・更新${r.upd}台）`
+                               : `📂 ${r.name} は最新でした`);
+    }catch(e){ if(e.name!=='AbortError') alert('うまくいきませんでした：'+(e.message||e)); }
+    shaRenderList();
+  });
+  const fgt=document.getElementById('shaForget');
+  if(fgt) fgt.addEventListener('click', async ()=>{
+    if(!confirm('共有フォルダの記憶を解除します。車両データは残ります。よろしいですか？')) return;
+    await aiosShareForget();
+    try{ localStorage.removeItem(SHA_SRC_KEY); }catch(e){}
+    shaRenderList();
+  });
   document.getElementById('shaFile').addEventListener('change', async function(){
     const f=this.files[0]; this.value=''; if(!f) return;
     try{
