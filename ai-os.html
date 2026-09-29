@@ -571,7 +571,7 @@
       <textarea id="wpPaste" placeholder="シフト希望のテキストをここに貼り付けてもOK（○＝可 / △＝応相談 / ×＝不可）"></textarea>
       <div id="wpFix" hidden></div>
       <button id="wpRun" class="wpBtn primary">この内容で集計する</button>
-      <input type="file" id="wpTmpl" accept=".xlsx" style="display:none">
+      <input type="file" id="wpTmpl" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none">
       <div id="wpResult"></div>
     </div>
   </div>
@@ -646,7 +646,7 @@
         <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
           <button class="wpBtn" id="hkTokens">🔖 トークン一覧を見る</button>
           <button class="wpBtn primary" id="hkFillReal">📄 様式ファイル(.xlsx/.docx)を選んで差し込む</button>
-          <input type="file" id="hkTmpl" accept=".xlsx,.docx" style="display:none">
+          <input type="file" id="hkTmpl" accept=".xlsx,.docx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none">
         </div>
       </div>
 
@@ -656,7 +656,7 @@
         <b>該当セルに自動記入</b>して、体裁そのままで書き出します。※.xls の場合は一度 .xlsx で保存してからお使いください。
         <div style="margin-top:8px">
           <button class="wpBtn primary" id="hkY3">🏛 様式第3号(.xlsx)を選んで記入</button>
-          <input type="file" id="hkY3File" accept=".xlsx" style="display:none">
+          <input type="file" id="hkY3File" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none">
         </div>
       </div>
       <div id="hkResult"></div>
@@ -680,7 +680,7 @@
         <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
           <button class="wpBtn primary" id="kkImport">📥 ポチパスExcelを読み込む</button>
           <button class="wpBtn" id="kkSample">サンプルを入れる</button>
-          <input type="file" id="kkImportFile" accept=".xlsx" style="display:none">
+          <input type="file" id="kkImportFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none">
         </div>
       </div>
 
@@ -710,7 +710,7 @@
 
       <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap">
         <button class="wpBtn primary" id="kkExport">📤 ポチパスExcelへ書き出す（様式を選択）</button>
-        <input type="file" id="kkExportFile" accept=".xlsx" style="display:none">
+        <input type="file" id="kkExportFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none">
       </div>
       <div class="wpNote" style="margin-top:6px">
         ※書き出し先には、ポチパスの様式1-1のExcel（今回読み込んだファイルでも可）を選んでください。
@@ -736,7 +736,7 @@
         <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
           <button class="wpBtn primary" id="f12Import">📥 記入済みの付表12を読み込む</button>
           <button class="wpBtn" id="f12Sample">サンプルを入れる</button>
-          <input type="file" id="f12ImportFile" accept=".xlsx" style="display:none">
+          <input type="file" id="f12ImportFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none">
         </div>
       </div>
 
@@ -803,7 +803,7 @@
 
       <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap">
         <button class="wpBtn primary" id="f12Export">📤 付表12（様式）へ書き出す</button>
-        <input type="file" id="f12ExportFile" accept=".xlsx" style="display:none">
+        <input type="file" id="f12ExportFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none">
       </div>
       <div class="wpNote" style="margin-top:6px">
         書き出し先には大阪市の「付表12」様式（.xlsx）を選んでください。書式・罫線・結合は一切変更せず、
@@ -1437,9 +1437,14 @@ async function aiosSaveBlob(blob, filename){
       return { ok:true, name:handle.name||filename, picked:true };
     }catch(e){ if(e && e.name==='AbortError') return { ok:false, aborted:true }; }
   }
-  // ③ 通常ダウンロード
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-  a.download=filename; a.click(); URL.revokeObjectURL(a.href);
+  // ③ 通常ダウンロード（iPad/iPhoneのSafariは「ファイル」アプリに保存されます）
+  //    ※Safariは保存が終わる前にURLを消すと失敗するので、少し待ってから片づけます
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=filename; a.rel='noopener';
+  a.style.display='none'; document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 60000);
   return { ok:true, name:filename, picked:false };
 }
 // 保存して、対象要素の先頭に「保存先＋プレビュー」を表示
@@ -1463,6 +1468,13 @@ async function aiosDeliver(blob, filename, targetId, previewHtml){
 // 保存先設定UIの配線
 function aiosUpdateDirLabel(){
   const el=document.getElementById('dirLabel'); if(!el) return;
+  // iPad/iPhoneには「保存先フォルダを決める」しくみが無いので、ボタンを出さずに案内だけにする
+  if(!window.showDirectoryPicker){
+    ['setDir','setBk','clrDir'].forEach(id=>{ const b=document.getElementById(id); if(b) b.style.display='none'; });
+    const c=document.getElementById('bkChk'); if(c && c.parentElement) c.parentElement.style.display='none';
+    el.innerHTML='📱 保存したファイルは「<b>ファイル</b>」アプリ（ダウンロード）に入ります';
+    return;
+  }
   if(aiosMainDir){
     el.innerHTML='保存先：<b>'+aiosMainDir.name+'</b>'
       + (aiosBackupDir ? '（バックアップ先：'+aiosBackupDir.name+'）'
@@ -3524,8 +3536,8 @@ function openKinmuPanel(){
         <small style="color:#7a8b80; font-size:10.5px">この設定はこの端末のブラウザにだけ保存されます（公開ページには載りません）</small>
         <button class="wpBtn primary" id="kmRun" style="width:100%; padding:12px; margin-top:10px" disabled>▶ 転記を実行</button>
         <div id="kmResult" style="margin-top:10px"></div>
-        <input type="file" id="kmFile1" accept=".xlsm,.xlsx" hidden>
-        <input type="file" id="kmFile2" accept=".xlsx" hidden>
+        <input type="file" id="kmFile1" accept=".xlsm,.xlsx,application/vnd.ms-excel.sheet.macroEnabled.12,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+        <input type="file" id="kmFile2" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
       </div></div>`;
     p.addEventListener('click',ev=>{ if(ev.target.id==='kinmuPanel') p.hidden=true; });
     document.body.appendChild(p);
@@ -3981,7 +3993,7 @@ function riyouRender(){
       ${secRememberBox('riyouRem')}
       <button class="wpBtn primary" id="riyouSaveBtn" style="width:100%; padding:11px" disabled>🔐 暗号化して保存</button>
       <div id="riyouMsg" style="margin-top:8px"></div>
-      <input type="file" id="riyouFile" accept=".xlsx,.xlsm" hidden>`;
+      <input type="file" id="riyouFile" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden>`;
     let picked=null;
     const upd=()=>{ document.getElementById('riyouSaveBtn').disabled =
       !(picked && document.getElementById('riyouPass').value.trim().length>=4); };
@@ -4312,8 +4324,8 @@ function riyouRenderSearch(q){
       <button class="wpBtn" id="riyouReload">📗 Excelから最新に更新</button>
       ${aiosBookBtn('riyouBook')}
       <button class="wpBtn" id="riyouExport">📤 Excelへ書き出す（別名）</button>
-      <input type="file" id="riyouReFile" accept=".xlsx,.xlsm" hidden>
-      <input type="file" id="riyouExpFile" accept=".xlsx,.xlsm" hidden>
+      <input type="file" id="riyouReFile" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden>
+      <input type="file" id="riyouExpFile" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden>
     </div>
     ${alertHtml}
     <div class="wpNote" style="margin-bottom:8px">在籍 <b>${list.length}名</b>${
@@ -4675,8 +4687,10 @@ async function shaPersist(){ localStorage.setItem(SHARYOU_PLAIN, JSON.stringify(
 // 共有フォルダの状態表示
 function shaShareNote(){
   if(!aiosCanShare())
-    return `<div class="wpNote" style="margin-bottom:8px">📱 この端末（iPadなど）では共有フォルダの自動読み込みは使えません。
-      「📗 車両台帳Excelから取り込む」でファイルを選んでください。</div>`;
+    return `<div class="wpNote" style="margin-bottom:8px">📱 iPad・iPhoneでは<b>自動読み込み</b>は使えませんが、
+      「📗 車両台帳Excelから取り込む」から<b>同じ共有フォルダのExcelを選べます</b>。<br>
+      <small>「ファイル」アプリ →（…）→「サーバへ接続」で <code>smb://192.168.10.100/kyoutsu</code> をつないでおくと、
+      そのまま選べるようになります。</small></div>`;
   if(!aiosShareName)
     return `<div class="wpNote" style="margin-bottom:8px">📂 <b>共有フォルダを覚える</b>と、次からは画面を開くだけで
       いちばん新しい車両管理表を自動で読み込みます（ファイルを選ぶ操作が要りません）。<br>
@@ -4733,7 +4747,7 @@ function shaRenderList(){
         : `<button class="wpBtn" id="shaShare">📂 共有フォルダを覚える</button>`) : ''}
       <span class="grow" style="flex:1"></span>
       <button class="wpBtn" id="shaClear" style="font-size:11px; color:#d0503f; border-color:#e6b3ab">🗑 全部消す</button>
-      <input type="file" id="shaFile" accept=".xlsx,.xlsm" hidden>
+      <input type="file" id="shaFile" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden>
     </div>
     ${alerts.length ? `<div class="wpNote" style="background:#fdf3f3; border-color:#e6b3ab; margin-bottom:10px">
         ⚠ <b>期限が近い車両（90日以内）</b><br>${alerts.map(a=>
@@ -5906,8 +5920,8 @@ function jinRenderList(){
       <span class="grow" style="flex:1"></span>
       <button class="wpBtn" id="jinLock" style="font-size:11px">🔒 閉じる</button>
       <button class="wpBtn" id="jinClear" style="font-size:11px; color:#d0503f; border-color:#e6b3ab">🗑 全部消す</button>
-      <input type="file" id="jinFile" accept=".xlsx,.xlsm" hidden>
-      <input type="file" id="jinExpFile" accept=".xlsx,.xlsm" hidden>
+      <input type="file" id="jinFile" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden>
+      <input type="file" id="jinExpFile" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden>
     </div>
     ${alerts.length ? `<div class="wpNote" style="background:#fdf3f3; border-color:#e6b3ab; margin-bottom:10px">
         ⚠ <b>期限が近い資格・研修（90日以内）</b><br>${alerts.map(a=>
@@ -6632,7 +6646,7 @@ function gijiList(q){
   b.innerHTML = `
     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px">
       <button class="wpBtn primary" id="gijiAdd">＋ 議事録を追加</button>
-      <input type="file" id="gijiFile" accept=".docx,.txt" multiple hidden>
+      <input type="file" id="gijiFile" accept=".docx,.txt,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" multiple hidden>
     </div>
     <div style="display:flex; gap:6px; margin-bottom:10px">
       <input id="gijiQ" type="search" placeholder="議事録の中身を検索（例：シフト、意見箱、九条）" value="${hkEsc(q||'')}"
