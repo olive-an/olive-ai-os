@@ -1863,9 +1863,21 @@ function shRun(){
   });
   document.getElementById('wpCsv').addEventListener('click', shDownloadCsv);
   document.getElementById('wpPrint').addEventListener('click', shPrint);
-  document.getElementById('wpXlsx').addEventListener('click', ()=>{
+  document.getElementById('wpXlsx').addEventListener('click', async ()=>{
     if(typeof JSZip === 'undefined'){
       alert('ライブラリを読み込み中です。少し待つか、ページをブラウザ／公開URLで開くと反映できます。'); return;
+    }
+    // 共有フォルダに「シフト集計」のExcelがあれば、ファイルを選ばずにそのまま使う
+    // （書き出した「〜反映済」のファイルは、間違えて上書きしないよう対象外）
+    if(aiosCanShare() && aiosShareName){
+      try{
+        const f = await aiosShareNewest(/^(?!.*反映済)(?=.*(?:シフト集計|シフト表|勤務希望))/, false);
+        if(f && confirm(`共有フォルダの「${f.name}」に反映します。よろしいですか？\n\n`
+                        +`※原本は変えずに、別名のファイルを作ります。\n`
+                        +`　別のExcelを選ぶ場合は「キャンセル」を押してください。`)){
+          await shExportExcel(f); return;
+        }
+      }catch(e){}
     }
     document.getElementById('wpTmpl').click(); // テンプレのシフト集計Excelを選ぶ
   });
@@ -2003,18 +2015,37 @@ async function shExportExcel(file){
     const dayColVals=Object.keys(dayCol).map(k=>dayCol[k]);
     const firstDayCol=Math.min.apply(null,dayColVals), lastDayCol=Math.max.apply(null,dayColVals);
 
-    // 名簿：ヘッダー行より下のA列の文字列セル（同名は複数行として保持）
+    /* A列の文字と、表のどこまでが「職員の行」かを先に調べる。
+       ホーム名（西九条〜出来島）や「研修」から下は、ホームごとの割り当て欄なので
+       職員の行として扱わない（例：「九条　太郎」さんをホーム行に書いてしまわないため）。 */
+    const rowHas={}, colAText={};
+    let maxRow=hdrRow;
+    cells.forEach(c=>{
+      if(c.row>maxRow) maxRow=c.row;
+      if(c.txt!=null && String(c.txt).trim()!=='') rowHas[c.row]=true;
+      if(c.col===1 && c.txt) colAText[c.row]=String(c.txt).trim();
+    });
+    let limitRow=maxRow+1;
+    for(let r=hdrRow+1;r<=maxRow;r++){
+      const a=(colAText[r]||'').replace(/[\s　]/g,'');
+      if(a && (SH_HOME_LABELS.indexOf(a)>=0 || a==='研修')){ limitRow=r; break; }
+    }
+
+    // 名簿：ヘッダー行より下・割り当て欄より上の、A列の文字列セル（同名は複数行として保持）
     const nameRows={};
     cells.forEach(c=>{
-      if(c.col===1 && c.row>hdrRow && c.txt && !c.isNum){
-        const n=c.txt.replace(/[\s　]/g,''); if(n) (nameRows[n]=nameRows[n]||[]).push(c.row);
+      if(c.col===1 && c.row>hdrRow && c.row<limitRow && c.txt && !c.isNum){
+        const n=c.txt.replace(/[\s　]/g,'');
+        if(n && SH_HOME_LABELS.indexOf(n)<0 && n!=='研修') (nameRows[n]=nameRows[n]||[]).push(c.row);
       }
     });
     // 右ブロック（最終日付列より右）の氏名→コメント欄（氏名セルの右隣）
     const rightName={};
     cells.forEach(c=>{
       if(c.col>lastDayCol && c.txt && !c.isNum){
-        const n=c.txt.replace(/[\s　]/g,''); if(n && rightName[n]===undefined) rightName[n]={row:c.row, col:c.col+1};
+        const n=c.txt.replace(/[\s　]/g,'');
+        if(n && SH_HOME_LABELS.indexOf(n)<0 && n!=='研修' && rightName[n]===undefined)
+          rightName[n]={row:c.row, col:c.col+1};
       }
     });
 
@@ -2033,22 +2064,12 @@ async function shExportExcel(file){
        表の中の「何も入っていない行」を上から順に使う。
        A列が空でも、ほかの列に何か入っている行は、その人の行かもしれないので使わない。
        ホーム名（西九条〜出来島）や「研修」が始まる行から下は割り当て欄なので触らない。 */
-    const rowHas={}, colAText={};
-    let maxRow=hdrRow;
-    cells.forEach(c=>{
-      if(c.row>maxRow) maxRow=c.row;
-      if(c.txt!=null && String(c.txt).trim()!=='') rowHas[c.row]=true;
-      if(c.col===1 && c.txt) colAText[c.row]=String(c.txt).trim();
-    });
-    let limitRow=maxRow+1;
-    for(let r=hdrRow+1;r<=maxRow;r++){
-      if(colAText[r] && SH_HOME_LABELS.indexOf(colAText[r])>=0){ limitRow=r; break; }
-    }
     const freeRows=[];
     for(let r=hdrRow+1;r<limitRow;r++) if(!rowHas[r]) freeRows.push(r);
     let freePos=0; const added=[], noRoom=[];
 
     let written=0; const skipped=[], ambiguous=[], cmtMiss=[], noDateCol=new Set();
+    const usedRow={}, sameRow=[];   // 同じ行に2人ぶん書こうとしていないか
     for(const csvName of Object.keys(agg.byName)){
       let key=resolve(csvName);
       if(!key){
@@ -2061,6 +2082,8 @@ async function shExportExcel(file){
       }
       const rowsFor=nameRows[key], R=rowsFor[0];
       if(rowsFor.length>1) ambiguous.push(csvName+'（「'+key+'」が'+rowsFor.length+'行→'+R+'行目に記入）');
+      if(usedRow[R]) sameRow.push(`${usedRow[R]} と ${csvName}（どちらも${R}行目「${key}」）`);
+      usedRow[R]=csvName;
       const marks=agg.byName[csvName], commentParts=[];
       let cnt=0;
       for(const d of agg.dates){
@@ -2104,6 +2127,8 @@ async function shExportExcel(file){
                                   +'（テンプレの表に空き行を作ってから、もう一度お試しください）');
     if(skipped.length)   notes.push('照合できなかった名前：'+skipped.join('、')+'（テンプレA列の名簿と氏名を合わせてください）');
     if(ambiguous.length) notes.push('同じ名字が複数行にあり要確認：'+ambiguous.join('、'));
+    if(sameRow.length)   notes.push('★同じ行になる方がいます：'+sameRow.join('／')
+                                  +'　→ あとに読んだ方を記入しました。フォームのお名前の書き方（スペースの有無など）をそろえてください。');
     if(cmtMiss.length)   notes.push('コメント欄（右ブロック）に氏名が見つからず未記入：'+cmtMiss.join('、'));
     if(noDateCol.size)   notes.push('テンプレに日付列が無い日：'+[...noDateCol].join('、'));
     banner(`✅ Excelに${written}セル反映（書式は完全保持）`);
