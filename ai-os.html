@@ -1644,6 +1644,15 @@ function shDetectRange(raw){
   }
   return best ? [best.a, best.b] : null;
 }
+// 本文の中にある「期間：〜」を数える（フォームには何か月分もたまっているため）
+function shPeriodTally(raw){
+  const t = shZen(raw||''); const map={};
+  for(const m of t.matchAll(/期間[：:\s]*(\d{1,2})\s*[\/月]\s*(\d{1,2})\s*日?\s*[〜～~\-ー－–—]\s*(\d{1,2})\s*[\/月]\s*(\d{1,2})/g)){
+    const k = `${+m[1]}/${+m[2]}〜${+m[3]}/${+m[4]}`;
+    map[k] = (map[k]||0)+1;
+  }
+  return map;
+}
 const shRangeLabel = (a,b) => (a.getMonth()+1)+'/'+a.getDate()+'〜'+(b.getMonth()+1)+'/'+b.getDate();
 
 // 本文の期間と上の対象期間がちがうときだけ、合わせるボタンを出す
@@ -1722,7 +1731,9 @@ document.getElementById('wpGAS').addEventListener('click', async ()=>{
       shRun();
     }
   }catch(err){
-    alert('フォームから取得できませんでした（'+err.message+'）。\nテキスト貼り付けかサンプルでお試しください。');
+    alert('フォームから取得できませんでした（'+err.message+'）。\n\n'
+      +'・件数が多いと時間がかかります。もう一度「フォームから取得」を押してみてください。\n'
+      +'・それでも取れないときは、LINEなどの本文をそのまま貼り付けても集計できます。');
   }finally{ btn.textContent = 'フォームから取得'; btn.disabled = false; }
 });
 document.getElementById('wpRun').addEventListener('click', shRun);
@@ -1736,7 +1747,8 @@ function shFetchGAS(){
   return new Promise((resolve, reject)=>{
     const cb = "_aiosShiftCb_" + Date.now();
     const sc = document.createElement('script');
-    const to = setTimeout(()=>{ delete window[cb]; sc.remove(); reject(new Error('タイムアウト')); }, 10000);
+    const to = setTimeout(()=>{ delete window[cb]; sc.remove();
+      reject(new Error('時間内に返事がありませんでした')); }, 30000);
     window[cb] = json => { clearTimeout(to); delete window[cb]; sc.remove(); resolve(json.data||[]); };
     sc.onerror = ()=>{ clearTimeout(to); delete window[cb]; sc.remove(); reject(new Error('接続エラー')); };
     sc.src = SHIFT_GAS_URL + "?callback=" + cb;
@@ -1809,7 +1821,22 @@ function shRun(){
   Object.assign(shLastRows, {perName, redo, shortDays, start, end});   // 印刷用
 
   // 描画
-  let html = `<div class="kpis">
+  let html = '';
+  // フォームには何か月分もたまっているので、ほかの期間の分がどれだけあるか知らせる
+  const tally = shPeriodTally(raw);
+  const curKey = `${start.getMonth()+1}/${start.getDate()}〜${end.getMonth()+1}/${end.getDate()}`;
+  const others = Object.keys(tally).filter(k=>k!==curKey).sort((a,b)=>tally[b]-tally[a]);
+  const curCnt = tally[curKey]||0;
+  if(others.length){
+    const total = Object.keys(tally).reduce((n,k)=>n+tally[k],0);
+    html += `<div class="wpNote" style="background:#f4f6f8; border-color:#d8dee5; margin-bottom:8px">
+      📥 届いている希望は全部で<b>${total}件</b>。そのうち今の対象期間（<b>${curKey}</b>）は<b>${curCnt}件</b>です。
+      <br>ほかの期間の分：${others.slice(0,6).map(k=>`${k}（${tally[k]}件）`).join('、')}${others.length>6?' ほか':''}
+      <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap">${
+        others.slice(0,6).map(k=>`<button class="wpBtn" data-per="${k}" style="font-size:11px; padding:4px 9px">${k} に切り替える</button>`).join('')}</div>
+    </div>`;
+  }
+  html += `<div class="kpis">
     <div class="kpi"><b>${names.length}</b><span>提出人数</span></div>
     <div class="kpi"><b>${rows.length}</b><span>対象日数</span></div>
     <div class="kpi ${shortDays?'warn':''}"><b>${shortDays}</b><span>人手不足の日</span></div>
@@ -1861,6 +1888,13 @@ function shRun(){
     out.innerHTML='<p class="wpNote">集計をリセットしました。「サンプルで試す」か「フォームから取得」を押すか、テキストを貼り付けてください。</p>';
     shLastRows=null; window._aiosAgg=null; shGasCache=null;
   });
+  out.querySelectorAll('[data-per]').forEach(btn=>btn.addEventListener('click', ()=>{
+    const r = shDetectRange('期間：'+btn.dataset.per);
+    if(!r){ alert('期間を読み取れませんでした'); return; }
+    document.getElementById('wpStart').value = shFmt(r[0]);
+    document.getElementById('wpEnd').value   = shFmt(r[1]);
+    shRun();
+  }));
   document.getElementById('wpCsv').addEventListener('click', shDownloadCsv);
   document.getElementById('wpPrint').addEventListener('click', shPrint);
   document.getElementById('wpXlsx').addEventListener('click', async ()=>{
