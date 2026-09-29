@@ -1806,6 +1806,7 @@ function shRun(){
     }
     return { name:n, o, s, cmts, stamp:parsed.stamps[n], times:parsed.counts[n]||1 };
   }).sort((a,b)=> b.o - a.o);
+  Object.assign(shLastRows, {perName, redo, shortDays, start, end});   // 印刷用
 
   // 描画
   let html = `<div class="kpis">
@@ -1846,6 +1847,7 @@ function shRun(){
      </div>
      <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
        <button class="wpBtn primary" id="wpXlsx">📊 このシフト集計Excelに反映</button>
+       <button class="wpBtn" id="wpPrint">🖨 印刷 / PDFで保存</button>
        <button class="wpBtn" id="wpCsv">CSVダウンロード</button>
        <span class="grow" style="flex:1"></span>
        <button class="wpBtn" id="wpReset" style="font-size:11px">🧹 集計をリセット</button>
@@ -1860,6 +1862,7 @@ function shRun(){
     shLastRows=null; window._aiosAgg=null; shGasCache=null;
   });
   document.getElementById('wpCsv').addEventListener('click', shDownloadCsv);
+  document.getElementById('wpPrint').addEventListener('click', shPrint);
   document.getElementById('wpXlsx').addEventListener('click', ()=>{
     if(typeof JSZip === 'undefined'){
       alert('ライブラリを読み込み中です。少し待つか、ページをブラウザ／公開URLで開くと反映できます。'); return;
@@ -2108,6 +2111,68 @@ async function shExportExcel(file){
     logLine(`<b>文書AI</b>：シフト集計Excelに${written}セル反映（書式完全保持）${notes.length?'／'+notes.join('／'):''}`);
     if(notes.length) alert('反映しました（'+written+'セル）。\n\n'+notes.join('\n'));
   }catch(e){ alert('Excel処理エラー：'+e.message); }
+}
+
+// --- 集計結果をそのまま印刷する（PDF保存もここから）---
+function shPrint(){
+  if(!shLastRows || !shLastRows.rows || !shLastRows.rows.length){
+    alert('先に「この内容で集計する」を押してください。'); return;
+  }
+  const { rows, names, minStaff, perName, redo, shortDays, start, end } = shLastRows;
+  const jp = d => `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+  const B  = 'border:1px solid #333; padding:4px 6px; font-size:11px';
+  const TH = B + '; background:#eee; font-weight:700';
+
+  let html = `<h2 style="font-size:16px; margin:0 0 2px">シフト希望 集計表</h2>
+    <div style="font-size:11.5px; margin-bottom:8px">
+      対象期間：${jp(start)} 〜 ${jp(end)}　／　最低人数：${minStaff}名<br>
+      提出人数：${names.length}名　／　対象日数：${rows.length}日　／　人手不足の日：${shortDays}日
+    </div>
+    <table style="border-collapse:collapse; width:100%"><thead><tr>
+      <th style="${TH}; width:52px">日付</th><th style="${TH}; width:28px">曜</th>
+      <th style="${TH}; width:52px">出勤可</th><th style="${TH}; width:52px">応相談</th>
+      <th style="${TH}">出勤できる人</th></tr></thead><tbody>`;
+  for(const r of rows){
+    const sun = r.dow===0, sat = r.dow===6;
+    html += `<tr>
+      <td style="${B}${sun?'; color:#c00':sat?'; color:#06c':''}">${r.day}</td>
+      <td style="${B}${sun?'; color:#c00':sat?'; color:#06c':''}">${WDOW[r.dow]}</td>
+      <td style="${B}; text-align:center${r.short?'; font-weight:700':''}">${r.count}${r.short?' ⚠':''}</td>
+      <td style="${B}; text-align:center">${r.maybe.length}</td>
+      <td style="${B}">${hkEsc(r.avail.join('、')||'—')}</td></tr>`;
+  }
+  html += `</tbody></table>
+    <div style="font-size:10.5px; margin-top:4px">⚠＝出勤可が最低人数（${minStaff}名）に足りていない日</div>`;
+
+  html += `<div style="font-weight:700; font-size:12.5px; margin:14px 0 4px">個人別の希望日数</div>
+    <table style="border-collapse:collapse; width:100%"><thead><tr>
+      <th style="${TH}">お名前</th><th style="${TH}; width:56px">出勤可</th>
+      <th style="${TH}; width:56px">応相談</th><th style="${TH}; width:120px">提出日時</th>
+      <th style="${TH}">ご連絡</th></tr></thead><tbody>`;
+  for(const p of (perName||[])){
+    html += `<tr>
+      <td style="${B}">${hkEsc(p.name)}</td>
+      <td style="${B}; text-align:center">${p.o}日</td>
+      <td style="${B}; text-align:center">${p.s?p.s+'日':'—'}</td>
+      <td style="${B}">${p.stamp?hkEsc(shStampText(p.stamp)):'—'}${p.times>1?`（${p.times}回目）`:''}</td>
+      <td style="${B}">${p.cmts.length?hkEsc(p.cmts.join(' ／ ')):''}</td></tr>`;
+  }
+  html += `</tbody></table>`;
+
+  if(redo && redo.length){
+    html += `<div style="font-size:11px; margin-top:8px">
+      🔁 出し直しがありました：${redo.length}名（送信日時がいちばん新しいものを集計しています）</div>`;
+  }
+  html += `<div style="font-size:10px; color:#666; margin-top:10px; text-align:right">
+    おりーぶ庵 AI-OS ／ ${new Date().toLocaleString('ja-JP')} 出力</div>`;
+
+  const tmp=document.createElement('div');
+  tmp.className='aiosPrintArea'; tmp.innerHTML=html;
+  document.body.appendChild(tmp);
+  const clean=()=>{ tmp.remove(); window.removeEventListener('afterprint', clean); };
+  window.addEventListener('afterprint', clean);
+  setTimeout(()=>window.print(), 60);
+  logLine('<b>シフトAI</b>：集計表を印刷');
 }
 
 async function shDownloadCsv(){
