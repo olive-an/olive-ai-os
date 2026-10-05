@@ -3600,6 +3600,37 @@ async function secSave(storeKey, data, pass){
     n:Array.isArray(data)?data.length:0, at:new Date().toISOString()
   }));
 }
+/* ---- 端末から端末へデータを持ち運ぶ（引き継ぎファイル）------------------------
+   パソコンで取り込んだ従業員情報・受給者証データを、手元のiPadやiPhoneでも
+   見て直せるようにするための受け渡しです。
+   ★ファイルは暗号化したまま。合言葉を知らない人には開けません。
+   ★写真・PDFの添付は端末ごとの保管なので、このファイルには入りません。
+   ------------------------------------------------------------------------- */
+const AIOS_HANDOFF_EXT = '.aiosdata';
+function aiosHandoffBlob(storeKey){
+  const raw = localStorage.getItem(storeKey);
+  if(!raw) return null;
+  return new Blob([raw], {type:'application/json'});
+}
+// 読み込む：形を確かめ、合言葉で開けることを確認してから中身を返す
+async function aiosHandoffRead(file, pass){
+  const txt = await file.text();
+  let o=null; try{ o=JSON.parse(txt); }catch(e){}
+  if(!o || !o.ct || !o.salt || !o.iv) throw new Error('AI-OSの引き継ぎファイルではありません');
+  const tmp='__aiosHandoffTmp';
+  localStorage.setItem(tmp, txt);
+  try{
+    const data = await secLoad(tmp, pass);
+    if(!Array.isArray(data)){ const er=new Error('中身を読み取れませんでした'); er.__aios=1; throw er; }
+    return data;
+  }catch(e){
+    // 形は合っているのに開けない＝合言葉ちがい（またはファイルが壊れている）
+    throw new Error(e && e.__aios ? e.message : '合言葉が違います（この端末の合言葉で保存したファイルか、ご確認ください）');
+  }finally{ localStorage.removeItem(tmp); }
+}
+function aiosHandoffDate(){ const d=new Date(), p=n=>('0'+n).slice(-2);
+  return ''+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate()); }
+
 async function secLoad(storeKey, pass){
   const raw = localStorage.getItem(storeKey);
   if(!raw) return null;
@@ -4311,6 +4342,9 @@ function riyouRenderSearch(q){
       <button class="wpBtn" id="riyouReload">📗 Excelから最新に更新</button>
       ${aiosBookBtn('riyouBook')}
       <button class="wpBtn" id="riyouExport">📤 Excelへ書き出す（別名）</button>
+      <button class="wpBtn" id="riyouOut">📲 iPadへ持ち出す</button>
+      <button class="wpBtn" id="riyouIn">📥 持ち込んだデータを入れる</button>
+      <input type="file" id="riyouHandFile" accept=".aiosdata,application/json" hidden>
       <input type="file" id="riyouReFile" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden>
       <input type="file" id="riyouExpFile" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden>
     </div>
@@ -4370,6 +4404,27 @@ function riyouRenderSearch(q){
     }catch(e){ alert('取り込みエラー：'+e.message); riyouRenderSearch(''); }
   });
   if(q!==undefined){ qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
+  const rOut=document.getElementById('riyouOut');
+  if(rOut) rOut.addEventListener('click', async ()=>{
+    const blob = aiosHandoffBlob(RIYOU_KEY);
+    if(!blob){ alert('持ち出すデータがありません。'); return; }
+    await aiosDeliver(blob, `受給者証データ_持ち出し_${aiosHandoffDate()}${AIOS_HANDOFF_EXT}`, 'riyouBody', null);
+    banner('📲 引き継ぎファイルを保存しました');
+  });
+  const rIn=document.getElementById('riyouIn');
+  if(rIn) rIn.addEventListener('click', ()=>document.getElementById('riyouHandFile').click());
+  const rHF=document.getElementById('riyouHandFile');
+  if(rHF) rHF.addEventListener('change', async function(){
+    const f=this.files[0]; this.value=''; if(!f) return;
+    try{
+      const got = await aiosHandoffRead(f, riyouPw());
+      if(!confirm(`この端末のいまの${(riyouData||[]).length}名を、ファイルの${got.length}名と入れ替えます。\n\n`
+                 +`※受給者証の写真・PDFは端末ごとの保管なので、一緒には移りません。\n\nよろしいですか？`)) return;
+      riyouData = got; await riyouSave(riyouData, riyouPw()); await riyouGC(); riyouRenderSearch('');
+      banner(`📥 ${got.length}名を読み込みました`);
+      logLine(`<b>利用者AI</b>：引き継ぎファイルから${got.length}名を読み込み`);
+    }catch(e){ alert('読み込めませんでした：'+(e.message||e)); }
+  });
   aiosShareBar('riyou', /受給者証|利用者|master|マスタ/i, 'riyouBody', '受給者証データ',
     wb=>riyouImportFromWorkbook(wb));
 }
@@ -5904,9 +5959,12 @@ function jinRenderList(){
       <button class="wpBtn" id="jinImport">📗 従業員名簿Excelから取り込む</button>
       ${aiosBookBtn('jinBook')}
       <button class="wpBtn" id="jinExport">📤 Excelへ書き出す（別名）</button>
+      <button class="wpBtn" id="jinOut">📲 iPadへ持ち出す</button>
+      <button class="wpBtn" id="jinIn">📥 持ち込んだデータを入れる</button>
       <span class="grow" style="flex:1"></span>
       <button class="wpBtn" id="jinLock" style="font-size:11px">🔒 閉じる</button>
       <button class="wpBtn" id="jinClear" style="font-size:11px; color:#d0503f; border-color:#e6b3ab">🗑 全部消す</button>
+      <input type="file" id="jinHandFile" accept=".aiosdata,application/json" hidden>
       <input type="file" id="jinFile" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden>
       <input type="file" id="jinExpFile" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden>
     </div>
@@ -5984,6 +6042,27 @@ function jinRenderList(){
   if(bookBtn) bookBtn.addEventListener('click', async ()=>{
     try{ await jinImportFromWorkbook(await aiosBookWorkbook()); }
     catch(e){ if(e.name!=='AbortError') alert('読み込めませんでした：'+e.message); jinRenderList(); }
+  });
+  const jinOut=document.getElementById('jinOut');
+  if(jinOut) jinOut.addEventListener('click', async ()=>{
+    const blob = aiosHandoffBlob(JINJI_KEY);
+    if(!blob){ alert('持ち出すデータがありません。先に従業員名簿を取り込んでください。'); return; }
+    await aiosDeliver(blob, `従業員情報_持ち出し_${aiosHandoffDate()}${AIOS_HANDOFF_EXT}`, 'jinBody', null);
+    banner('📲 引き継ぎファイルを保存しました');
+  });
+  const jinIn=document.getElementById('jinIn');
+  if(jinIn) jinIn.addEventListener('click', ()=>document.getElementById('jinHandFile').click());
+  const jinHF=document.getElementById('jinHandFile');
+  if(jinHF) jinHF.addEventListener('change', async function(){
+    const f=this.files[0]; this.value=''; if(!f) return;
+    try{
+      const got = await aiosHandoffRead(f, jinjiPass || secRemembered(JINJI_KEY));
+      if(!confirm(`この端末のいまの${(jinjiData||[]).length}名を、ファイルの${got.length}名と入れ替えます。\n\n`
+                 +`※写真やPDFの添付は端末ごとの保管なので、一緒には移りません。\n\nよろしいですか？`)) return;
+      jinjiData = got; await jinPersist(); await jinGC(); jinRenderList();
+      banner(`📥 ${got.length}名を読み込みました`);
+      logLine(`<b>人事AI</b>：引き継ぎファイルから${got.length}名を読み込み`);
+    }catch(e){ alert('読み込めませんでした：'+(e.message||e)); }
   });
   aiosShareBar('jin', /従業員|職員|名簿|スタッフ|master|マスタ/i, 'jinBody', '従業員名簿',
     wb=>jinImportFromWorkbook(wb));
