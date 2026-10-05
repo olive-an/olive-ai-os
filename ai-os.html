@@ -956,7 +956,7 @@ const STAFF = [
   {id:'請求',   name:'請求AI',      face:'🧾',   x:85, y:16, lines:['国保連データを作ります','実績と突合します','返戻ゼロで通りそうです']},
   {id:'経理',   name:'経理AI',      face:'💰',   x:85, y:42, lines:['数字を集計します','売上と経費を照合中','収支が出ました']},
   {id:'人事',   name:'人事AI',      face:'🤝',   x:85, y:68, open:'jinji', lines:['職員情報を確認します','資格・研修を照合','契約書式を用意しました']},
-  {id:'工房',   name:'工房AI',      face:'🛠️',  x:30, y:86, lines:['受注と納品を確認','工賃を計算します','作業実績まとめました']},
+  {id:'工房',   name:'工房AI',      face:'🛠️',  x:30, y:86, open:'koubou', lines:['受注と納品を確認','工賃を計算します','作業実績まとめました']},
   {id:'ホーム', name:'ホーム管理AI', face:'🏠',   x:50, y:89, open:'keikaku', lines:['各ホームの空室を確認','西九条・九条…集計中','入居状況を更新しました']},
   {id:'利用者', name:'利用者AI',     face:'📇',   x:65, y:16, open:'riyou', lines:['受給者証を確認します','入居状況を照会中','利用者情報をお出しします']},
   {id:'車両',   name:'車両AI',       face:'🚗',   x:35, y:16, open:'sharyou', lines:['車検の期限を確認します','保険の満了日をチェック中','車両台帳を更新しました']},
@@ -1055,6 +1055,7 @@ const STAFF_OPEN = {
   riyou:  { fn:()=>openRiyouPanel(),   say:'利用者さんの受給者証ですね！', title:'受給者証データを調べる' },
   sharyou:{ fn:()=>openSharyouPanel(), say:'車両の管理ですね、お任せください！', title:'車両台帳・車検/保険の期限' },
   jinji:  { fn:()=>openJinjiPanel(),   say:'職員さんのことですね、お任せください！', title:'職員名簿・資格や研修の期限' },
+  koubou: { fn:()=>openKoubouPanel(),  say:'工房のことですね、お任せください！', title:'工房のアプリ・共有フォルダ' },
 };
 for(const s of STAFF){
   const el = document.createElement('div');
@@ -1202,6 +1203,7 @@ function openRealPanel(kind){
   else if(kind==='f12')     openF12Panel();
   else if(kind==='riyou')   openRiyouPanel();
   else if(kind==='sharyou') openSharyouPanel();
+  else if(kind==='koubou')  openKoubouPanel();
   else return false;
   return true;
 }
@@ -6322,6 +6324,83 @@ async function jinRenderFile(idx, qi, draft){
 }
 
 /* ▲▲▲ 人事AI ここまで ▲▲▲ */
+
+/* =========================================================================
+   ▼▼▼ 工房AI ▼▼▼
+   工房で使うアプリ（にんにくの予定アプリなど）への入口と、
+   工房の共有フォルダ（\\192.168.10.100\kyoutsu\工房）の置き場所をまとめます。
+   ★アプリのURLはこの端末のブラウザにだけ覚えます。
+   ========================================================================= */
+const KOUBOU_DIR = '\\\\192.168.10.100\\kyoutsu\\工房';
+const KOUBOU_APPS = [
+  {key:'ninniku', label:'🧄 にんにく予定アプリ', note:'植付け・収穫・出荷の予定'},
+  {key:'app2',    label:'🧺 工房アプリ（予備）', note:'あとから登録できます'},
+];
+const kbUrl    = k => { try{ return localStorage.getItem('aiosKoubou_'+k)||''; }catch(e){ return ''; } };
+const kbSetUrl = (k,v) => { try{ v ? localStorage.setItem('aiosKoubou_'+k, v) : localStorage.removeItem('aiosKoubou_'+k); }catch(e){} };
+
+function kbRender(){
+  const b=document.getElementById('koubouBody'); if(!b) return;
+  b.innerHTML = `
+    <div style="font-weight:800; font-size:13px; color:#1f3a28; margin-bottom:6px">工房のアプリ</div>
+    ${KOUBOU_APPS.map(a=>{
+      const u=kbUrl(a.key);
+      return `<div style="border:1px solid var(--line); border-radius:12px; padding:10px; margin-bottom:8px; background:#fff">
+        <div style="font-weight:700; font-size:13.5px">${a.label}
+          <span style="font-weight:400; font-size:11px; color:#7a8b80">${a.note}</span></div>
+        ${u ? `<a class="wpBtn primary" href="${hkEsc(u)}" target="_blank" rel="noopener"
+                 style="display:block; text-align:center; padding:10px; text-decoration:none; margin-top:7px">開く</a>
+              <div style="font-size:10.5px; color:#7a8b80; margin-top:4px; word-break:break-all">${hkEsc(u)}</div>`
+             : `<div style="font-size:11.5px; color:#7a8b80; margin-top:5px">まだ登録されていません。アプリのURLを貼って「覚える」を押してください。</div>`}
+        <div style="margin-top:7px; display:flex; gap:6px; flex-wrap:wrap">
+          <input data-kb="${a.key}" placeholder="https://…" value="${hkEsc(u)}"
+                 style="flex:1 1 220px; min-width:0; padding:8px; border:1px solid #cfd6de; border-radius:8px; font-size:13px">
+          <button class="wpBtn" data-kbsave="${a.key}">覚える</button>
+          ${u?`<button class="wpBtn" data-kbclear="${a.key}" style="font-size:11px">消す</button>`:''}
+        </div>
+      </div>`;
+    }).join('')}
+
+    <div style="font-weight:800; font-size:13px; color:#1f3a28; margin:14px 0 6px">工房の共有フォルダ</div>
+    <div class="wpNote">
+      📂 <b style="font-family:monospace">${hkEsc(KOUBOU_DIR)}</b>
+      <button class="wpBtn" id="kbCopy" style="font-size:11px; padding:2px 8px; margin-left:6px">コピー</button><br>
+      <small>Excelを取り込むときは、各AIの「📗 Excelから取り込む」でこのフォルダのファイルを選んでください。
+      パソコンのEdge/Chromeなら、覚えさせておけば開くだけで読み込めます。</small>
+    </div>
+    <div class="wpNote" style="margin-top:8px">
+      ℹ️ 工房の作業（受注・納品・工賃の計算など）をAI-OSの中で動かすこともできます。
+      いまのExcelや、にんにく予定アプリの画面を見せていただければ、そこに合わせて作ります。
+    </div>`;
+  b.querySelectorAll('[data-kbsave]').forEach(btn=>btn.addEventListener('click',()=>{
+    const k=btn.dataset.kbsave;
+    const v=b.querySelector(`[data-kb="${k}"]`).value.trim();
+    if(v && !/^https?:\/\//i.test(v)){ alert('URLは https:// から始まるものを貼ってください。'); return; }
+    kbSetUrl(k, v); kbRender(); banner(v?'🧄 アプリを覚えました':'アプリの登録を消しました');
+  }));
+  b.querySelectorAll('[data-kbclear]').forEach(btn=>btn.addEventListener('click',()=>{
+    kbSetUrl(btn.dataset.kbclear,''); kbRender();
+  }));
+  const cp=document.getElementById('kbCopy');
+  if(cp) cp.addEventListener('click', async ()=>{
+    try{ await navigator.clipboard.writeText(KOUBOU_DIR); banner('📋 フォルダの場所をコピーしました'); }
+    catch(e){ alert(KOUBOU_DIR); }
+  });
+}
+function openKoubouPanel(){
+  let p=document.getElementById('koubouPanel');
+  if(!p){
+    p=document.createElement('div'); p.className='modal'; p.id='koubouPanel';
+    p.innerHTML=`<div class="sheet" style="max-width:560px">
+      <div class="sheetHead"><b>🛠️ 工房AI</b><span class="grow"></span>
+        <button onclick="document.getElementById('koubouPanel').hidden=true">✕</button></div>
+      <div class="sheetBody" id="koubouBody"></div></div>`;
+    p.addEventListener('click',ev=>{ if(ev.target.id==='koubouPanel') p.hidden=true; });
+    document.body.appendChild(p);
+  }
+  p.hidden=false; kbRender();
+}
+/* ▲▲▲ 工房AI ここまで ▲▲▲ */
 
 /* =========================================================================
    ▼▼▼ ポチパス連携 ▼▼▼
