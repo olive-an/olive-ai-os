@@ -6648,11 +6648,13 @@ function openPochiPanel(){
      合言葉で暗号化してこの端末のブラウザ内だけに保存します。
      公開ファイル（GitHub）には一切入りません。外部にも送信しません。
    ========================================================================= */
-const GIJI_KEY = 'aiosGijiV1';
-let gijiData = null;            // 解錠中だけメモリに載せる
+const GIJI_KEY   = 'aiosGijiV1';   // 旧：合言葉つきで保存していた分（引き継ぎ用）
+const GIJI_PLAIN = 'aiosGijiV2';   // 議事録（合言葉なし・この端末のみ）
+let gijiData = null;
 let gijiPass = null;
 
-const gijiSave = (list, pass)=> secSave(GIJI_KEY, list, pass);
+function gijiRead(){ try{ const r=localStorage.getItem(GIJI_PLAIN); return r?JSON.parse(r):null; }catch(e){ return null; } }
+const gijiSave = (list)=> { localStorage.setItem(GIJI_PLAIN, JSON.stringify(list)); };
 const gijiZen  = s => String(s||'').replace(/[０-９]/g, c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
 
 // Word(.docx)から本文テキストを取り出す（JSZipで中のXMLを読むだけ）
@@ -6693,80 +6695,70 @@ function openGijiPanel(){
     p=document.createElement('div'); p.className='modal'; p.id='gijiPanel';
     p.innerHTML=`<div class="sheet" style="max-width:680px">
       <div class="sheetHead"><b>🗣️ 会議室・議事録</b><span class="grow"></span>
-        <button id="gijiLock" title="ロックする">🔒</button>
         <button onclick="document.getElementById('gijiPanel').hidden=true">✕</button></div>
       <div class="sheetBody" id="gijiBody"></div></div>`;
     p.addEventListener('click',ev=>{ if(ev.target.id==='gijiPanel') p.hidden=true; });
     document.body.appendChild(p);
-    document.getElementById('gijiLock').addEventListener('click', ()=>{
-      gijiData=null; gijiPass=null; secForget(GIJI_KEY); gijiRender();
-    });
   }
   p.hidden=false; gijiRender();
 }
 function gijiNote(){
   return `<div class="wpNote" style="background:#fdf6ec; border-color:#e6cfa5">
-    🔐 議事録には利用者さんの<b>障害名や病状などの大切な個人情報</b>が含まれます。
-    合言葉で暗号化して<b>このパソコンの中だけ</b>に保存され、公開ページやインターネットには一切出ません。</div>`;
+    🗣️ 議事録は<b>この端末の中だけ</b>に保存されます。公開ページやインターネットには一切出ません。<br>
+    <small>※議事録には利用者さんの障害名や病状などが含まれます。合言葉なしで開く設定のため、
+    この端末を他の方が使える状態にしないようご注意ください。</small></div>`;
 }
 function gijiRender(){
   const b=document.getElementById('gijiBody');
-  const st=secStored(GIJI_KEY);
   if(gijiData){ gijiList(); return; }
-  if(st && secRemembered(GIJI_KEY)){
-    b.innerHTML='<p class="wpNote">🔓 開いています…</p>';
+  const plain = gijiRead();
+  if(plain){ gijiData=plain; gijiList(); return; }
+  // 以前に合言葉つきで保存した分があれば引き継ぐ
+  const old = secStored(GIJI_KEY);
+  if(old){
+    b.innerHTML='<p class="wpNote">🔓 以前の議事録を読み込んでいます…</p>';
     secAutoLoad(GIJI_KEY).then(r=>{
-      if(r){ gijiData=r.data; gijiPass=r.pass; gijiList(); } else gijiRender();
+      if(r){                                  // 覚えていた合言葉で自動的に引き継ぐ
+        gijiData = r.data; gijiSave(gijiData);
+        localStorage.removeItem(GIJI_KEY); secForget(GIJI_KEY);
+        gijiList(); banner('🗣️ 以前の議事録を引き継ぎました');
+      }else gijiRenderTakeOver(old);
     });
     return;
   }
-  if(!st){
-    b.innerHTML = gijiNote() + `
-      <div style="font-weight:800; font-size:13px; color:#1f3a28; margin:12px 0 6px">はじめの設定（1回だけ）</div>
-      <div class="wpNote" style="margin-bottom:8px">合言葉を決めてください。あとは「＋ 議事録を追加」でWordを選ぶだけです。</div>
-      <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a">合言葉（4文字以上）</label>
-      <input id="gijiPassIn" type="password" autocomplete="new-password" placeholder="4文字以上"
-        style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 2px">
-      ${secRememberBox('gijiRem')}
-      <button class="wpBtn primary" id="gijiStart" style="width:100%; padding:11px" disabled>🔐 はじめる</button>`;
-    const pi=document.getElementById('gijiPassIn');
-    pi.addEventListener('input',()=>{ document.getElementById('gijiStart').disabled = pi.value.trim().length<4; });
-    document.getElementById('gijiStart').addEventListener('click', async ()=>{
-      gijiPass=pi.value.trim(); gijiData=[];
-      await gijiSave(gijiData, gijiPass);
-      if(document.getElementById('gijiRem').checked) secRemember(GIJI_KEY, gijiPass);
-      gijiList();
-    });
-    return;
-  }
-  b.innerHTML = gijiNote() + `
-    <div style="font-size:12.5px; color:#5a6f60; margin:12px 0 6px">保管中：<b>${st.n}件</b></div>
-    <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a">合言葉</label>
-    <input id="gijiPass2" type="password" autocomplete="current-password" placeholder="合言葉"
-      style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 2px">
-    ${secRememberBox('gijiRem2')}
-    <button class="wpBtn primary" id="gijiOpen" style="width:100%; padding:11px">🔓 開く</button>
+  gijiData=[]; gijiSave(gijiData); gijiList();   // まっさらな状態から開始
+}
+// 合言葉を覚えていないとき：1回だけ入れて引き継ぐ
+function gijiRenderTakeOver(old){
+  const b=document.getElementById('gijiBody');
+  b.innerHTML = `
+    <div class="wpNote" style="margin-bottom:10px">
+      以前に合言葉をつけて保存した議事録が<b>${old.n}件</b>あります。<br>
+      合言葉を入れると引き継げます（次からは合言葉なしで開きます）。</div>
+    <input id="gijiOldPass" type="password" autocomplete="current-password" placeholder="以前の合言葉"
+      style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 8px">
+    <button class="wpBtn primary" id="gijiTakeOver" style="width:100%; padding:11px">🔓 引き継ぐ</button>
     <div id="gijiMsg" style="margin-top:8px"></div>
     <div style="margin-top:14px; border-top:1px dashed var(--line); padding-top:10px">
-      <button class="wpBtn" id="gijiReset" style="font-size:11px">🔄 合言葉を忘れた／はじめから入れ直す</button>
+      <button class="wpBtn" id="gijiSkip" style="font-size:11px">引き継がずに最初から始める</button>
     </div>`;
   const go=async ()=>{
     try{
-      const pw=document.getElementById('gijiPass2').value.trim();
-      gijiData=await secLoad(GIJI_KEY, pw); gijiPass=pw;
-      if(document.getElementById('gijiRem2').checked) secRemember(GIJI_KEY, pw);
+      gijiData = await secLoad(GIJI_KEY, document.getElementById('gijiOldPass').value.trim());
+      gijiSave(gijiData);
+      localStorage.removeItem(GIJI_KEY); secForget(GIJI_KEY);
       gijiList();
-    }catch(e){ document.getElementById('gijiMsg').innerHTML=`<p class="wpNote" style="background:#fdf3f3; border-color:#e6b3ab">⚠ 合言葉が違うようです。<br><span style="font-size:11px">以前に<b>別の合言葉</b>で保存された可能性があります。思い当たる合言葉がなければ、下の「🔄 合言葉を忘れた／はじめから入れ直す」から入れ直せます（Wordの議事録をもう一度読み込みます）。</span></p>`; }
+    }catch(e){ document.getElementById('gijiMsg').innerHTML=`<p class="wpNote" style="background:#fdf3f3">⚠ 合言葉が違うようです</p>`; }
   };
-  document.getElementById('gijiOpen').addEventListener('click', go);
-  document.getElementById('gijiPass2').addEventListener('keydown', e=>{ if(e.key==='Enter') go(); });
-  document.getElementById('gijiReset').addEventListener('click', ()=>{
-    if(confirm('保管した議事録をこのパソコンから消します。よろしいですか？')){
-      localStorage.removeItem(GIJI_KEY); secForget(GIJI_KEY); gijiData=null; gijiRender();
-    }
+  document.getElementById('gijiTakeOver').addEventListener('click', go);
+  document.getElementById('gijiOldPass').addEventListener('keydown', e=>{ if(e.key==='Enter') go(); });
+  document.getElementById('gijiSkip').addEventListener('click', ()=>{
+    if(!confirm('以前の議事録は引き継がず、最初から始めます。よろしいですか？')) return;
+    localStorage.removeItem(GIJI_KEY); secForget(GIJI_KEY);
+    gijiData=[]; gijiSave(gijiData); gijiList();
   });
 }
-async function gijiPersist(){ await gijiSave(gijiData, gijiPass); }
+async function gijiPersist(){ gijiSave(gijiData); }
 
 // --- 一覧（新しい順）＋全文検索 ---
 function gijiList(q){
