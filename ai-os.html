@@ -281,7 +281,7 @@
   }
   /* 背景がシーグリーンなので、下の操作列の文字は白に */
   .toolbar{display:flex; gap:6px; align-items:center; font-size:11px; color:#eaf5ee; flex:0 0 auto}
-  .toolbar label{color:#eaf5ee}
+  .toolbar label, .toolbar span, #dirLabel{color:#eaf5ee}
   .toolbar button{
     border:1px solid var(--line); background:#fff; border-radius:8px;
     padding:4px 9px; cursor:pointer; font-size:11px
@@ -887,10 +887,11 @@ const AI_ICON = (()=>{
       <rect x="21" y="29" width="6" height="5" rx="1.5"/><rect x="28" y="29" width="6" height="12" rx="1.5"/>
       <rect x="14" y="36" width="13" height="5" rx="1.5"/></g>`)},
   工房: { bg:'#7d5330', svg:S(`
-    <path d="M9 33l14-14" stroke="${W}" stroke-width="4.5"/>
-    <path d="M20 14a7 7 0 019.8-6.4l-4.6 4.6 3.6 3.6 4.6-4.6A7 7 0 0126 21z" fill="${W}"/>
-    <path d="M29 26l7 7" stroke="${W}" stroke-width="4"/>
-    <path d="M33 22l9 9-4 4-9-9z" fill="#ffd36b"/>`)},
+    <path d="M24 14c-6 4-12 10-12 18 0 6.5 5 10 12 10s12-3.5 12-10c0-8-6-14-12-18z" fill="${W}"/>
+    <path d="M24 15c-3 7-4.5 13-4 26" stroke="#d6c0ae" stroke-width="2"/>
+    <path d="M24 15c3 7 4.5 13 4 26" stroke="#d6c0ae" stroke-width="2"/>
+    <path d="M24 14V9" stroke="#8fd27a" stroke-width="3"/>
+    <path d="M24 10c-1.5-3-4-4.5-6-5M24 10c1.5-3 4-4.5 6-5" stroke="#8fd27a" stroke-width="2.6"/>`)},
   /* --- 利用者・施設（桃・黄緑） --- */
   利用者: { bg:'#b33f74', svg:S(`
     <rect x="8" y="9" width="32" height="30" rx="4" fill="${W}"/>
