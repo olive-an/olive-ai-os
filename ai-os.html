@@ -658,7 +658,10 @@
         <label>最低人数 <input type="number" id="wpMin" value="2" min="1" style="width:56px"></label>
         <button id="wpSample">サンプルで試す</button>
         <button id="wpGAS">フォームから取得</button>
+        <a class="wpBtn" href="https://olive-an.github.io/olive-anshift/" target="_blank" rel="noopener"
+           style="text-decoration:none">🔗 希望フォームを開く</a>
       </div>
+      <div id="wpVer" hidden></div>
       <textarea id="wpPaste" placeholder="シフト希望のテキストをここに貼り付けてもOK（○＝可 / △＝応相談 / ×＝不可）"></textarea>
       <div id="wpFix" hidden></div>
       <button id="wpRun" class="wpBtn primary">この内容で集計する</button>
@@ -1571,6 +1574,11 @@ document.getElementById('bkChk').addEventListener('change', e=>{ aiosBackupOn=e.
    ========================================================================= */
 
 // 既存フォームと同じGASエンドポイント（読み取り専用・JSONP）
+/* シフト希望フォーム（従業員に配布しているもの）との連動
+   ・読み取りのしかたは、フォーム側の版 SH_FORM_VER に合わせて作っています。
+   ・フォームが新しくなったら画面でお知らせします（読み取りの確認用）。 */
+const SH_FORM_URL = 'https://olive-an.github.io/olive-anshift/';
+const SH_FORM_VER = '2026-09-30b';     // この版に合わせて読み取りを作っています
 const SHIFT_GAS_URL = "https://script.google.com/macros/s/AKfycbwG__KMZmGaeF7S1wwqJokyijgjfOVHYNKmG7huHApz5H9KxpKC1KsPHNRH9TfqX0SvjQ/exec";
 const WDOW = ["日","月","火","水","木","金","土"];
 
@@ -1644,15 +1652,31 @@ function shExtractMarks(block, resolver){
     const sym = shNormSym(m[3]);
     if(sym){
       const key = resolver[parseInt(m[1])+"/"+parseInt(m[2])];
-      if(key){                                   // 集計期間の外の日付は取り込まない
-        res[key] = sym;
-        const cmt = (m[4]||"").match(/💬(.+)/);
-        if(cmt) res[key+"__comment"] = cmt[1].trim();
-      }
+      if(key) res[key] = sym;                   // 集計期間の外の日付は取り込まない
     }
     if(re.lastIndex === m.index) re.lastIndex++;  // 空回り防止
   }
+  shExtractComments(block, resolver, res);
   return res;
+}
+/* 💬コメントは、行の終わりまでを丸ごと取り込む。
+   ※記号のうしろを「次の日付の手前まで」で切っていたため、
+     「10/24は10:00まで」「11/1は不可」のようにコメントの中に日付が
+     入っていると、そこで切れたり、まるごと消えたりしていた。
+   （シフト希望フォーム側の修正 #76 と同じ直し方にそろえています）*/
+function shExtractComments(block, resolver, res){
+  String(block).split(/[\r\n]+/).forEach(line=>{
+    const i = line.indexOf('💬');
+    if(i < 0) return;
+    const cmt = line.slice(i + '💬'.length).trim();
+    if(!cmt) return;
+    // 💬より前に出てくる日付のうち、いちばん後ろのものに付ける
+    const ds = line.slice(0, i).match(/\d{1,2}\/\d{1,2}/g);
+    if(!ds || !ds.length) return;
+    const p = ds[ds.length-1].split('/');
+    const key = resolver[parseInt(p[0])+'/'+parseInt(p[1])];
+    if(key) res[key+'__comment'] = cmt;
+  });
 }
 // 「送信：2026/9/18（金）PM 10:05」のような行から送信日時を読む
 function shParseStamp(text){
@@ -1766,8 +1790,29 @@ function shDefaultRange(){
 
 // ---- パネルの開閉 ----
 let shGasCache = null; // フォームから取得した生テキストを保持
+// シフト希望フォームの版をみて、読み取りとずれていないか確かめる
+let shVerChecked = false;
+async function shCheckFormVer(){
+  if(shVerChecked) return; shVerChecked = true;
+  const box = document.getElementById('wpVer'); if(!box) return;
+  try{
+    const r = await fetch(SH_FORM_URL + 'index.html?v=' + Date.now(), {cache:'no-store'});
+    if(!r.ok) return;
+    const t = await r.text();
+    const m = t.match(/name="app-ver"\s+content="([^"]+)"/);
+    if(!m || m[1] === SH_FORM_VER) return;
+    box.hidden = false;
+    box.className = 'wpNote';
+    box.style.cssText = 'background:#fff6e5; border-color:#e6c98a; margin:6px 0 2px';
+    box.innerHTML = `🔗 <b>シフト希望フォームが新しくなっています</b>（${hkEsc(m[1])}／こちらは ${SH_FORM_VER} に合わせています）。<br>
+      <small>読み取りがずれていないか、サンプルか実データで一度ご確認ください。
+      おかしければ、フォーム側の変更点を教えていただければ合わせます。</small>`;
+  }catch(e){ /* 取れないときは何も出さない */ }
+}
+
 function openShiftPanel(){
   const p = document.getElementById('workPanel');
+  shCheckFormVer();
   const s = document.getElementById('wpStart'), e = document.getElementById('wpEnd');
   if(!s.value || !e.value){ const [a,b]=shDefaultRange(); s.value=shFmt(a); e.value=shFmt(b); }
   p.hidden = false;
