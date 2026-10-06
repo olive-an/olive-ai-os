@@ -396,7 +396,9 @@
     background:#fff; color:var(--ink); border-bottom:1px solid var(--line);
     flex:0 0 auto;
   }
-  .sheetHead b{font-size:15px} .sheetHead .grow{margin-left:auto}
+  .sheetHead b{font-size:15px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .sheetHead .grow{margin-left:auto}
+  .sheetHead button{white-space:nowrap; flex:0 0 auto}
   .sheetHead button{
     border:1px solid var(--line); background:#fff; color:#4a5560; min-width:34px; height:32px;
     border-radius:6px; cursor:pointer; font-size:13px; font-weight:700; padding:0 12px
@@ -7385,7 +7387,7 @@ function homeRender(){
     el.addEventListener('click', ()=>{ homeNav(false); homeOpen(el.dataset.open); });
   });
 }
-/* せまい画面のメニュー開閉 */
+/* せまい画面のメニュー開閉（Claudeのアプリのように、左から指でスライドしても開きます）*/
 function homeNav(open){
   const n=document.getElementById('navcol'), m=document.getElementById('navMask');
   if(!n) return; n.classList.toggle('open', open); m.classList.toggle('on', open);
@@ -7397,6 +7399,30 @@ function homeNav(open){
   const q=document.getElementById('homeSearch');
   if(q) aiosBindSearch(q, v=>{ homeQ=(v||'').trim(); homeRender(); });
   homeRender();
+
+  /* ---- 指でスライドしてメニューを出す／しまう ---- */
+  const stage=document.getElementById('stage');
+  const narrow=()=>window.innerWidth<=860;
+  const isOpen=()=>document.getElementById('navcol').classList.contains('open');
+  let sx=0, sy=0, track=false;
+  if(stage){
+    stage.addEventListener('touchstart', e=>{
+      if(!narrow() || e.touches.length!==1){ track=false; return; }
+      const t=e.touches[0], r=stage.getBoundingClientRect();
+      // 左はしから、またはメニューが開いているときだけ受け付ける
+      track = isOpen() || (t.clientX - r.left) < 95;
+      sx=t.clientX; sy=t.clientY;
+    }, {passive:true});
+    stage.addEventListener('touchmove', e=>{
+      if(!track || e.touches.length!==1) return;
+      const t=e.touches[0], dx=t.clientX-sx, dy=t.clientY-sy;
+      if(Math.abs(dy) > Math.abs(dx)){ track=false; return; }   // 縦の動きは画面スクロール優先
+      if(!isOpen() && dx > 45){ homeNav(true);  track=false; }
+      if( isOpen() && dx < -45){ homeNav(false); track=false; }
+    }, {passive:true});
+    stage.addEventListener('touchend', ()=>{ track=false; }, {passive:true});
+    stage.addEventListener('touchcancel', ()=>{ track=false; }, {passive:true});
+  }
   // 画面を閉じたときに、期限の表示を最新にする
   document.addEventListener('click', ev=>{
     if(ev.target.closest('.sheetHead button') || (ev.target.classList&&ev.target.classList.contains('modal')))
