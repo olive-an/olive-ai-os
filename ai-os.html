@@ -97,6 +97,7 @@
     font-size:13px; color:#fff; border:0; background:none; width:100%; text-align:left;
   }
   .navcol .ni:hover{background:rgba(255,255,255,.12)}
+  .navcol .ni.cur{background:rgba(255,255,255,.2); font-weight:800}
   .navcol .ni .nd{width:24px; height:24px; border-radius:7px; flex:0 0 24px;
     display:flex; align-items:center; justify-content:center}
   .navcol .ni .nd svg{width:80%; height:80%}
@@ -345,15 +346,17 @@
   }
 
   /* ===== 業務パネル（本物の集計結果） ===== */
+  /* 各AIの画面は、ホームの上に重ねず「その場で切り替え」ます。
+     広い画面では左のメニューを残したまま、右側だけが入れ替わります。 */
   .modal{
-    position:fixed; inset:0; background:rgba(30,40,20,.45); z-index:50;
-    display:flex; align-items:center; justify-content:center; padding:14px;
+    position:fixed;
+    left:var(--mL,0px); top:var(--mT,0px); width:var(--mW,100vw); height:var(--mH,100dvh);
+    background:#f4f6f5; z-index:50; display:block; padding:0; overflow:hidden;
   }
   .modal[hidden]{display:none}
   .sheet{
-    background:var(--paper); border-radius:16px; width:100%; max-width:720px;
-    max-height:calc(100dvh - 28px); display:flex; flex-direction:column; overflow:hidden;
-    box-shadow:0 18px 50px rgba(0,0,0,.35)
+    background:var(--paper); border-radius:0; width:100%; max-width:none;
+    height:100%; display:flex; flex-direction:column; overflow:hidden; box-shadow:none;
   }
   .sheetHead{
     display:flex; align-items:center; gap:10px; padding:11px 14px;
@@ -362,8 +365,8 @@
   }
   .sheetHead b{font-size:14px} .sheetHead .grow{margin-left:auto}
   .sheetHead button{
-    border:none; background:rgba(255,255,255,.2); color:#fff; width:28px; height:28px;
-    border-radius:8px; cursor:pointer; font-size:14px
+    border:none; background:rgba(255,255,255,.22); color:#fff; min-width:34px; height:32px;
+    border-radius:9px; cursor:pointer; font-size:15px; padding:0 10px
   }
   .sheetBody{padding:14px; overflow:auto; flex:1 1 auto; min-height:0}
   .real-badge{font-size:10px; background:#3a9d5d; color:#fff; padding:2px 8px; border-radius:999px}
@@ -7263,7 +7266,8 @@ function homePush(k){
 function homeOpen(k){
   const it=homeItem(k); if(!it) return;
   if(!it.fn){ banner(`${it.n} はまだ準備中です`); return; }
-  homePush(k); it.fn(); homeRender();
+  homeCur=k; homePush(k); it.fn(); homeRender();
+  setTimeout(()=>{ if(window.aiosPanelSync) window.aiosPanelSync(); }, 40);
 }
 
 /* 今日みておきたいこと（読める範囲で本当の数字を出します） */
@@ -7325,14 +7329,14 @@ function homeRowHtml(x){
       <div class="hs">${hkEsc(x.s)}${x.sub?'　'+hkEsc(x.sub):''}</div></div>
     <div class="hgo">ひらく ›</div></div>`;
 }
-let homeQ='';
+let homeQ='', homeCur=null;
 function homeRender(){
   const nav=document.getElementById('navList'); if(!nav) return;
   const hit = i => !homeQ || (i.n+i.d+i.g).toLowerCase().includes(homeQ.toLowerCase());
   nav.innerHTML = HOME_MENU.map(g=>{
     const items=g.items.filter(hit); if(!items.length) return '';
     return `<div class="ng">${g.g}</div>` + items.map(i=>
-      `<button class="ni${i.fn?'':' soon'}" data-open="${i.k}" title="${hkEsc(i.d)}">
+      `<button class="ni${i.fn?'':' soon'}${homeCur===i.k?' cur':''}" data-open="${i.k}" title="${hkEsc(i.d)}">
         <span class="nd" style="background:${aiTileBg(i.k)}">${aiTileHtml(i.k,'')}</span>${i.n}</button>`).join('');
   }).join('') || '<div class="ng">見つかりません</div>';
 
@@ -7372,6 +7376,41 @@ function homeNav(open){
     if(ev.target.closest('.sheetHead button') || (ev.target.classList&&ev.target.classList.contains('modal')))
       setTimeout(homeRender, 300);
   });
+})();
+/* 各AIの画面を「真ん中だけ入れ替わる」位置に合わせる（広い画面では左のメニューを残す）*/
+function aiosFitPanels(){
+  const col=document.querySelector('.listcol'); if(!col) return;
+  const wide = window.innerWidth>860;
+  const r = col.getBoundingClientRect();
+  const st = document.documentElement.style;
+  st.setProperty('--mL', wide ? Math.round(r.left)+'px' : '0px');
+  st.setProperty('--mT', wide ? Math.round(r.top)+'px'  : '0px');
+  st.setProperty('--mW', wide ? Math.round(r.width)+'px'  : '100vw');
+  st.setProperty('--mH', wide ? Math.round(r.height)+'px' : '100dvh');
+}
+aiosFitPanels();
+window.addEventListener('resize', ()=>{ clearTimeout(window._fitT);
+  window._fitT=setTimeout(aiosFitPanels, 120); });
+// 画面が開いた／閉じたときに、位置合わせと左メニューの選択表示を更新
+(()=>{
+  const sync=()=>{
+    aiosFitPanels();
+    const open=[...document.querySelectorAll('.modal')].some(m=>!m.hidden);
+    document.body.classList.toggle('panelShown', open);
+    // ✕は分かりにくいので「← もどる」に書き換える
+    document.querySelectorAll('.modal:not([hidden]) .sheetHead button').forEach(b=>{
+      if(b.textContent.trim()==='✕') b.textContent='← もどる';
+    });
+    if(!open){ homeCur=null; homeRender(); }
+  };
+  const mo=new MutationObserver(sync);
+  const watch=n=>{ if(n.classList&&n.classList.contains('modal')) mo.observe(n,{attributes:true, attributeFilter:['hidden']}); };
+  document.querySelectorAll('.modal').forEach(watch);
+  new MutationObserver(ms=>{ let n=false; ms.forEach(m=>m.addedNodes.forEach(x=>{ watch(x);
+      if(x.classList && x.classList.contains('modal')) n=true; }));
+    if(n) sync(); })
+    .observe(document.body,{childList:true});
+  window.aiosPanelSync = sync;
 })();
 /* ▲▲▲ ホーム画面 ここまで ▲▲▲ */
 
