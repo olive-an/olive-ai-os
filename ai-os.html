@@ -63,7 +63,11 @@
     flex-wrap:wrap;
     position:sticky; top:0; z-index:30; flex:0 0 auto;
   }
-  header .logo{font-size:18px; font-weight:800; letter-spacing:.3px; color:var(--ink)}
+  header .logo{font-size:18px; font-weight:800; letter-spacing:.3px; color:var(--ink);
+    cursor:pointer; border-radius:7px; padding:3px 6px; margin-left:-6px;
+    display:inline-flex; align-items:center}
+  header .logo:hover{background:#f2f4f6}
+  header .logo:active{background:#e8ebee}
   header .tag{font-size:11px; background:#eef0f2; color:var(--sub); padding:2px 8px; border-radius:999px}
   header .tiles{display:flex; gap:7px; margin-left:auto; flex-wrap:wrap; align-items:center}
   @media(max-width:860px){
@@ -106,13 +110,15 @@
   }
   .navcol .ng{font-size:10.5px; color:var(--sub); margin:14px 14px 4px; letter-spacing:.08em; font-weight:700}
   .navcol .ni{
-    display:flex; gap:9px; align-items:center; padding:7px 14px; cursor:pointer;
-    font-size:13px; color:#4a5560; border:0; background:none; width:100%; text-align:left;
-    border-left:3px solid transparent;
+    display:flex; gap:9px; align-items:center; padding:8px 10px; cursor:pointer;
+    font-size:13px; color:#3c4752; background:#fff; text-align:left;
+    border:1px solid var(--line); border-radius:7px;
+    width:calc(100% - 16px); margin:5px 8px;
   }
-  .navcol .ni:hover{background:#f2f4f6}
+  .navcol .ni:hover{background:#f2f4f6; border-color:#cfd6db}
+  .navcol .ni:active{background:#e9edf0}
   .navcol .ni.cur{background:var(--olive-l); color:var(--olive-d); font-weight:800;
-    border-left-color:var(--olive)}
+    border-color:var(--olive); box-shadow:0 0 0 1px var(--olive) inset}
   .navcol .ni .nd{width:24px; height:24px; border-radius:7px; flex:0 0 24px;
     display:flex; align-items:center; justify-content:center}
   .navcol .ni .nd svg{width:80%; height:80%}
@@ -148,18 +154,18 @@
   @media(max-width:860px){
     .navcol{width:76px; flex:0 0 76px; padding:6px 0 14px}
     .navcol .ng{display:none}
-    .navcol .ni{flex-direction:column; gap:3px; padding:8px 2px; text-align:center;
-      font-size:9.5px; line-height:1.15; border-left:0; border-right:3px solid transparent}
+    .navcol .ni{flex-direction:column; gap:3px; padding:7px 2px; text-align:center;
+      font-size:9.5px; line-height:1.15; width:calc(100% - 10px); margin:5px}
     .navcol .ni .nd{width:30px; height:30px; flex:0 0 30px; border-radius:8px}
-    .navcol .ni.cur{border-right-color:var(--olive)}
+    .navcol .ni.cur{border-color:var(--olive)}
     /* ☰で広げたとき */
     .navcol.open{position:absolute; left:0; top:0; bottom:0; z-index:12;
       width:216px; flex-basis:216px; padding:10px 0 18px; box-shadow:0 0 26px rgba(0,0,0,.35)}
     .navcol.open .ng{display:block}
-    .navcol.open .ni{flex-direction:row; gap:9px; padding:8px 14px; text-align:left;
-      font-size:13.5px; line-height:1.3; border-right:0; border-left:3px solid transparent}
+    .navcol.open .ni{flex-direction:row; gap:9px; padding:8px 10px; text-align:left;
+      font-size:13.5px; line-height:1.3; width:calc(100% - 16px); margin:5px 8px}
     .navcol.open .ni .nd{width:26px; height:26px; flex:0 0 26px}
-    .navcol.open .ni.cur{border-left-color:var(--olive)}
+    .navcol.open .ni.cur{border-color:var(--olive)}
     .navmask{display:block; position:absolute; inset:0; background:rgba(0,0,0,.35); z-index:11; opacity:0;
       pointer-events:none; transition:opacity .2s}
     .navmask.on{opacity:1; pointer-events:auto}
@@ -169,8 +175,8 @@
     .listinner{padding:12px 10px 18px}
   }
   @media(max-width:420px){
-    .navcol{width:66px; flex:0 0 66px}
-    .navcol .ni{font-size:9px; padding:7px 1px}
+    .navcol{width:70px; flex:0 0 70px}
+    .navcol .ni{font-size:9px; padding:6px 1px; width:calc(100% - 8px); margin:4px}
     .navcol .ni .nd{width:27px; height:27px; flex:0 0 27px}
   }
   /* 部屋・ゾーン（施設もアプリアイコン風に揃える） */
@@ -553,7 +559,7 @@
 </style>
 
 <header>
-  <span class="logo"><img src="logo.png" alt="おりーぶ庵" style="height:32px;vertical-align:middle;margin-right:8px;background:#fff;border-radius:7px;padding:2px 5px">おりーぶ庵 AI-OS</span>
+  <span class="logo" id="homeLink" role="button" tabindex="0" title="トップ（ホーム）にもどる"><img src="logo.png" alt="おりーぶ庵" style="height:32px;vertical-align:middle;margin-right:8px;background:#fff;border-radius:7px;padding:2px 5px">おりーぶ庵 AI-OS</span>
   <span class="tag">デモ / 見た目レイヤー</span>
   <div class="tiles">
     <button id="histBtn" title="これまでの作業の履歴を月ごとに見る">📜 履歴</button>
@@ -1425,6 +1431,23 @@ stage.classList.add('lineup');             // AI社員は動かしません
 /* ---- スマホ・iPad：サイドパネルを下から出す引き出しに ---- */
 document.getElementById('histBtn').addEventListener('click', ()=>openHistPanel());
 
+/* ---- 「おりーぶ庵 AI-OS」を押すと、いつでもトップ（ホーム）にもどる ---- */
+function aiosGoHome(){
+  document.querySelectorAll('.modal').forEach(m=>m.hidden=true);   // 開いている画面を閉じる
+  if(typeof homeNav==='function') homeNav(false);                  // メニューをしまう
+  const q=document.getElementById('homeSearch');
+  if(q && q.value){ q.value=''; if(typeof homeQ!=='undefined'){ homeQ=''; } }
+  if(typeof homeRender==='function') homeRender();
+  const inner=document.querySelector('.listinner'); if(inner) inner.scrollTop=0;
+  const nav=document.querySelector('.navcol'); if(nav) nav.scrollTop=0;
+  if(window.aiosPanelSync) window.aiosPanelSync();
+}
+(()=>{
+  const h=document.getElementById('homeLink'); if(!h) return;
+  h.addEventListener('click', aiosGoHome);
+  h.addEventListener('keydown', e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); aiosGoHome(); } });
+})();
+
 /* =========================================================================
    共通：ファイル保存（保存先を選べる場合は選択ダイアログ）＋画面プレビュー
    ========================================================================= */
@@ -1935,6 +1958,7 @@ function shRun(){
      </div>
      <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
        <button class="wpBtn primary" id="wpXlsx">📊 このシフト集計Excelに反映</button>
+       <span id="wpSrc" style="font-size:11px; color:var(--sub); align-self:center"></span>
        <button class="wpBtn" id="wpPrint">🖨 印刷 / PDFで保存</button>
        <button class="wpBtn" id="wpCsv">CSVダウンロード</button>
        <span class="grow" style="flex:1"></span>
@@ -1958,6 +1982,7 @@ function shRun(){
   }));
   document.getElementById('wpCsv').addEventListener('click', shDownloadCsv);
   document.getElementById('wpPrint').addEventListener('click', shPrint);
+  shShowSrc();
   document.getElementById('wpXlsx').addEventListener('click', async ()=>{
     if(typeof JSZip === 'undefined'){
       alert('ライブラリを読み込み中です。少し待つか、ページをブラウザ／公開URLで開くと反映できます。'); return;
@@ -1966,7 +1991,7 @@ function shRun(){
     // （書き出した「〜反映済」のファイルは、間違えて上書きしないよう対象外）
     if(aiosCanShare() && aiosShareName){
       try{
-        const f = await aiosShareNewest(/^(?!.*反映済)(?=.*(?:シフト集計|シフト表|勤務希望))/, false);
+        const f = await aiosShareNewest(SH_TMPL_RE, false);
         if(f && confirm(`共有フォルダの「${f.name}」に反映します。よろしいですか？\n\n`
                         +`※原本は変えずに、別名のファイルを作ります。\n`
                         +`　別のExcelを選ぶ場合は「キャンセル」を押してください。`)){
@@ -2231,6 +2256,29 @@ async function shExportExcel(file){
     logLine(`<b>文書AI</b>：シフト集計Excelに${written}セル反映（書式完全保持）${notes.length?'／'+notes.join('／'):''}`);
     if(notes.length) alert('反映しました（'+written+'セル）。\n\n'+notes.join('\n'));
   }catch(e){ alert('Excel処理エラー：'+e.message); }
+}
+
+// 反映先のExcel（共有フォルダに置いてあるシフトの表）を探す条件
+//   「シフト」が名前に入っている .xlsx。書き出した「〜反映済」は対象外。
+const SH_TMPL_RE = /^(?!.*反映済)(?=.*シフト)/;
+// いまどのファイルに反映するのかを、ボタンの横に出す
+async function shShowSrc(){
+  const el=document.getElementById('wpSrc'); if(!el) return;
+  if(!aiosCanShare()){ el.textContent='→ ファイルを選んで反映します'; return; }
+  if(!aiosShareName){
+    el.innerHTML = `→ ファイルを選んで反映します
+      <button class="wpBtn" id="wpShare" style="font-size:10.5px; padding:2px 8px; margin-left:4px">📂 共有フォルダを覚える</button>`;
+    const b=document.getElementById('wpShare');
+    if(b) b.addEventListener('click', async ()=>{
+      try{ await aiosPickShare(); banner('📂 共有フォルダを覚えました'); shShowSrc(); }
+      catch(e){ if(e.name!=='AbortError') alert('うまくいきませんでした：'+(e.message||e)); }
+    });
+    return;
+  }
+  el.textContent='→ 確認中…';
+  let f=null; try{ f=await aiosShareNewest(SH_TMPL_RE, false); }catch(e){}
+  el.textContent = f ? `→ 共有フォルダの「${f.name}」に反映します`
+                     : `→ 共有フォルダにシフトのExcelが見つかりません（押すとファイルを選べます）`;
 }
 
 // --- 集計結果をそのまま印刷する（PDF保存もここから）---
@@ -7254,31 +7302,31 @@ async function printRinen(){
    ========================================================================= */
 const HOME_MENU = [
   {g:'手続き', items:[
-    {k:'行政',   n:'行政AI',       d:'変更届・付表12をつくる',          fn:()=>openGyouseiMenu()},
-    {k:'監査',   n:'監査AI',       d:'運営指導チェック・勤務形態一覧表', fn:()=>openKansaMenu()},
-    {k:'文書',   n:'文書AI',       d:'書類の体裁を整える'},
+    {k:'行政',   n:'行政',       d:'変更届・付表12をつくる',          fn:()=>openGyouseiMenu()},
+    {k:'監査',   n:'監査',       d:'運営指導チェック・勤務形態一覧表', fn:()=>openKansaMenu()},
+    {k:'文書',   n:'文書',       d:'書類の体裁を整える'},
   ]},
   {g:'人と時間', items:[
-    {k:'シフト', n:'シフトAI',      d:'シフト希望の集計・Excel反映',     fn:()=>openShiftPanel()},
-    {k:'人事',   n:'人事AI',       d:'職員名簿・資格や研修の期限',       fn:()=>openJinjiPanel()},
-    {k:'看護',   n:'看護AI',       d:'健康記録・受診予定'},
+    {k:'シフト', n:'シフト',      d:'シフト希望の集計・Excel反映',     fn:()=>openShiftPanel()},
+    {k:'人事',   n:'人事',       d:'職員名簿・資格や研修の期限',       fn:()=>openJinjiPanel()},
+    {k:'看護',   n:'看護',       d:'健康記録・受診予定'},
   ]},
   {g:'お金', items:[
-    {k:'請求',   n:'請求AI',       d:'国保連の請求データ'},
-    {k:'経理',   n:'経理AI',       d:'売上と経費の集計'},
-    {k:'工房',   n:'工房AI',       d:'工房のアプリ・共有フォルダ',       fn:()=>openKoubouPanel()},
+    {k:'請求',   n:'請求',       d:'国保連の請求データ'},
+    {k:'経理',   n:'経理',       d:'売上と経費の集計'},
+    {k:'工房',   n:'工房',       d:'工房のアプリ・共有フォルダ',       fn:()=>openKoubouPanel()},
   ]},
   {g:'利用者', items:[
-    {k:'利用者', n:'利用者AI',      d:'受給者証の照会と期限',            fn:()=>openRiyouPanel()},
-    {k:'ホーム', n:'ホーム管理AI',   d:'個別支援計画・空室状況',          fn:()=>openKeikakuPanel()},
+    {k:'利用者', n:'利用者',      d:'受給者証の照会と期限',            fn:()=>openRiyouPanel()},
+    {k:'ホーム', n:'ホーム管理',   d:'個別支援計画・空室状況',          fn:()=>openKeikakuPanel()},
     {k:'会議室', n:'会議室・議事録', d:'議事録の保管・検索・要約',        fn:()=>openGijiPanel()},
   ]},
   {g:'設備', items:[
-    {k:'車両',     n:'車両AI',     d:'車検・自賠責・任意保険の期限',     fn:()=>openSharyouPanel()},
+    {k:'車両',     n:'車両',     d:'車検・自賠責・任意保険の期限',     fn:()=>openSharyouPanel()},
     {k:'ポチパス', n:'ポチパス',    d:'ポチパスを開く・連携',            fn:()=>openPochiPanel()},
     {k:'書類棚',   n:'書類棚',      d:'理念手帳など保管した書類',         fn:()=>openShelfPanel()},
     {k:'プリンター', n:'プリンター', d:'印刷メニュー',                   fn:()=>openPrinterPanel()},
-    {k:'DX',       n:'DX AI',      d:'自動化のしくみ'},
+    {k:'DX',       n:'DX',      d:'自動化のしくみ'},
   ]},
 ];
 const HOME_ALL = HOME_MENU.reduce((a,g)=>a.concat(g.items.map(i=>Object.assign({g:g.g}, i))), []);
@@ -7568,6 +7616,5 @@ function openHistPanel(){
 
 /* ▲▲▲ ホーム画面 ここまで ▲▲▲ */
 
-/* ---- 最初のひとこと ---- */
-setTimeout(()=>{ logLine('🌿 AI-OS を起動しました'); }, 600);
+/* 起動したことは記録しません（作業の履歴だけを残します）*/
 </script>
