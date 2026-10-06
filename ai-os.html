@@ -85,6 +85,56 @@
   /* うっすら床の格子 */
   .stage::before{ content:none }
 
+  /* ===== ホーム画面（案C：一覧ファースト型）===== */
+  .stage{display:flex}
+  .navcol{
+    width:206px; flex:0 0 206px; background:#1f5c3b; color:#fff; overflow:auto;
+    padding:12px 0 18px;
+  }
+  .navcol .ng{font-size:10.5px; opacity:.6; margin:12px 14px 4px; letter-spacing:.1em}
+  .navcol .ni{
+    display:flex; gap:9px; align-items:center; padding:8px 14px; cursor:pointer;
+    font-size:13px; color:#fff; border:0; background:none; width:100%; text-align:left;
+  }
+  .navcol .ni:hover{background:rgba(255,255,255,.12)}
+  .navcol .ni .nd{width:24px; height:24px; border-radius:7px; flex:0 0 24px;
+    display:flex; align-items:center; justify-content:center}
+  .navcol .ni .nd svg{width:80%; height:80%}
+  .navcol .ni.soon{opacity:.55}
+  .navmask{display:none}
+  .listcol{flex:1 1 auto; min-width:0; display:flex; flex-direction:column; background:#f4f6f5}
+  .listtop{display:flex; gap:9px; align-items:center; padding:10px 14px;
+    background:#fff; border-bottom:1px solid var(--line); flex:0 0 auto}
+  .listtop input{flex:1; min-width:0; padding:9px 12px; border:1px solid var(--line);
+    border-radius:10px; font-size:14px; outline:none}
+  .burger{display:none; border:1px solid var(--line); background:#fff; border-radius:9px;
+    padding:7px 11px; font-size:15px; cursor:pointer; flex:0 0 auto}
+  .listinner{flex:1 1 auto; overflow:auto; padding:14px 14px 22px}
+  .listinner .hd{font-size:15px; margin:0 0 4px}
+  .listinner .hdsub{font-size:12px; color:#6b7a72; margin:0 0 12px}
+  .hrow{background:#fff; border:1px solid var(--line); border-radius:12px; padding:11px 13px;
+    margin-bottom:7px; display:flex; gap:11px; align-items:center; cursor:pointer}
+  .hrow:hover{box-shadow:0 2px 8px rgba(0,0,0,.08)}
+  .hrow .hbar{width:5px; align-self:stretch; border-radius:99px; flex:0 0 5px}
+  .lv-red{background:#d0503f} .lv-orange{background:#e08a4a}
+  .lv-green{background:#3a9d5d} .lv-gray{background:#b7c0bb}
+  .hrow .hnd{width:28px; height:28px; border-radius:8px; flex:0 0 28px;
+    display:flex; align-items:center; justify-content:center}
+  .hrow .hnd svg{width:80%; height:80%}
+  .hrow .ht{font-weight:700; font-size:14px; line-height:1.35}
+  .hrow .hs{font-size:11.5px; color:#6b7a72; margin-top:2px; line-height:1.4}
+  .hrow .hgo{margin-left:auto; font-size:12px; font-weight:700; color:var(--sea); white-space:nowrap}
+  .hempty{font-size:12.5px; color:#6b7a72; background:#fff; border:1px solid var(--line);
+    border-radius:12px; padding:14px}
+  @media(max-width:860px){
+    .navcol{position:absolute; left:-220px; top:0; bottom:0; z-index:12; transition:left .22s;
+      box-shadow:0 0 26px rgba(0,0,0,.35)}
+    .navcol.open{left:0}
+    .navmask{display:block; position:absolute; inset:0; background:rgba(0,0,0,.35); z-index:11; opacity:0;
+      pointer-events:none; transition:opacity .2s}
+    .navmask.on{opacity:1; pointer-events:auto}
+    .burger{display:block}
+  }
   /* 部屋・ゾーン（施設もアプリアイコン風に揃える） */
   .zone{position:absolute; transform:translate(-50%,-50%); text-align:center; pointer-events:none}
   .plaque{
@@ -478,17 +528,25 @@
     <div class="stage" id="stage">
       <div class="banner" id="banner"></div>
 
-      <!-- 社長室（中央・入力欄はここだけ） -->
-      <div class="president">
-        <h2>ここに入力して</h2>
-        <p>ひとこと指示するだけ。担当AIが動きます。</p>
-        <div class="cmdrow">
-          <input id="cmd" placeholder="例：変更届作成して" autocomplete="off">
-          <button id="chipsToggle" title="よく使う指示">☰</button>
-          <button id="go">指示</button>
+      <!-- 左のメニュー（せまい画面では☰で開く） -->
+      <aside class="navcol" id="navcol"><div id="navList"></div></aside>
+      <div class="navmask" id="navMask"></div>
+
+      <!-- 本体：今日みておきたいこと／さいきん使ったもの -->
+      <main class="listcol">
+        <div class="listtop">
+          <button class="burger" id="navBurger" title="メニュー">☰</button>
+          <input id="homeSearch" type="search" placeholder="さがす（例：車検、シフト、受給者証）" autocomplete="off">
         </div>
-        <div class="chips" id="chips"></div>
-      </div>
+        <div class="listinner">
+          <h2 class="hd">今日みておきたいこと</h2>
+          <p class="hdsub">期限が近いもの・まだ手がついていないものを、上から順に出します。</p>
+          <div id="todayList"></div>
+          <h2 class="hd" style="margin-top:22px">さいきん使ったもの</h2>
+          <div id="recentList"></div>
+        </div>
+      </main>
+      <div id="legacyStage" hidden></div>
     </div>
 
     <div class="toolbar" style="margin-top:6px; flex-wrap:wrap">
@@ -535,15 +593,7 @@
       <h3>🔔 社内ログ</h3>
       <ul class="log" id="log"></ul>
     </div>
-    <div class="card">
-      <h3>🎨 状態の色</h3>
-      <div class="legend">
-        <span class="st-待機">待機</span><span class="st-移動">移動</span>
-        <span class="st-作業">作業</span><span class="st-相談">相談</span>
-        <span class="st-完成">完成</span><span class="st-休憩">休憩</span>
-        <span class="st-エラー">エラー</span>
-      </div>
-    </div>
+
   </aside>
 </div>
 
@@ -1020,6 +1070,7 @@ let busy = false;         // 業務ワークフロー実行中か
 let autonomous = false;   // 自律モード（既定は自席で固定。ボタンで動かせる）
 
 /* ---- DOM生成：ゾーン ---- */
+const legacyStage = document.getElementById('legacyStage');  // AI社員・机の置き場（画面には出しません）
 const ZEL = [];   // 画面幅に応じて位置を変えるため、要素を覚えておく
 for(const z of ZONES){
   const d = document.createElement('div');
@@ -1043,7 +1094,7 @@ for(const z of ZONES){
     d.style.pointerEvents='auto'; d.style.cursor='pointer'; d.title='議事録フォルダを開く';
     d.addEventListener('click', ()=>openGijiPanel());
   }
-  stage.appendChild(d);
+  legacyStage.appendChild(d);
   ZEL.push({el:d, z});
 }
 
@@ -1072,7 +1123,7 @@ for(const s of STAFF){
     el.title = op.title;
     el.addEventListener('click', ()=>{ say(s.id, op.say, 2200); op.fn(); });
   }
-  stage.appendChild(el);
+  legacyStage.appendChild(el);
   S[s.id] = {def:s, el, x:s.x, y:s.y, tx:s.x, ty:s.y, state:'待機',
              moving:false, resolve:null, home:{x:s.x,y:s.y},
              avatar:el.querySelector('.avatar'),
@@ -1320,42 +1371,18 @@ setInterval(()=>{
   }
 }, 2200);
 
-/* ---- 入力ハンドラ ---- */
+/* ---- 入力欄は画面から外しました（押して進む形にしたため）----
+   runWorkflow は左のメニューや一覧からも呼べるよう、そのまま残しています。 */
 function submit(){
-  const inp = document.getElementById('cmd');
-  const v = inp.value.trim();
-  if(!v) return;
-  inp.value='';
-  runWorkflow(v);
+  const inp = document.getElementById('cmd'); if(!inp) return;
+  const v = inp.value.trim(); if(!v) return;
+  inp.value=''; runWorkflow(v);
 }
-document.getElementById('go').addEventListener('click', submit);
-document.getElementById('cmd').addEventListener('keydown', e=>{ if(e.key==='Enter') submit(); });
+['go'].forEach(id=>{ const b=document.getElementById(id); if(b) b.addEventListener('click', submit); });
+(()=>{ const c=document.getElementById('cmd');
+  if(c) c.addEventListener('keydown', e=>{ if(e.key==='Enter') submit(); }); })();
 
-/* ---- クイック指示チップ ---- */
-const CHIPS = [
-  {t:'シフトを集計して', real:true},
-  {t:'受給者証を調べて', real:true},
-  {t:'車検の期限を確認して', real:true},
-  {t:'変更届作成して', real:true},
-  {t:'個別支援計画を作成して', real:true},
-  {t:'付表12を作成して', real:true},
-  {t:'給与確認して'}, {t:'工房売上を集計して'}
-];
-const chipBox = document.getElementById('chips');
-for(const c of CHIPS){
-  const b=document.createElement('button'); b.className='chip';
-  b.innerHTML = c.real ? `${c.t} <b style="color:#3a9d5d">●本物</b>` : c.t;
-  b.addEventListener('click',()=>runWorkflow(c.t));
-  chipBox.appendChild(b);
-}
-
-/* ---- AI社員を動かす／自席に固定する ---- */
-stage.classList.add('lineup');             // アイコンは動かさず、いつも同じ場所に並べます
-
-/* ---- スマホ・iPad：よく使う指示（チップ）の開閉 ---- */
-document.getElementById('chipsToggle').addEventListener('click', ()=>{
-  stage.classList.toggle('chipsOpen');
-});
+stage.classList.add('lineup');             // AI社員は動かしません
 
 /* ---- スマホ・iPad：サイドパネルを下から出す引き出しに ---- */
 document.getElementById('panelBtn').addEventListener('click', ()=>{
@@ -7188,6 +7215,165 @@ async function printRinen(){
   logLine('<b>文書AI</b>：理念手帳（全26ページ）を印刷');
 }
 /* ▲▲▲ 書類棚・理念手帳・プリンター ここまで ▲▲▲ */
+
+/* =========================================================================
+   ▼▼▼ ホーム画面（案C：一覧ファースト型）▼▼▼
+   左のメニューから各AIへ。真ん中は「今日みておきたいこと」と「さいきん使ったもの」。
+   期限は、いま読める範囲で本当の数字を出します（合言葉が要るものは開いたときに出ます）。
+   ========================================================================= */
+const HOME_MENU = [
+  {g:'手続き', items:[
+    {k:'行政',   n:'行政AI',       d:'変更届・付表12をつくる',          fn:()=>openGyouseiMenu()},
+    {k:'監査',   n:'監査AI',       d:'運営指導チェック・勤務形態一覧表', fn:()=>openKansaMenu()},
+    {k:'文書',   n:'文書AI',       d:'書類の体裁を整える'},
+  ]},
+  {g:'人と時間', items:[
+    {k:'シフト', n:'シフトAI',      d:'シフト希望の集計・Excel反映',     fn:()=>openShiftPanel()},
+    {k:'人事',   n:'人事AI',       d:'職員名簿・資格や研修の期限',       fn:()=>openJinjiPanel()},
+    {k:'看護',   n:'看護AI',       d:'健康記録・受診予定'},
+  ]},
+  {g:'お金', items:[
+    {k:'請求',   n:'請求AI',       d:'国保連の請求データ'},
+    {k:'経理',   n:'経理AI',       d:'売上と経費の集計'},
+    {k:'工房',   n:'工房AI',       d:'工房のアプリ・共有フォルダ',       fn:()=>openKoubouPanel()},
+  ]},
+  {g:'利用者', items:[
+    {k:'利用者', n:'利用者AI',      d:'受給者証の照会と期限',            fn:()=>openRiyouPanel()},
+    {k:'ホーム', n:'ホーム管理AI',   d:'個別支援計画・空室状況',          fn:()=>openKeikakuPanel()},
+    {k:'会議室', n:'会議室・議事録', d:'議事録の保管・検索・要約',        fn:()=>openGijiPanel()},
+  ]},
+  {g:'設備', items:[
+    {k:'車両',     n:'車両AI',     d:'車検・自賠責・任意保険の期限',     fn:()=>openSharyouPanel()},
+    {k:'ポチパス', n:'ポチパス',    d:'ポチパスを開く・連携',            fn:()=>openPochiPanel()},
+    {k:'書類棚',   n:'書類棚',      d:'理念手帳など保管した書類',         fn:()=>openShelfPanel()},
+    {k:'プリンター', n:'プリンター', d:'印刷メニュー',                   fn:()=>openPrinterPanel()},
+    {k:'DX',       n:'DX AI',      d:'自動化のしくみ'},
+  ]},
+];
+const HOME_ALL = HOME_MENU.reduce((a,g)=>a.concat(g.items.map(i=>Object.assign({g:g.g}, i))), []);
+const homeItem = k => HOME_ALL.find(i=>i.k===k);
+
+/* さいきん使ったもの（この端末にだけ覚えます） */
+const HOME_RECENT='aiosRecentV1';
+function homeRecent(){ try{ return JSON.parse(localStorage.getItem(HOME_RECENT)||'[]'); }catch(e){ return []; } }
+function homePush(k){
+  const r=[k].concat(homeRecent().filter(x=>x!==k)).slice(0,5);
+  try{ localStorage.setItem(HOME_RECENT, JSON.stringify(r)); }catch(e){}
+}
+function homeOpen(k){
+  const it=homeItem(k); if(!it) return;
+  if(!it.fn){ banner(`${it.n} はまだ準備中です`); return; }
+  homePush(k); it.fn(); homeRender();
+}
+
+/* 今日みておきたいこと（読める範囲で本当の数字を出します） */
+function homeToday(){
+  const out=[];
+  const push=(lv,k,t,s,sub)=>out.push({lv,k,t,s,sub});
+  // 車両（合言葉なしで読めます）
+  try{
+    for(const v of (shaRead()||[])){
+      for(const [key,label] of SHA_LIMITS){
+        const d=shaDays(v[key]); if(d===null || d>90) continue;
+        push(d<=30?'red':'orange', '車両', `${v.name||v.no||'車両'}の${label}`,
+             d<0?`${-d}日超過`:`あと${d}日`, shaFmt(v[key]));
+      }
+    }
+  }catch(e){}
+  // 人事（開いているときだけ中身を見ます）
+  try{
+    if(jinjiData){
+      let n=0, who=[];
+      for(const p of jinjiData) for(const q of (p.quals||[])){
+        const d=shaDays(q.limit||q.until||''); if(d===null||d>90) continue;
+        n++; if(who.length<3) who.push(`${p.name}（${q.name}）`);
+      }
+      if(n) push('orange','人事',`資格・研修の期限が近い ${n}件`,'90日以内',who.join('、'));
+    }else if(secStored(JINJI_KEY)){
+      push('gray','人事','従業員情報','開くと資格・研修の期限を確認します',`合言葉で保護中（${secStored(JINJI_KEY).n}名）`);
+    }
+  }catch(e){}
+  // 利用者（開いているときだけ）
+  try{
+    if(riyouData){
+      const near=riyouData.filter(u=>{ const d=shaDays(u.limTo); return d!==null && d<=30; });
+      if(near.length) push(near.some(u=>shaDays(u.limTo)<0)?'red':'orange','利用者',
+        `受給者証の期限が近い ${near.length}名`,'30日以内',
+        near.slice(0,3).map(u=>`${u.name}（${u.home||''}）`).join('、'));
+    }else if(secStored(RIYOU_KEY)){
+      push('gray','利用者','受給者証データ','開くと有効期限を確認します',`合言葉で保護中（${secStored(RIYOU_KEY).n}名）`);
+    }
+  }catch(e){}
+  // 共有フォルダに新しいファイルがあるか
+  try{
+    const src = shaSrc();
+    if(aiosCanShare() && aiosShareName && src)
+      push('green','車両','共有フォルダから読み込み済み', src.name, `${aiosShareStamp(new Date(src.at))} に確認`);
+  }catch(e){}
+  // シフトは毎月の仕事なので、いつでも入口を出します
+  push('green','シフト','シフト希望の集計','フォームから取得して集計します','対象期間を選んで集計 → Excelに反映 → 印刷');
+  const rank={red:0,orange:1,green:2,gray:3};
+  return out.sort((a,b)=>rank[a.lv]-rank[b.lv]);
+}
+
+function homeRowHtml(x){
+  const it=homeItem(x.k)||{};
+  return `<div class="hrow" data-open="${x.k}">
+    <div class="hbar lv-${x.lv}"></div>
+    <span class="hnd" style="background:${aiTileBg(x.k)}">${aiTileHtml(x.k,'')}</span>
+    <div style="min-width:0"><div class="ht">${hkEsc(x.t)}</div>
+      <div class="hs">${hkEsc(x.s)}${x.sub?'　'+hkEsc(x.sub):''}</div></div>
+    <div class="hgo">ひらく ›</div></div>`;
+}
+let homeQ='';
+function homeRender(){
+  const nav=document.getElementById('navList'); if(!nav) return;
+  const hit = i => !homeQ || (i.n+i.d+i.g).toLowerCase().includes(homeQ.toLowerCase());
+  nav.innerHTML = HOME_MENU.map(g=>{
+    const items=g.items.filter(hit); if(!items.length) return '';
+    return `<div class="ng">${g.g}</div>` + items.map(i=>
+      `<button class="ni${i.fn?'':' soon'}" data-open="${i.k}" title="${hkEsc(i.d)}">
+        <span class="nd" style="background:${aiTileBg(i.k)}">${aiTileHtml(i.k,'')}</span>${i.n}</button>`).join('');
+  }).join('') || '<div class="ng">見つかりません</div>';
+
+  const today = homeToday().filter(x=>{ const i=homeItem(x.k)||{};
+    return !homeQ || (x.t+x.s+(x.sub||'')+i.n).toLowerCase().includes(homeQ.toLowerCase()); });
+  document.getElementById('todayList').innerHTML =
+    today.length ? today.map(homeRowHtml).join('')
+                 : '<div class="hempty">いまのところ、急ぎのものはありません。</div>';
+
+  const rec = homeRecent().map(homeItem).filter(Boolean).filter(hit);
+  document.getElementById('recentList').innerHTML =
+    rec.length ? rec.map(i=>`<div class="hrow" data-open="${i.k}">
+        <span class="hnd" style="background:${aiTileBg(i.k)}">${aiTileHtml(i.k,'')}</span>
+        <div style="min-width:0"><div class="ht">${i.n}</div><div class="hs">${hkEsc(i.d)}</div></div>
+        <div class="hgo">ひらく ›</div></div>`).join('')
+      : '<div class="hempty">まだありません。左のメニューから選んでください。</div>';
+
+  document.querySelectorAll('[data-open]').forEach(el=>{
+    if(el.dataset.bound) return; el.dataset.bound='1';
+    el.addEventListener('click', ()=>{ homeNav(false); homeOpen(el.dataset.open); });
+  });
+}
+/* せまい画面のメニュー開閉 */
+function homeNav(open){
+  const n=document.getElementById('navcol'), m=document.getElementById('navMask');
+  if(!n) return; n.classList.toggle('open', open); m.classList.toggle('on', open);
+}
+(()=>{
+  const bg=document.getElementById('navBurger'), mk=document.getElementById('navMask');
+  if(bg) bg.addEventListener('click', ()=>homeNav(!document.getElementById('navcol').classList.contains('open')));
+  if(mk) mk.addEventListener('click', ()=>homeNav(false));
+  const q=document.getElementById('homeSearch');
+  if(q) aiosBindSearch(q, v=>{ homeQ=(v||'').trim(); homeRender(); });
+  homeRender();
+  // 画面を閉じたときに、期限の表示を最新にする
+  document.addEventListener('click', ev=>{
+    if(ev.target.closest('.sheetHead button') || (ev.target.classList&&ev.target.classList.contains('modal')))
+      setTimeout(homeRender, 300);
+  });
+})();
+/* ▲▲▲ ホーム画面 ここまで ▲▲▲ */
 
 /* ---- 最初のひとこと ---- */
 setTimeout(()=>{ logLine('🌿 AI-OS を起動しました'); }, 600);
