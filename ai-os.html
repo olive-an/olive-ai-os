@@ -532,10 +532,6 @@
   <span class="logo"><img src="logo.png" alt="おりーぶ庵" style="height:32px;vertical-align:middle;margin-right:8px;background:#fff;border-radius:7px;padding:2px 5px">おりーぶ庵 AI-OS</span>
   <span class="tag">デモ / 見た目レイヤー</span>
   <div class="tiles">
-    <div class="tile"><b id="t-ai">0</b><span>稼働AI</span></div>
-    <div class="tile"><b>3</b><span>本日の期限</span></div>
-    <div class="tile"><b>5</b><span>未処理</span></div>
-    <div class="tile"><b>92%</b><span>入居率</span></div>
     <button id="panelBtn" title="お知らせ・完成トレイを開く">📋 パネル</button>
   </div>
 </header>
@@ -1148,7 +1144,6 @@ for(const s of STAFF){
              stateEl:el.querySelector('.state'),
              bubbleEl:el.querySelector('.bubble')};
 }
-document.getElementById('t-ai').textContent = STAFF.length;
 
 /* ---- 画面幅に合わせた配置（PC＝自席／スマホ・iPad＝3列グリッド） ----
    スマホでは社長室が下の指示バーになるので、AI社員は上半分にきれいに並べます。 */
