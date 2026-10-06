@@ -316,26 +316,21 @@
 
   /* ===== サイドパネル ===== */
   .side{display:flex; flex-direction:column; gap:12px; min-height:0; overflow:auto}
-  /* スマホ・iPad縦では下から出す引き出しにして、マップを1画面に収める */
-  #panelBtn{display:none}
-  @media(max-width:880px){
-    #panelBtn{
-      display:inline-flex; align-items:center; gap:4px; border:1px solid rgba(255,255,255,.35);
-      background:rgba(255,255,255,.16); color:#fff; border-radius:999px;
-      padding:5px 12px; font-size:12px; font-weight:700; cursor:pointer;
-    }
-    .side{
-      position:fixed; left:0; right:0; bottom:0; max-height:72dvh; z-index:36;
-      background:var(--paper); border-top:2px solid var(--olive);
-      border-radius:16px 16px 0 0; padding:12px 12px 18px;
-      box-shadow:0 -10px 28px rgba(0,0,0,.22);
-      transform:translateY(101%); transition:transform .26s ease;
-    }
-    body.panelOpen .side{transform:translateY(0)}
-    body.panelOpen::after{
-      content:""; position:fixed; inset:0; background:rgba(30,40,20,.35); z-index:35;
-    }
+  /* ヘッダーの「履歴」ボタン */
+  #histBtn{
+    display:inline-flex; align-items:center; gap:4px; border:1px solid var(--line);
+    background:#fff; color:#4a5560; border-radius:6px;
+    padding:6px 12px; font-size:12px; font-weight:700; cursor:pointer;
   }
+  #histBtn:hover{background:#f2f4f6}
+  /* せまい画面では、右の案内はホームの下に流します（引き出しは廃止） */
+  @media(max-width:880px){
+    .side{display:none}
+  }
+  /* 履歴の画面 */
+  .histRow{display:flex; gap:10px; padding:8px 2px; border-bottom:1px solid var(--line); font-size:12.5px}
+  .histRow time{flex:0 0 42px; color:var(--sub); font-size:11.5px; padding-top:1px}
+  .histDay{font-weight:800; font-size:12px; color:var(--olive-d); margin:14px 0 4px}
   .card{background:#fff; border:1px solid var(--line); border-radius:6px; padding:10px 12px}
   .card h3{margin:0 0 8px; font-size:12.5px; color:var(--ink); font-weight:800;
     display:flex; gap:6px; align-items:center}
@@ -559,7 +554,7 @@
   <span class="logo"><img src="logo.png" alt="おりーぶ庵" style="height:32px;vertical-align:middle;margin-right:8px;background:#fff;border-radius:7px;padding:2px 5px">おりーぶ庵 AI-OS</span>
   <span class="tag">デモ / 見た目レイヤー</span>
   <div class="tiles">
-    <button id="panelBtn" title="お知らせ・完成トレイを開く">📋 パネル</button>
+    <button id="histBtn" title="これまでの作業の履歴を月ごとに見る">📜 履歴</button>
   </div>
 </header>
 
@@ -1272,6 +1267,7 @@ requestAnimationFrame(tick);
 /* ---- ユーティリティ ---- */
 const wait = ms => new Promise(r=>setTimeout(r,ms));
 function logLine(html){
+  aiosHistAdd(html);
   const ul = document.getElementById('log');
   const li = document.createElement('li');
   const t = new Date();
@@ -1425,14 +1421,7 @@ function submit(){
 stage.classList.add('lineup');             // AI社員は動かしません
 
 /* ---- スマホ・iPad：サイドパネルを下から出す引き出しに ---- */
-document.getElementById('panelBtn').addEventListener('click', ()=>{
-  document.body.classList.toggle('panelOpen');
-});
-document.addEventListener('click', ev=>{           // パネルの外をタップで閉じる
-  if(!document.body.classList.contains('panelOpen')) return;
-  if(ev.target.closest('.side') || ev.target.closest('#panelBtn')) return;
-  document.body.classList.remove('panelOpen');
-});
+document.getElementById('histBtn').addEventListener('click', ()=>openHistPanel());
 
 /* =========================================================================
    共通：ファイル保存（保存先を選べる場合は選択ダイアログ）＋画面プレビュー
@@ -7448,6 +7437,109 @@ window.addEventListener('resize', ()=>{ clearTimeout(window._fitT);
     .observe(document.body,{childList:true});
   window.aiosPanelSync = sync;
 })();
+/* =========================================================================
+   ▼▼▼ 履歴（これまでの作業を月ごとに見る）▼▼▼
+   取り込み・書き出し・集計・印刷など、AI-OSで行った作業を残します。
+   ★この端末の中だけに保存され、公開ページには出ません。
+   ========================================================================= */
+const AIOS_HIST='aiosHistV1';
+const AIOS_HIST_MAX=1500;
+function aiosHistAll(){ try{ return JSON.parse(localStorage.getItem(AIOS_HIST)||'[]'); }catch(e){ return []; } }
+function aiosHistAdd(html){
+  try{
+    const txt = String(html).replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim();
+    if(!txt) return;
+    const a = aiosHistAll();
+    a.push({at:new Date().toISOString(), t:txt});
+    while(a.length>AIOS_HIST_MAX) a.shift();
+    localStorage.setItem(AIOS_HIST, JSON.stringify(a));
+  }catch(e){}
+}
+const histYm = iso => iso.slice(0,7);                       // 2026-10
+const histYmJp = ym => ym.slice(0,4)+'年'+(+ym.slice(5,7))+'月';
+let histSel = null;
+function histRender(){
+  const b=document.getElementById('histBody'); if(!b) return;
+  const all = aiosHistAll().slice().reverse();              // 新しい順
+  const months = [...new Set(all.map(x=>histYm(x.at)))];
+  if(!months.length){
+    b.innerHTML = `<div class="hempty">まだ履歴がありません。<br>
+      取り込み・書き出し・集計・印刷などをすると、ここに残ります。</div>`;
+    return;
+  }
+  if(!histSel || months.indexOf(histSel)<0) histSel = months[0];
+  const list = all.filter(x=>histYm(x.at)===histSel);
+  const byDay = {};
+  for(const x of list){ (byDay[x.at.slice(0,10)] = byDay[x.at.slice(0,10)]||[]).push(x); }
+  const days = Object.keys(byDay).sort().reverse();
+  const W=['日','月','火','水','木','金','土'];
+  b.innerHTML = `
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px">
+      <label style="font-size:12px; color:var(--sub)">月で見る</label>
+      <select id="histMonth" style="padding:7px 10px; border:1px solid var(--line); border-radius:6px; font-size:13px">
+        ${months.map(m=>`<option value="${m}"${m===histSel?' selected':''}>${histYmJp(m)}（${all.filter(x=>histYm(x.at)===m).length}件）</option>`).join('')}
+      </select>
+      <span class="grow" style="flex:1"></span>
+      <button class="wpBtn" id="histPrint">🖨 この月を印刷</button>
+      <button class="wpBtn" id="histClear" style="color:#c0392b; border-color:#e6b3ab">🗑 履歴を消す</button>
+    </div>
+    <div class="wpNote" style="margin:0 0 10px">${histYmJp(histSel)}：<b>${list.length}件</b>
+      　<span style="font-size:11px">※この端末の中だけに残ります。公開ページには出ません。</span></div>
+    ${days.map(d=>{
+      const dt=new Date(d+'T00:00:00');
+      return `<div class="histDay">${dt.getMonth()+1}月${dt.getDate()}日（${W[dt.getDay()]}）</div>`
+        + byDay[d].map(x=>`<div class="histRow"><time>${x.at.slice(11,16)}</time><div>${hkEsc(x.t)}</div></div>`).join('');
+    }).join('')}`;
+  document.getElementById('histMonth').addEventListener('change', e=>{ histSel=e.target.value; histRender(); });
+  document.getElementById('histPrint').addEventListener('click', histPrint);
+  document.getElementById('histClear').addEventListener('click', ()=>{
+    if(!confirm('この端末に残した作業の履歴をすべて消します。よろしいですか？')) return;
+    try{ localStorage.removeItem(AIOS_HIST); }catch(e){}
+    histSel=null; histRender();
+  });
+}
+function histPrint(){
+  const all = aiosHistAll().slice().reverse().filter(x=>histYm(x.at)===histSel);
+  if(!all.length){ alert('この月の履歴がありません'); return; }
+  const W=['日','月','火','水','木','金','土'];
+  let html = `<h2 style="font-size:16px; margin:0 0 6px">作業の履歴　${histYmJp(histSel)}</h2>
+    <div style="font-size:11.5px; margin-bottom:8px">おりーぶ庵 AI-OS ／ ${all.length}件</div>
+    <table style="border-collapse:collapse; width:100%">`;
+  let lastDay='';
+  for(const x of all.slice().reverse()){           // 印刷は古い順
+    const d=x.at.slice(0,10);
+    if(d!==lastDay){
+      const dt=new Date(d+'T00:00:00');
+      html += `<tr><td colspan="2" style="border:1px solid #333; background:#eee; padding:4px 6px;
+        font-size:11.5px; font-weight:700">${dt.getFullYear()}年${dt.getMonth()+1}月${dt.getDate()}日（${W[dt.getDay()]}）</td></tr>`;
+      lastDay=d;
+    }
+    html += `<tr><td style="border:1px solid #333; padding:3px 6px; font-size:11px; width:52px">${x.at.slice(11,16)}</td>
+      <td style="border:1px solid #333; padding:3px 6px; font-size:11px">${hkEsc(x.t)}</td></tr>`;
+  }
+  html += `</table><div style="font-size:10px; color:#666; margin-top:8px; text-align:right">${new Date().toLocaleString('ja-JP')} 出力</div>`;
+  const tmp=document.createElement('div'); tmp.className='aiosPrintArea'; tmp.innerHTML=html;
+  document.body.appendChild(tmp);
+  const clean=()=>{ tmp.remove(); window.removeEventListener('afterprint', clean); };
+  window.addEventListener('afterprint', clean);
+  setTimeout(()=>window.print(), 60);
+}
+function openHistPanel(){
+  let p=document.getElementById('histPanel');
+  if(!p){
+    p=document.createElement('div'); p.className='modal'; p.id='histPanel';
+    p.innerHTML=`<div class="sheet">
+      <div class="sheetHead"><b>📜 作業の履歴</b><span class="grow"></span>
+        <button onclick="document.getElementById('histPanel').hidden=true">✕</button></div>
+      <div class="sheetBody" id="histBody"></div></div>`;
+    document.body.appendChild(p);
+  }
+  histSel = null;            // 開いたときは、いつも「いちばん新しい月」から
+  p.hidden=false; histRender();
+  if(window.aiosPanelSync) setTimeout(window.aiosPanelSync, 40);
+}
+/* ▲▲▲ 履歴 ここまで ▲▲▲ */
+
 /* ▲▲▲ ホーム画面 ここまで ▲▲▲ */
 
 /* ---- 最初のひとこと ---- */
