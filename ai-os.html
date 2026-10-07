@@ -154,6 +154,19 @@
   .listtop input{flex:1; min-width:0; padding:9px 12px; border:1px solid var(--line);
     border-radius:6px; font-size:14px; outline:none; background:#fff}
   .listtop input:focus{border-color:var(--olive); box-shadow:0 0 0 2px var(--olive-l)}
+  .calBtn{display:flex; gap:6px; align-items:center; white-space:nowrap; cursor:pointer;
+    padding:9px 12px; border:1px solid var(--line); border-radius:6px; background:#fff;
+    color:var(--ink); font-size:12.5px; font-weight:700; min-height:38px}
+  .calBtn:hover{background:var(--olive-l); border-color:var(--olive)}
+  .calBtn span{font-size:15px; line-height:1}
+  @media(max-width:620px){ .calBtn b{display:none} .calBtn{padding:9px 11px} }
+  .calWrap{position:relative; width:100%; border:1px solid var(--line); border-radius:6px; overflow:hidden; background:#fff}
+  .calWrap iframe{display:block; width:100%; height:min(68vh, 680px); border:0}
+  @media(max-width:700px){ .calWrap iframe{height:min(62vh, 560px)} }
+  .calBar{display:flex; gap:7px; flex-wrap:wrap; align-items:center; margin:0 0 9px}
+  .calBar .wpBtn{font-size:11.5px; padding:6px 11px}
+  .calBar .on{background:var(--olive); color:#fff; border-color:var(--olive)}
+  #calBody .wpNote{overflow-wrap:anywhere}
   .burger{display:none; border:1px solid var(--line); background:#fff; border-radius:9px;
     padding:7px 11px; font-size:15px; cursor:pointer; flex:0 0 auto}
   .listinner{flex:1 1 auto; overflow:auto; padding:14px 14px 22px}
@@ -615,6 +628,7 @@
         <div class="listtop">
           <button class="burger" id="navBurger" title="メニュー">☰</button>
           <input id="homeSearch" type="search" placeholder="さがす（例：車検、シフト、受給者証）" autocomplete="off">
+          <button class="calBtn" id="homeCal" title="Googleカレンダーを見る"><span>📅</span><b>カレンダー</b></button>
         </div>
         <div class="listinner">
           <div id="roleCard"></div>
@@ -6747,6 +6761,127 @@ function openKoubouPanel(){
 /* ▲▲▲ 工房AI ここまで ▲▲▲ */
 
 /* =========================================================================
+   ▼▼▼ カレンダー（Googleカレンダー） ▼▼▼
+   はじめの画面の「さがす」の横にある 📅 から開きます。
+   ★カレンダーの中身はGoogleの画面がそのまま出ます。AI-OSは予定を読んだり
+     保存したりしません（カレンダーのアドレスだけ、この端末に覚えます）。
+   ★会社のカレンダーを出すには、そのGoogleアカウントでブラウザにログインしている
+     必要があります（ログインしていないと「権限がありません」と出ます）。
+   ========================================================================= */
+const CAL_KEY  = 'aiosCalV1';          // カレンダーのアドレス（この端末だけ）
+const CAL_MODE = 'aiosCalModeV1';      // 月／週／予定リスト
+const CAL_HOLIDAY = 'japanese__ja@holiday.calendar.google.com';
+const calGet  = ()=>{ try{ return localStorage.getItem(CAL_KEY)||''; }catch(e){ return ''; } };
+const calSet  = v =>{ try{ v ? localStorage.setItem(CAL_KEY,v) : localStorage.removeItem(CAL_KEY); }catch(e){} };
+const calMode = ()=>{ try{ return localStorage.getItem(CAL_MODE) || (innerWidth<700?'AGENDA':'MONTH'); }catch(e){ return 'MONTH'; } };
+const calSetMode = v =>{ try{ localStorage.setItem(CAL_MODE,v); }catch(e){} };
+
+/* 入れてもらったものから、Googleカレンダーの表示用アドレスを組み立てます。
+   受け付けるもの：メールアドレス／共有用のカレンダーID／埋め込みURL／<iframe …> のはりつけ
+   ★Googleカレンダー以外のアドレスは表示しません（安全のため）。 */
+function calEmbedSrc(v, mode){
+  v = String(v||'').trim();
+  const tag = v.match(/src\s*=\s*["']([^"']+)["']/i);
+  if(tag) v = tag[1];
+  v = v.replace(/&amp;/g,'&');
+  const base = (ids)=> 'https://calendar.google.com/calendar/embed?ctz=Asia%2FTokyo&wkst=1&showTitle=0&mode='
+      + encodeURIComponent(mode||'MONTH')
+      + ids.map(x=>'&src='+encodeURIComponent(x)).join('');
+  if(/^https?:\/\//i.test(v)){
+    let u; try{ u = new URL(v); }catch(e){ return ''; }
+    if(u.hostname !== 'calendar.google.com') return '';
+    const srcs = u.searchParams.getAll('src');
+    if(srcs.length) return base(srcs);
+    const cid = u.searchParams.get('cid');
+    if(cid){ let d=cid; try{ d = atob(cid.replace(/-/g,'+').replace(/_/g,'/')); }catch(e){} return base([d]); }
+    return '';
+  }
+  if(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return base([v]);
+  return '';
+}
+// 画面に出すときの短い名まえ（埋め込みコードを貼られても、カレンダー名だけ出します）
+function calLabel(v){
+  const src = calEmbedSrc(v,'MONTH');
+  if(src){ try{ const ids=new URL(src).searchParams.getAll('src');
+    if(ids.length) return ids.join('、').replace(/@group\.calendar\.google\.com/g,'（共有カレンダー）')
+                              .replace(/@holiday\.calendar\.google\.com/g,'（Googleの祝日）'); }catch(e){} }
+  const t=String(v||'').trim();
+  return t.length>48 ? t.slice(0,48)+'…' : t;
+}
+function calRender(){
+  const b=document.getElementById('calBody'); if(!b) return;
+  const cur=calGet(), md=calMode(), src=cur?calEmbedSrc(cur, md):'';
+  const btn=(k,lbl)=>`<button class="wpBtn${md===k?' on':''}" data-cmode="${k}">${lbl}</button>`;
+  if(src){
+    b.innerHTML = `<div class="calBar">
+        ${btn('MONTH','月')}${btn('WEEK','週')}${btn('AGENDA','予定リスト')}
+        <span style="flex:1"></span>
+        <a class="wpBtn" href="https://calendar.google.com/" target="_blank" rel="noopener">🔗 Googleカレンダーを開く</a>
+        <button class="wpBtn" id="calEdit">⚙ カレンダーを変える</button>
+      </div>
+      <div class="calWrap"><iframe src="${hkEsc(src)}" loading="lazy"
+        title="Googleカレンダー" referrerpolicy="no-referrer-when-downgrade"></iframe></div>
+      <div class="wpNote" style="margin-top:9px">
+        📅 いま出しているカレンダー：<b>${hkEsc(calLabel(cur))}</b><br>
+        <small>「権限がありません」と出るときは、そのカレンダーを持っているGoogleアカウントで
+        ブラウザにログインしてください。iPad・携帯では「🔗 Googleカレンダーを開く」のほうが見やすいことがあります。</small></div>`;
+    b.querySelectorAll('[data-cmode]').forEach(el=>el.addEventListener('click',()=>{ calSetMode(el.dataset.cmode); calRender(); }));
+    document.getElementById('calEdit').addEventListener('click', ()=>{ b.dataset.edit='1'; calRenderSetup(); });
+    return;
+  }
+  calRenderSetup();
+}
+function calRenderSetup(){
+  const b=document.getElementById('calBody'); if(!b) return;
+  const cur=calGet();
+  b.innerHTML = `<div class="wpNote">
+      📅 <b>Googleカレンダーをここに出します</b><br>
+      カレンダーの<b>アドレス</b>を入れてください。つぎのどれでも大丈夫です。<br>
+      <small>・Googleアカウントのメールアドレス（例：olive@gmail.com）<br>
+      ・共有カレンダーのID（…@group.calendar.google.com）<br>
+      ・Googleカレンダーの［設定］→［カレンダーの統合］にある<b>埋め込みコード</b>をそのまま貼りつけ</small></div>
+    <div style="margin-top:10px">
+      <input id="calSrc" type="text" value="${hkEsc(cur)}" placeholder="olive@gmail.com　または　&lt;iframe src=&quot;…&quot;&gt;"
+        style="width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:6px; font-size:14px">
+      <div class="calBar" style="margin-top:9px">
+        <button class="wpBtn primary" id="calSave">📅 このカレンダーを出す</button>
+        <button class="wpBtn" id="calHol">🎌 まず祝日カレンダーで試す</button>
+        <a class="wpBtn" href="https://calendar.google.com/" target="_blank" rel="noopener">🔗 Googleカレンダーを開く</a>
+        ${cur?'<button class="wpBtn" id="calBack">← もどる</button>':''}
+      </div>
+      <div class="wpNote" style="margin-top:10px">
+        🔐 <small>アドレスは${aiosThis()}の中だけに覚えます。予定の中身はAI-OSでは読み書きしません。
+        会社のカレンダーを出すときは、そのGoogleアカウントでブラウザにログインしておいてください。</small></div>
+    </div>`;
+  const go=v=>{ const src=calEmbedSrc(v, calMode());
+    if(!src){ alert('Googleカレンダーのアドレスとして読み取れませんでした。\nメールアドレス、または［設定］→［カレンダーの統合］の埋め込みコードを貼ってください。'); return; }
+    calSet(String(v).trim()); delete b.dataset.edit; calRender();
+    banner('📅 カレンダーを出しました');
+    logLine('<b>カレンダー</b>：Googleカレンダーを表示'); };
+  document.getElementById('calSave').addEventListener('click', ()=>go(document.getElementById('calSrc').value));
+  document.getElementById('calHol').addEventListener('click', ()=>go(CAL_HOLIDAY));
+  document.getElementById('calSrc').addEventListener('keydown', ev=>{ if(ev.key==='Enter') go(ev.target.value); });
+  const bk=document.getElementById('calBack');
+  if(bk) bk.addEventListener('click', ()=>{ delete b.dataset.edit; calRender(); });
+}
+function openCalPanel(){
+  let p=document.getElementById('calPanel');
+  if(!p){
+    p=document.createElement('div'); p.className='modal'; p.id='calPanel';
+    p.innerHTML=`<div class="sheet" style="max-width:980px">
+      <div class="sheetHead"><b>📅 カレンダー（Googleカレンダー）</b><span class="grow"></span>
+        <button onclick="document.getElementById('calPanel').hidden=true">✕</button></div>
+      <div class="sheetBody" id="calBody"></div></div>`;
+    p.addEventListener('click',ev=>{ if(ev.target.id==='calPanel') p.hidden=true; });
+    document.body.appendChild(p);
+  }
+  p.hidden=false; calRender();
+}
+/* ▲▲▲ カレンダー ここまで ▲▲▲ */
+
+
+
+/* =========================================================================
    ▼▼▼ ポチパス連携 ▼▼▼
    ポチパス（トラストバンク社）には外部から接続できる公開APIが無いため、
    自動ログインしてデータを直接取り出すことはできません。
@@ -7722,6 +7857,8 @@ function homeNav(open){
   if(mk) mk.addEventListener('click', ()=>homeNav(false));
   const q=document.getElementById('homeSearch');
   if(q) aiosBindSearch(q, v=>{ homeQ=(v||'').trim(); homeRender(); });
+  const cal=document.getElementById('homeCal');
+  if(cal) cal.addEventListener('click', ()=>openCalPanel());
   homeRender();
 
   /* ---- 指でスライドしてメニューを出す／しまう ---- */
