@@ -436,6 +436,8 @@
   }
   .wpControls button:hover, .wpBtn:hover{background:#f2f4f6}
   .wpBtn.primary{background:var(--olive); color:#fff; border-color:var(--olive)}
+  .wpBtn:disabled, .wpBtn.primary:disabled{
+    background:#e9edf0; color:#9aa5ad; border-color:var(--line); cursor:not-allowed; box-shadow:none}
   .wpBtn.primary:hover{background:var(--olive-d); border-color:var(--olive-d)}
   #wpFix{
     margin:6px 0 2px; padding:9px 10px; border-radius:10px;
@@ -4181,33 +4183,80 @@ function riyouRender(){
   if(!st){                                  // 初回：読み込み＋合言葉の設定
     b.innerHTML = riyouNote() + `
       <div style="font-weight:800; font-size:13px; color:#1f3a28; margin:12px 0 6px">はじめの設定（1回だけ）</div>
-      <ol style="font-size:12.5px; line-height:1.9; padding-left:18px; margin:0 0 10px">
-        <li>受給者証データのExcelを選ぶ（シート「利用者受給者証」を読み取ります）</li>
-        <li>合言葉を決める（次回からこの合言葉で開きます）</li>
-      </ol>
-      <button class="wpBtn" id="riyouPick" style="width:100%; text-align:left; padding:11px">📗 受給者証のExcelを選ぶ<br><small id="riyouFn" style="font-weight:400; color:#7a8b80">未選択</small></button>
-      <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a; margin-top:10px">合言葉（4文字以上）</label>
+      <div class="wpNote" style="margin:0 0 10px">
+        ① 合言葉を決める　② データの入れ方を選ぶ（あとからでも入れられます）<br>
+        <small>iPad・携帯では、パソコンで「📲 iPadへ持ち出す」で作ったファイルを読むのがかんたんです。</small></div>
+
+      <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a">合言葉（4文字以上）</label>
       <input id="riyouPass" type="password" autocomplete="new-password" placeholder="4文字以上"
         style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 2px">
       ${secRememberBox('riyouRem')}
-      <button class="wpBtn primary" id="riyouSaveBtn" style="width:100%; padding:11px" disabled>🔐 暗号化して保存</button>
+
+      <div style="font-size:12px; font-weight:700; color:#2b5d8a; margin:10px 0 5px">データの入れ方（どれか1つ）</div>
+      <button class="wpBtn" id="riyouPick" style="width:100%; text-align:left; padding:11px">📗 受給者証のExcelを選ぶ<br><small id="riyouFn" style="font-weight:400; color:var(--sub)">未選択</small></button>
+      <button class="wpBtn" id="riyouPickHand" style="width:100%; text-align:left; padding:11px; margin-top:6px">📥 パソコンから持ち出したファイルを読む<br><small id="riyouHn" style="font-weight:400; color:var(--sub)">未選択（iPad・携帯はこちら）</small></button>
+      <button class="wpBtn" id="riyouEmpty" style="width:100%; text-align:left; padding:11px; margin-top:6px">✍️ 空のまま始める<br><small style="font-weight:400; color:var(--sub)">あとで取り込む・手で登録する</small></button>
+
+      <button class="wpBtn primary" id="riyouSaveBtn" style="width:100%; padding:11px; margin-top:10px" disabled>🔐 暗号化して保存</button>
       <div id="riyouMsg" style="margin-top:8px"></div>
-      <input type="file" id="riyouFile" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden>`;
-    let picked=null;
-    const upd=()=>{ document.getElementById('riyouSaveBtn').disabled =
-      !(picked && document.getElementById('riyouPass').value.trim().length>=4); };
+      <input type="file" id="riyouFile" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden>
+      <input type="file" id="riyouHandFile0" accept=".aiosdata,application/json" hidden>`;
+    let picked=null, pickedHand=null, emptyOk=false;
+    const upd=()=>{
+      const pw = document.getElementById('riyouPass').value.trim();
+      const btn = document.getElementById('riyouSaveBtn');
+      const ready = pw.length>=4 && (picked || pickedHand || emptyOk);
+      btn.disabled = !ready;
+      btn.textContent = pickedHand ? '🔐 持ち出したファイルを読み込む'
+                      : picked     ? '🔐 Excelを読み込んで保存'
+                      : emptyOk    ? '🔐 空のまま始める'
+                      : (pw.length<4 ? '🔐 合言葉を4文字以上で入れてください' : '🔐 上のどれかを選んでください');
+    };
+    const mark=(id,txt)=>{ const e=document.getElementById(id); if(e) e.textContent=txt; };
     document.getElementById('riyouPick').addEventListener('click',()=>document.getElementById('riyouFile').click());
     document.getElementById('riyouFile').addEventListener('change',function(){
-      if(this.files[0]){ picked=this.files[0]; document.getElementById('riyouFn').textContent=picked.name; }
+      if(this.files[0]){ picked=this.files[0]; pickedHand=null; emptyOk=false;
+        mark('riyouFn', picked.name); mark('riyouHn','未選択（iPad・携帯はこちら）'); }
       this.value=''; upd();
     });
+    document.getElementById('riyouPickHand').addEventListener('click',()=>document.getElementById('riyouHandFile0').click());
+    document.getElementById('riyouHandFile0').addEventListener('change',function(){
+      if(this.files[0]){ pickedHand=this.files[0]; picked=null; emptyOk=false;
+        mark('riyouHn', pickedHand.name); mark('riyouFn','未選択'); }
+      this.value=''; upd();
+    });
+    document.getElementById('riyouEmpty').addEventListener('click',()=>{
+      emptyOk=true; picked=null; pickedHand=null;
+      mark('riyouFn','未選択'); mark('riyouHn','未選択（iPad・携帯はこちら）');
+      banner('✍️ 空のまま始めます'); upd();
+    });
     document.getElementById('riyouPass').addEventListener('input',upd);
+    upd();
     document.getElementById('riyouSaveBtn').addEventListener('click', async ()=>{
       const msg=document.getElementById('riyouMsg');
       try{
-        if(typeof XLSX==='undefined') throw new Error('Excelライブラリを読み込めませんでした。少し待ってからお試しください');
         const pw=document.getElementById('riyouPass').value.trim();
         const rem=document.getElementById('riyouRem').checked;
+        // ① 持ち出したファイルから
+        if(pickedHand){
+          const got = await aiosHandoffRead(pickedHand, pw);
+          await riyouSave(got, pw); riyouPass=pw;
+          if(rem) secRemember(RIYOU_KEY, pw);
+          riyouData=got;
+          banner('📥 受給者証データ '+got.length+'名を読み込みました');
+          logLine(`<b>利用者AI</b>：持ち出しファイルから${got.length}名を読み込み`);
+          riyouRenderSearch(); return;
+        }
+        // ② 空のまま始める
+        if(!picked){
+          await riyouSave([], pw); riyouPass=pw;
+          if(rem) secRemember(RIYOU_KEY, pw);
+          riyouData=[];
+          banner('✍️ 空のまま始めました');
+          riyouRenderSearch(); return;
+        }
+        // ③ Excelから
+        if(typeof XLSX==='undefined') throw new Error('Excelライブラリを読み込めませんでした。少し待ってからお試しください');
         const wb=XLSX.read(await picked.arrayBuffer(),{type:'array', cellDates:true});
         const sheet=await xlsChoose(b, wb, XLS_RIYOU);       // 複数シートなら選んでもらう
         if(!sheet){ riyouRender(); return; }
