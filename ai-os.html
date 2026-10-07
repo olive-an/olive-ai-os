@@ -154,13 +154,32 @@
   .listtop input{flex:1; min-width:0; padding:9px 12px; border:1px solid var(--line);
     border-radius:6px; font-size:14px; outline:none; background:#fff}
   .listtop input:focus{border-color:var(--olive); box-shadow:0 0 0 2px var(--olive-l)}
-  .nowBox{display:flex; flex-direction:column; align-items:flex-end; justify-content:center;
-    line-height:1.15; white-space:nowrap; padding:4px 10px; border:1px solid var(--line);
-    border-radius:6px; background:#fff; min-height:38px}
-  .nowBox b{font-size:15px; font-weight:800; color:var(--ink); font-variant-numeric:tabular-nums}
-  .nowBox span{font-size:10.5px; color:var(--sub)}
-  @media(max-width:620px){ .nowBox{padding:4px 8px} .nowBox b{font-size:13.5px} .nowBox span{font-size:9.5px} }
-  @media(max-width:380px){ .nowBox span{display:none} }
+  /* 時計とミニカレンダーのウィジェット（はじめの画面のいちばん上） */
+  .wgt{display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:center;
+    background:#e9ecf2; border-radius:22px; padding:16px 18px; margin:0 0 14px}
+  .wgtL{text-align:center}
+  .wgtD{font-size:14px; color:#5b6169; margin:0 0 10px; letter-spacing:.5px}
+  .flip{display:flex; gap:9px; justify-content:center}
+  .flipc{position:relative; background:#fff; border-radius:13px; padding:4px 12px 6px;
+    min-width:84px; text-align:center; color:#1f2328; line-height:1.06;
+    font-size:58px; font-weight:800; letter-spacing:-2px; font-variant-numeric:tabular-nums;
+    box-shadow:0 1px 2px rgba(0,0,0,.05)}
+  .flipc::after{content:''; position:absolute; left:0; right:0; top:50%; height:1px; background:#eceef2}
+  .wgtR{min-width:0; max-width:380px; margin:0 auto; width:100%}
+  .wgtH{text-align:center; font-size:15px; font-weight:800; color:#1f2328; margin:0 0 7px}
+  .mg{display:grid; grid-template-columns:repeat(7,1fr); gap:2px 0; cursor:pointer}
+  .mg div{text-align:center; font-size:12.5px; color:#2a2f36; padding:3px 0; position:relative}
+  .mg .mw{font-size:11.5px; color:#6b7279; font-weight:700; padding-bottom:2px}
+  .mg .mo{color:#c3c9ce}
+  .mg .mt b{display:inline-block; min-width:21px; line-height:21px; border-radius:50%;
+    background:#e8453c; color:#fff; font-weight:700}
+  .mg .mdot{position:absolute; left:50%; bottom:0; width:4px; height:4px; margin-left:-2px;
+    border-radius:50%; background:var(--olive)}
+  .mg .mdot.lim{background:#d0503f}
+  @media(max-width:620px){
+    .wgt{grid-template-columns:1fr; gap:14px; padding:14px; border-radius:18px}
+    .flipc{font-size:52px; min-width:76px}
+  }
   .calBtn{display:flex; gap:6px; align-items:center; white-space:nowrap; cursor:pointer;
     padding:9px 12px; border:1px solid var(--line); border-radius:6px; background:#fff;
     color:var(--ink); font-size:12.5px; font-weight:700; min-height:38px}
@@ -683,11 +702,10 @@
         <div class="listtop">
           <button class="burger" id="navBurger" title="メニュー">☰</button>
           <input id="homeSearch" type="search" placeholder="さがす（例：車検、シフト、受給者証）" autocomplete="off">
-          <div class="nowBox" id="nowBox" title="いまの日づけと時刻">
-            <b id="nowTime">--:--:--</b><span id="nowDate"></span></div>
           <button class="calBtn" id="homeCal" title="カレンダーを見る"><span>🗓</span><b>カレンダー</b></button>
         </div>
         <div class="listinner">
+          <div id="wgtBox"></div>
           <div id="roleCard"></div>
           <h2 class="hd">今日みておきたいこと</h2>
           <p class="hdsub">期限が近いもの・まだ手がついていないものを、上から順に出します。</p>
@@ -7078,22 +7096,70 @@ function openCalPanel(){
   }
   p.hidden=false; calRender();
 }
-/* いまの日づけと時刻（この端末の時計を、1秒ごとに出します） */
+/* いまの日づけと時刻＋その月のミニカレンダー（はじめの画面のいちばん上）
+   ★秒は出しません（時：分だけ）。1分ごとに変わります。 */
 const AIOS_YOBI = ['日','月','火','水','木','金','土'];
-function aiosNowText(d){
-  const p=n=>('0'+n).slice(-2);
-  return { t: p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()),
-           d: (d.getMonth()+1)+'月'+d.getDate()+'日（'+AIOS_YOBI[d.getDay()]+'）' };
+const aiosPad2 = n => ('0'+n).slice(-2);
+function wgtHtml(){
+  return `<div class="wgt">
+      <div class="wgtL">
+        <div class="wgtD" id="wgtDate">--/-- ---曜日</div>
+        <div class="flip"><div class="flipc" id="wgtH">--</div><div class="flipc" id="wgtM">--</div></div>
+      </div>
+      <div class="wgtR">
+        <div class="wgtH" id="wgtHead">--/-- ---曜日</div>
+        <div class="mg" id="wgtCal" title="押すとカレンダーが開きます"></div>
+      </div>
+    </div>`;
+}
+// ミニカレンダー（今月ぶん。予定・期限のある日には小さな点がつきます）
+function wgtCalHtml(now){
+  const y=now.getFullYear(), m=now.getMonth();
+  const first=new Date(y,m,1), start=new Date(first); start.setDate(1-first.getDay());
+  const lastDay=new Date(y,m+1,0).getDate();
+  const rows=Math.ceil((first.getDay()+lastDay)/7);
+  const today=calYmd(now);
+  let items={};
+  try{ const auto=calAuto();
+    calEvRead().forEach(e=>{ items[e.d]=items[e.d]||'ev'; });
+    auto.forEach(a=>{ items[a.d]='lim'; });
+  }catch(e){}
+  let h = AIOS_YOBI.map(w=>`<div class="mw">${w}</div>`).join('');
+  for(let i=0;i<rows*7;i++){
+    const d=new Date(start); d.setDate(start.getDate()+i);
+    const key=calYmd(d), out=d.getMonth()!==m;
+    h += `<div class="${out?'mo':''}${key===today?' mt':''}">`
+       + (key===today?`<b>${d.getDate()}</b>`:d.getDate())
+       + (!out && items[key] ? `<span class="mdot${items[key]==='lim'?' lim':''}"></span>` : '')
+       + `</div>`;
+  }
+  return h;
 }
 function aiosClock(){
-  const t=document.getElementById('nowTime'), dd=document.getElementById('nowDate');
-  if(!t) return;
-  let last='';
-  const tick=()=>{ const n=aiosNowText(new Date());
-    t.textContent=n.t; if(dd && n.d!==last){ dd.textContent=n.d; last=n.d; } };
+  const box=document.getElementById('wgtBox'); if(!box) return;
+  if(!box.dataset.done){ box.innerHTML=wgtHtml(); box.dataset.done='1';
+    const g=document.getElementById('wgtCal');
+    if(g) g.addEventListener('click', ()=>openCalPanel());
+  }
+  let lastDay='';
+  const tick=()=>{
+    const n=new Date();
+    const hh=aiosPad2(n.getHours()), mm=aiosPad2(n.getMinutes());
+    const H=document.getElementById('wgtH'), M=document.getElementById('wgtM');
+    if(!H) return;
+    if(H.textContent!==hh) H.textContent=hh;
+    if(M.textContent!==mm) M.textContent=mm;
+    const label=aiosPad2(n.getMonth()+1)+'/'+aiosPad2(n.getDate())+' '+AIOS_YOBI[n.getDay()]+'曜日';
+    if(label!==lastDay){
+      lastDay=label;
+      document.getElementById('wgtDate').textContent=label;
+      document.getElementById('wgtHead').textContent=label;
+      document.getElementById('wgtCal').innerHTML=wgtCalHtml(n);
+    }
+  };
   tick();
   if(aiosClock._id) clearInterval(aiosClock._id);
-  aiosClock._id=setInterval(tick, 1000);
+  aiosClock._id=setInterval(tick, 5000);
   // 画面にもどってきたときは、ずれないようにすぐ合わせます
   document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) tick(); });
 }
