@@ -1578,7 +1578,7 @@ document.getElementById('bkChk').addEventListener('change', e=>{ aiosBackupOn=e.
    ・読み取りのしかたは、フォーム側の版 SH_FORM_VER に合わせて作っています。
    ・フォームが新しくなったら画面でお知らせします（読み取りの確認用）。 */
 const SH_FORM_URL = 'https://olive-an.github.io/olive-anshift/';
-const SH_FORM_VER = '2026-09-30b';     // この版に合わせて読み取りを作っています
+const SH_FORM_VER = '2026-10-06a';     // この版に合わせて読み取りを作っています
 const SHIFT_GAS_URL = "https://script.google.com/macros/s/AKfycbwG__KMZmGaeF7S1wwqJokyijgjfOVHYNKmG7huHApz5H9KxpKC1KsPHNRH9TfqX0SvjQ/exec";
 const WDOW = ["日","月","火","水","木","金","土"];
 
@@ -1693,23 +1693,36 @@ function shParseStamp(text){
 function shParse(raw, start, end){
   const resolver = shDateResolver(start, end);
   const blocks = String(raw||"").split(/\n\s*\n+/).map(x=>x.trim()).filter(Boolean);
-  const byName={}, counts={}, stamps={};
+  /* 旧字体・空白のちがいを無視した氏名でまとめる。
+     「淺野　和子」「浅野和子」「淺野和子」は、すべて同じ方として1人にする。
+     （シフト希望フォーム側の修正 #78 と同じまとめ方）*/
+  const byKey={}, stampByKey={}, countByKey={}, dispByKey={};
   for(const b of blocks){
-    const name  = shExtractName(b);
-    const marks = shExtractMarks(b, resolver);
-    const days  = Object.keys(marks).filter(k=>!k.endsWith('__comment'));
+    const rawName = shExtractName(b);
+    const key     = shNormName(rawName);
+    const marks   = shExtractMarks(b, resolver);
+    const days    = Object.keys(marks).filter(k=>!k.endsWith('__comment'));
     if(days.length === 0) continue;
-    counts[name] = (counts[name]||0) + 1;
+    countByKey[key] = (countByKey[key]||0) + 1;
     const t = shParseStamp(b);
     // 同じ人が出し直している場合は、送信日時が新しい方だけを採用する。
     // 日時が分からない古い提出は、後に出てきた方を採用する（従来どおり）。
-    if(byName[name]){
-      const prev = stamps[name];
+    if(byKey[key]){
+      const prev = stampByKey[key];
       if(prev && t && t.getTime() < prev.getTime()) continue;
     }
     // 前の提出は残さず入れ替える。○を空欄に直した場合も正しく反映させるため。
-    byName[name] = marks;
-    stamps[name] = t;
+    byKey[key]     = marks;
+    stampByKey[key]= t;
+    dispByKey[key] = shDispName(rawName);   // 採用した提出の書き方に、新字体をあてる
+  }
+  // ここから先は、画面に出す氏名（新字体）で扱う
+  const byName={}, counts={}, stamps={};
+  for(const k of Object.keys(byKey)){
+    const nm = dispByKey[k];
+    byName[nm] = byKey[k];
+    stamps[nm] = stampByKey[k];
+    counts[nm] = countByKey[k];
   }
   return {byName, counts, stamps};
 }
@@ -1951,20 +1964,6 @@ function shRun(){
 
   // 描画
   let html = '';
-  // フォームには何か月分もたまっているので、ほかの期間の分がどれだけあるか知らせる
-  const tally = shPeriodTally(raw);
-  const curKey = `${start.getMonth()+1}/${start.getDate()}〜${end.getMonth()+1}/${end.getDate()}`;
-  const others = Object.keys(tally).filter(k=>k!==curKey).sort((a,b)=>tally[b]-tally[a]);
-  const curCnt = tally[curKey]||0;
-  if(others.length){
-    const total = Object.keys(tally).reduce((n,k)=>n+tally[k],0);
-    html += `<div class="wpNote" style="background:#f4f6f8; border-color:#d8dee5; margin-bottom:8px">
-      📥 届いている希望は全部で<b>${total}件</b>。そのうち今の対象期間（<b>${curKey}</b>）は<b>${curCnt}件</b>です。
-      <br>ほかの期間の分：${others.slice(0,6).map(k=>`${k}（${tally[k]}件）`).join('、')}${others.length>6?' ほか':''}
-      <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap">${
-        others.slice(0,6).map(k=>`<button class="wpBtn" data-per="${k}" style="font-size:11px; padding:4px 9px">${k} に切り替える</button>`).join('')}</div>
-    </div>`;
-  }
   html += `<div class="kpis">
     <div class="kpi"><b>${names.length}</b><span>提出人数</span></div>
     <div class="kpi"><b>${rows.length}</b><span>対象日数</span></div>
@@ -2018,13 +2017,6 @@ function shRun(){
     out.innerHTML='<p class="wpNote">集計をリセットしました。「サンプルで試す」か「フォームから取得」を押すか、テキストを貼り付けてください。</p>';
     shLastRows=null; window._aiosAgg=null; shGasCache=null;
   });
-  out.querySelectorAll('[data-per]').forEach(btn=>btn.addEventListener('click', ()=>{
-    const r = shDetectRange('期間：'+btn.dataset.per);
-    if(!r){ alert('期間を読み取れませんでした'); return; }
-    document.getElementById('wpStart').value = shFmt(r[0]);
-    document.getElementById('wpEnd').value   = shFmt(r[1]);
-    shRun();
-  }));
   document.getElementById('wpCsv').addEventListener('click', shDownloadCsv);
   document.getElementById('wpPrint').addEventListener('click', shPrint);
   shShowSrc();
@@ -2070,21 +2062,22 @@ const SH_HOME_LABELS = ["西九条","九条","酉島","春日出","新郡山","�
    旧字体・異体字で書かれていると別人になってしまうため、
    よくある字をひとつに寄せてから見くらべます。（表示は元のまま）*/
 const SH_KANJI_SAME = {
-  '\u{20BB7}':'吉', '髙':'高', '﨑':'崎', '嵜':'崎', '濱':'浜', '濵':'浜',
-  '齋':'斎', '齊':'斎', '斉':'斎', '邊':'辺', '邉':'辺', '瀨':'瀬',
-  '德':'徳', '眞':'真', '淸':'清', '澤':'沢', '嶋':'島', '嶌':'島',
-  '冨':'富', '淺':'浅', '櫻':'桜', '廣':'広', '龍':'竜', '國':'国',
-  '栁':'柳', '曾':'曽', '藏':'蔵', '惠':'恵', '條':'条', '彌':'弥',
-  '祿':'禄', '穗':'穂', '蘆':'芦', '莊':'荘', '槗':'橋', '舘':'館',
-  '塚':'塚', '祐':'祐', '隆':'隆', '福':'福', '神':'神', '練':'練',
+  "廣":"広","淺":"浅","髙":"高","﨑":"崎","嵜":"崎","齋":"斎","齊":"斉",
+  "邊":"辺","邉":"辺","澤":"沢","瀧":"滝","嶋":"島","濱":"浜","濵":"浜",
+  "冨":"富","眞":"真","檜":"桧","栁":"柳","桒":"桑","國":"国","龍":"竜",
+  "\u{20BB7}":"吉","德":"徳","惠":"恵","榮":"栄","櫻":"桜","藏":"蔵","實":"実"
 };
+// まとめ用：空白を消し、旧字体を新字体に寄せる（「淺野　和子」=「浅野和子」）
 function shNormName(v){
-  let t = String(v==null ? '' : v);
-  try{ t = t.normalize('NFKC'); }catch(e){}
-  t = t.replace(/[\s　・,，、]/g, '');
-  let out = '';
-  for(const ch of t) out += (SH_KANJI_SAME[ch] || ch);
-  return out;
+  return Array.from(String(v==null?'':v).normalize('NFC').replace(/[\s　]/g,''))
+    .map(ch=>SH_KANJI_SAME[ch]||ch).join('');
+}
+/* 表示用：旧字体だけを新字体にそろえ、姓名の間の空白はそのまま残す。
+   例：淺野　和子 → 浅野　和子 ／ 廣田侑紀 → 広田侑紀
+   （シフト希望フォーム側の dispName と同じ）*/
+function shDispName(v){
+  return Array.from(String(v==null?'':v).normalize('NFC'))
+    .map(ch=>SH_KANJI_SAME[ch]||ch).join('');
 }
 function shSurname(fullName, roster){
   const t = String(fullName==null?"":fullName).trim();
