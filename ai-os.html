@@ -3797,6 +3797,18 @@ async function aiosHandoffRead(file, pass){
     throw new Error(e && e.__aios ? e.message : '合言葉が違います（この端末の合言葉で保存したファイルか、ご確認ください）');
   }finally{ localStorage.removeItem(tmp); }
 }
+// 「iPadでも見る」ための手順の説明（人事AI・利用者AIの両方で使います）
+function aiosHandoffNote(what){
+  const dir = aiosMainDir ? `フォルダ「${hkEsc(aiosMainDir.name)}」` : 'ダウンロードフォルダ';
+  return `<div class="wpNote" style="margin:8px 0 0">
+    📲 <b>iPad・携帯でも${what}を見るには</b><br>
+    ① このパソコンで「📲 iPadへ持ち出す」→ ${dir}にファイルができます<br>
+    ② そのファイルを共有フォルダ（例：\\192.168.10.100\kyoutsu\AI作成）に置きます<br>
+    　<small>画面いちばん下の「📁 保存先フォルダを設定」を共有フォルダにしておくと、②は要りません</small><br>
+    ③ iPad・携帯で「📥 持ち込んだデータを入れる」→「ファイル」アプリからそのファイルを選びます<br>
+    <small>※ファイルは暗号化したままです。同じ合言葉（この端末と同じもの）でしか開けません。
+    写真・PDFの添付は端末ごとの保管なので、一緒には移りません。</small></div>`;
+}
 function aiosHandoffDate(){ const d=new Date(), p=n=>('0'+n).slice(-2);
   return ''+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate()); }
 
@@ -4514,6 +4526,7 @@ function riyouRenderSearch(q){
       <button class="wpBtn" id="riyouOut">📲 iPadへ持ち出す</button>
       <button class="wpBtn" id="riyouIn">📥 持ち込んだデータを入れる</button>
       <input type="file" id="riyouHandFile" accept=".aiosdata,application/json" hidden>
+      <div style="width:100%">${aiosHandoffNote('受給者証データ')}</div>
       <input type="file" id="riyouReFile" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden>
       <input type="file" id="riyouExpFile" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden>
     </div>
@@ -6134,6 +6147,7 @@ function jinRenderList(){
       <button class="wpBtn" id="jinLock" style="font-size:11px">🔒 閉じる</button>
       <button class="wpBtn" id="jinClear" style="font-size:11px; color:#d0503f; border-color:#e6b3ab">🗑 全部消す</button>
       <input type="file" id="jinHandFile" accept=".aiosdata,application/json" hidden>
+      <div style="width:100%">${aiosHandoffNote('従業員情報')}</div>
       <input type="file" id="jinFile" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden>
       <input type="file" id="jinExpFile" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden>
     </div>
