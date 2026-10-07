@@ -3873,6 +3873,47 @@ function aiosHandoffNote(what){
     ④ iPadで書いた内容・撮った写真は、iPadの「💻 パソコンへ返す」→ このパソコンで「${aiosInLbl()}」<br>
     <small>※写真・PDFも一緒に入ります。ファイルは暗号化したままです。同じ合言葉（この端末と同じもの）でしか開けません。</small></div>`;
 }
+/* パソコンとiPadの両方で直したときに、どちらの直しも残す「合わせる」
+   同じ人かどうかは、氏名（旧字・新字をそろえたもの）で見ます。
+   どちらが新しいかは、保存したときの時刻（_m）で見ます。 */
+function aiosMergePeople(mine, got){
+  const key = o => (typeof shNormName==='function' ? shNormName(o && o.name) : String((o&&o.name)||'').replace(/[\s　]/g,''));
+  const tm  = o => Number(o && o._m) || 0;
+  const list = (mine||[]).slice();
+  const at = {}; list.forEach((o,i)=>{ const k=key(o); if(k && at[k]===undefined) at[k]=i; });
+  let add=0, upd=0, keep=0;
+  (got||[]).forEach(o=>{
+    const k=key(o);
+    if(!k || at[k]===undefined){ list.push(o); if(k) at[k]=list.length-1; add++; return; }
+    const i=at[k];
+    if(tm(o) > tm(list[i])){ list[i]=o; upd++; } else keep++;
+  });
+  return {list, add, upd, keep};
+}
+/* 「合わせる」か「入れ替える」かを、画面で選んでもらう */
+function aiosHandoffAsk(hostId, mine, got, nFiles, label, back){
+  const host=document.getElementById(hostId);
+  if(!host || !(mine||[]).length) return Promise.resolve('replace');
+  const m=aiosMergePeople(mine, got);
+  host.innerHTML = `<div class="wpNote" style="background:#fff8e6; border-color:#e6cfa5">
+      📥 <b>${hkEsc(label)}のデータが届きました</b>（${(got||[]).length}名${nFiles?`・写真/PDF ${nFiles}件`:''}）<br>
+      この端末には、いま ${mine.length}名 入っています。どちらにしますか？</div>
+    <div style="margin-top:10px">
+      <button class="wpBtn primary" id="aiosMrgGo" style="width:100%; text-align:left; padding:12px">
+        🔀 両方の直しを合わせる（おすすめ）<br>
+        <small style="font-weight:400">新しく入る ${m.add}名／新しいほうに直す ${m.upd}名／この端末のままにする ${m.keep}名</small></button>
+      <button class="wpBtn" id="aiosMrgRep" style="width:100%; text-align:left; padding:12px; margin-top:8px">
+        ♻️ 届いたファイルの内容に入れ替える<br>
+        <small style="font-weight:400; color:var(--sub)">この端末の ${mine.length}名は消えて、${(got||[]).length}名になります</small></button>
+      <button class="wpBtn" id="aiosMrgNo" style="width:100%; margin-top:8px">やめる</button>
+    </div>`;
+  return new Promise(res=>{
+    const fin=v=>{ if(v===null && back) back(); res(v); };
+    document.getElementById('aiosMrgGo').addEventListener('click', ()=>fin('merge'));
+    document.getElementById('aiosMrgRep').addEventListener('click', ()=>fin('replace'));
+    document.getElementById('aiosMrgNo').addEventListener('click', ()=>fin(null));
+  });
+}
 function aiosHandoffDate(){ const d=new Date(), p=n=>('0'+n).slice(-2);
   return ''+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate()); }
 
@@ -4429,7 +4470,7 @@ function riyouBindAtt(b, q){
     try{
       const pw=riyouPw(); if(!pw) throw new Error('画面を開き直してからお試しください');
       const r=await aiosAttachSave(f, pw, riyouData[i].file, 'r');
-      riyouData[i].file=r.meta; riyouPass=pw; await riyouSave(riyouData, pw);
+      riyouData[i].file=r.meta; riyouData[i]._m=Date.now(); riyouPass=pw; await riyouSave(riyouData, pw);
       riyouRenderSearch(q);
       banner('📄 '+riyouData[i].name+'さんの受給者証を保存しました');
       logLine(`<b>利用者AI</b>：受給者証の写真を保管（この端末のみ・暗号化）`);
@@ -4441,7 +4482,7 @@ function riyouBindAtt(b, q){
     const i=+x.dataset.rdel;
     if(!confirm('この受給者証の写真を外します。よろしいですか？')) return;
     try{ await jinFileDel(riyouData[i].file.id); }catch(e){}
-    delete riyouData[i].file; await riyouSave(riyouData, riyouPw());
+    delete riyouData[i].file; riyouData[i]._m=Date.now(); await riyouSave(riyouData, riyouPw());
     riyouRenderSearch(q);
   }));
 }
@@ -4490,6 +4531,7 @@ function riyouRenderForm(idx, backQ){
     if(!o.name){ alert('氏名を入れてください'); return; }
     const keep = idx>=0 ? riyouData[idx].file : null;
     if(keep) o.file = keep;                       // 受給者証の写真はそのまま引き継ぐ
+    o._m = Date.now();                            // いつ直したか（合わせるときに使います）
     if(idx>=0) riyouData[idx]=o; else riyouData.push(o);
     await riyouSave(riyouData, riyouPw());
     riyouRenderSearch(backQ||'');
@@ -4712,12 +4754,15 @@ function riyouRenderSearch(q){
     try{
       const got = await aiosHandoffRead(f, riyouPw());
       const nf = got.__files || 0;
-      if(!confirm(`この端末のいまの${(riyouData||[]).length}名を、ファイルの${got.length}名と入れ替えます。\n\n`
-                 +(nf?`受給者証の写真・PDF ${nf}件も一緒に入ります。\n\n`:'写真・PDFの添付は入っていません。\n\n')
-                 +`よろしいですか？`)) return;
-      riyouData = got; await riyouSave(riyouData, riyouPw()); await riyouGC(); riyouRenderSearch('');
-      banner(`📥 ${got.length}名`+(nf?`・添付${nf}件`:'')+`を読み込みました`);
-      logLine(`<b>利用者AI</b>：引き継ぎファイルから${got.length}名`+(nf?`・添付${nf}件`:'')+`を読み込み`);
+      const how = await aiosHandoffAsk('riyouBody', riyouData||[], got, nf, '受給者証データ',
+                                       ()=>riyouRenderSearch(''));
+      if(!how) return;
+      const m = how==='merge' ? aiosMergePeople(riyouData||[], got)
+                              : {list:got.slice(), add:got.length, upd:0, keep:0};
+      riyouData = m.list; await riyouSave(riyouData, riyouPw()); await riyouGC(); riyouRenderSearch('');
+      const msg = how==='merge' ? `🔀 合わせました（新しく${m.add}名・直した${m.upd}名）` : `📥 ${riyouData.length}名を読み込みました`;
+      banner(msg+(nf?`／添付${nf}件`:''));
+      logLine(`<b>利用者AI</b>：引き継ぎファイルを${how==='merge'?'合わせ':'読み込み'}（${riyouData.length}名`+(nf?`・添付${nf}件`:'')+`）`);
     }catch(e){ alert('読み込めませんでした：'+(e.message||e)); }
   });
   aiosShareBar('riyou', /受給者証|利用者|master|マスタ/i, 'riyouBody', '受給者証データ',
@@ -6354,12 +6399,14 @@ function jinRenderList(){
     try{
       const got = await aiosHandoffRead(f, jinjiPass || secRemembered(JINJI_KEY));
       const nf = got.__files || 0;
-      if(!confirm(`この端末のいまの${(jinjiData||[]).length}名を、ファイルの${got.length}名と入れ替えます。\n\n`
-                 +(nf?`資格証などの写真・PDF ${nf}件も一緒に入ります。\n\n`:'写真・PDFの添付は入っていません。\n\n')
-                 +`よろしいですか？`)) return;
-      jinjiData = got; await jinPersist(); await jinGC(); jinRenderList();
-      banner(`📥 ${got.length}名`+(nf?`・添付${nf}件`:'')+`を読み込みました`);
-      logLine(`<b>人事AI</b>：引き継ぎファイルから${got.length}名`+(nf?`・添付${nf}件`:'')+`を読み込み`);
+      const how = await aiosHandoffAsk('jinBody', jinjiData||[], got, nf, '従業員情報', jinRenderList);
+      if(!how) return;
+      const m = how==='merge' ? aiosMergePeople(jinjiData||[], got)
+                              : {list:got.slice(), add:got.length, upd:0, keep:0};
+      jinjiData = m.list; await jinPersist(); await jinGC(); jinRenderList();
+      const msg = how==='merge' ? `🔀 合わせました（新しく${m.add}名・直した${m.upd}名）` : `📥 ${jinjiData.length}名を読み込みました`;
+      banner(msg+(nf?`／添付${nf}件`:''));
+      logLine(`<b>人事AI</b>：引き継ぎファイルを${how==='merge'?'合わせ':'読み込み'}（${jinjiData.length}名`+(nf?`・添付${nf}件`:'')+`）`);
     }catch(e){ alert('読み込めませんでした：'+(e.message||e)); }
   });
   aiosShareBar('jin', /従業員|職員|名簿|スタッフ|master|マスタ/i, 'jinBody', '従業員名簿',
@@ -6555,6 +6602,7 @@ function jinRenderForm(idx, draft){
     obj.quals = quals.filter(x=>x.name || x.date || x.exp || x.file)
                      .map(x=>({name:x.name||'', date:x.date||'', exp:x.exp||'', file:x.file, note:x.note}))
                      .map(x=>{ if(!x.file) delete x.file; if(!x.note) delete x.note; return x; });
+    obj._m = Date.now();                       // いつ直したか（合わせるときに使います）
     if(idx>=0) jinjiData[idx]=obj; else jinjiData.push(obj);
     await jinPersist(); await jinGC(); jinRenderList();
     banner('🤝 従業員情報を保存しました');
@@ -7609,13 +7657,14 @@ function homeRoleHtml(){
       <button data-role="back">💻 パソコンへ返す</button>
     </div></div>`;
   return `<div class="roleCard">
-    <div class="rcT">💻 この端末は<span class="rcTag">管理用</span>パソコン</div>
-    <p class="rcS">iPad・携帯から戻ってきたものを<b>まとめ・Excelに反映し・印刷</b>します。
-      共有フォルダ（\\\\192.168.10.100\\kyoutsu\\AI作成）への保存もここから。<br>
-      現場で使う分は、下のボタンから「📲 iPad・携帯へ渡す」でわたします。</p>
+    <div class="rcT">💻 この端末は<span class="rcTag">管理・修正用</span>パソコン</div>
+    <p class="rcS">iPad・携帯から戻ってきたものを受け取り、<b>直す・足す・まとめる</b>のはここで。
+      Excelに反映して印刷し、共有フォルダ（\\\\192.168.10.100\\kyoutsu\\AI作成）に保存します。<br>
+      直したあとは「📲 iPad・携帯へ渡す」で、現場の端末にもどします。</p>
     <div class="rcB">
-      <button data-role="利用者">👤 利用者を渡す・受け取る</button>
-      <button data-role="人事">🧑‍💼 従業員を渡す・受け取る</button>
+      <button data-role="利用者">👤 利用者を直す・足す</button>
+      <button data-role="人事">🧑‍💼 従業員を直す・足す</button>
+      <button data-role="受取">📥 iPad・携帯から受け取る</button>
       <button data-role="シフト">🗓 シフトをまとめて印刷</button>
     </div></div>`;
 }
@@ -7625,6 +7674,7 @@ function homeRoleBind(){
     b.addEventListener('click', ()=>{
       const r=b.dataset.role;
       if(r==='back'){ banner('👤 利用者・🧑‍💼 人事 のいちばん下に「💻 パソコンへ返す」があります'); homeOpen('人事'); return; }
+      if(r==='受取'){ banner('👤 利用者・🧑‍💼 人事 のいちばん下に「📥 iPad・携帯から受け取る」があります'); homeOpen('人事'); return; }
       homeOpen(r);
     });
   });
