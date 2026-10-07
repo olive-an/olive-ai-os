@@ -88,13 +88,13 @@
     /* ★残りの高さいっぱいを使い、はみ出さない */
     flex:1 1 auto; min-height:0; width:100%; overflow:hidden;
   }
-  .wrap > .mapcol{display:flex; flex-direction:column; min-height:0; gap:8px}
+  .wrap > .mapcol{display:flex; flex-direction:column; min-height:0; min-width:0; gap:8px}
   @media(max-width:880px){ .wrap{grid-template-columns:1fr; padding:8px} }
 
   /* ===== フロア（会社マップ） ===== */
   .stage{
     position:relative; width:100%;
-    flex:1 1 auto; min-height:0;            /* ★親の高さに合わせて伸縮 */
+    flex:1 1 auto; min-height:0; min-width:0; /* ★親の高さ・幅に合わせて伸縮（横にはみ出さない） */
     background:#ffffff;
     border:1px solid var(--line); border-radius:8px; overflow:hidden;
     box-shadow:0 1px 3px rgba(0,0,0,.06);
@@ -154,12 +154,25 @@
   .listtop input{flex:1; min-width:0; padding:9px 12px; border:1px solid var(--line);
     border-radius:6px; font-size:14px; outline:none; background:#fff}
   .listtop input:focus{border-color:var(--olive); box-shadow:0 0 0 2px var(--olive-l)}
+  .nowBox{display:flex; flex-direction:column; align-items:flex-end; justify-content:center;
+    line-height:1.15; white-space:nowrap; padding:4px 10px; border:1px solid var(--line);
+    border-radius:6px; background:#fff; min-height:38px}
+  .nowBox b{font-size:15px; font-weight:800; color:var(--ink); font-variant-numeric:tabular-nums}
+  .nowBox span{font-size:10.5px; color:var(--sub)}
+  @media(max-width:620px){ .nowBox{padding:4px 8px} .nowBox b{font-size:13.5px} .nowBox span{font-size:9.5px} }
+  @media(max-width:380px){ .nowBox span{display:none} }
   .calBtn{display:flex; gap:6px; align-items:center; white-space:nowrap; cursor:pointer;
     padding:9px 12px; border:1px solid var(--line); border-radius:6px; background:#fff;
     color:var(--ink); font-size:12.5px; font-weight:700; min-height:38px}
   .calBtn:hover{background:var(--olive-l); border-color:var(--olive)}
   .calBtn span{font-size:15px; line-height:1}
-  @media(max-width:620px){ .calBtn b{display:none} .calBtn{padding:9px 11px} }
+  @media(max-width:620px){
+    .calBtn b{display:none} .calBtn{padding:9px 11px}
+    /* せまい画面：1行目に ☰ と時計とカレンダー、2行目に「さがす」 */
+    .listtop{flex-wrap:wrap}
+    .listtop input{order:3; flex:1 1 100%}
+    .nowBox{margin-left:auto}
+  }
   .calWrap{position:relative; width:100%; border:1px solid var(--line); border-radius:6px; overflow:hidden; background:#fff}
   .calWrap iframe{display:block; width:100%; height:min(68vh, 680px); border:0}
   @media(max-width:700px){ .calWrap iframe{height:min(62vh, 560px)} }
@@ -628,6 +641,8 @@
         <div class="listtop">
           <button class="burger" id="navBurger" title="メニュー">☰</button>
           <input id="homeSearch" type="search" placeholder="さがす（例：車検、シフト、受給者証）" autocomplete="off">
+          <div class="nowBox" id="nowBox" title="いまの日づけと時刻">
+            <b id="nowTime">--:--:--</b><span id="nowDate"></span></div>
           <button class="calBtn" id="homeCal" title="Googleカレンダーを見る"><span>📅</span><b>カレンダー</b></button>
         </div>
         <div class="listinner">
@@ -6877,6 +6892,25 @@ function openCalPanel(){
   }
   p.hidden=false; calRender();
 }
+/* いまの日づけと時刻（この端末の時計を、1秒ごとに出します） */
+const AIOS_YOBI = ['日','月','火','水','木','金','土'];
+function aiosNowText(d){
+  const p=n=>('0'+n).slice(-2);
+  return { t: p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()),
+           d: (d.getMonth()+1)+'月'+d.getDate()+'日（'+AIOS_YOBI[d.getDay()]+'）' };
+}
+function aiosClock(){
+  const t=document.getElementById('nowTime'), dd=document.getElementById('nowDate');
+  if(!t) return;
+  let last='';
+  const tick=()=>{ const n=aiosNowText(new Date());
+    t.textContent=n.t; if(dd && n.d!==last){ dd.textContent=n.d; last=n.d; } };
+  tick();
+  if(aiosClock._id) clearInterval(aiosClock._id);
+  aiosClock._id=setInterval(tick, 1000);
+  // 画面にもどってきたときは、ずれないようにすぐ合わせます
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) tick(); });
+}
 /* ▲▲▲ カレンダー ここまで ▲▲▲ */
 
 
@@ -7859,6 +7893,7 @@ function homeNav(open){
   if(q) aiosBindSearch(q, v=>{ homeQ=(v||'').trim(); homeRender(); });
   const cal=document.getElementById('homeCal');
   if(cal) cal.addEventListener('click', ()=>openCalPanel());
+  aiosClock();
   homeRender();
 
   /* ---- 指でスライドしてメニューを出す／しまう ---- */
