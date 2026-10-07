@@ -139,6 +139,16 @@
     .rinenBar .rs{display:none}
     .rinenBar b{font-size:12.5px; width:100%}
   }
+  /* この端末の役わり（iPad・携帯＝現場で完結／パソコン＝管理） */
+  .roleCard{border:1px solid var(--line); border-radius:6px; background:#fff; padding:11px 13px; margin:0 0 14px}
+  .roleCard .rcT{font-size:13px; font-weight:800; color:var(--ink); display:flex; gap:7px; align-items:center; flex-wrap:wrap}
+  .roleCard .rcS{font-size:11.5px; color:var(--sub); margin:4px 0 0; line-height:1.6}
+  .roleCard .rcB{display:flex; gap:7px; flex-wrap:wrap; margin:9px 0 0}
+  .roleCard .rcB button{font-size:11.5px; padding:7px 11px; border:1px solid var(--line); border-radius:6px;
+    background:#fff; color:var(--ink); font-weight:700; cursor:pointer; min-height:34px}
+  .roleCard .rcB button:hover{background:var(--olive-l); border-color:var(--olive)}
+  .roleCard .rcTag{font-size:10.5px; font-weight:800; padding:2px 7px; border-radius:999px;
+    background:var(--olive-l); color:var(--olive-d)}
   .listtop{display:flex; gap:9px; align-items:center; padding:10px 14px;
     background:#fff; border-bottom:1px solid var(--line); flex:0 0 auto}
   .listtop input{flex:1; min-width:0; padding:9px 12px; border:1px solid var(--line);
@@ -607,6 +617,7 @@
           <input id="homeSearch" type="search" placeholder="さがす（例：車検、シフト、受給者証）" autocomplete="off">
         </div>
         <div class="listinner">
+          <div id="roleCard"></div>
           <h2 class="hd">今日みておきたいこと</h2>
           <p class="hdsub">期限が近いもの・まだ手がついていないものを、上から順に出します。</p>
           <div id="todayList"></div>
@@ -3778,38 +3789,89 @@ async function secSave(storeKey, data, pass){
    ★写真・PDFの添付は端末ごとの保管なので、このファイルには入りません。
    ------------------------------------------------------------------------- */
 const AIOS_HANDOFF_EXT = '.aiosdata';
-function aiosHandoffBlob(storeKey){
+// 大きいファイルでも壊れないbase64（b64.encは短いもの専用）
+function aiosB64(buf){
+  const u = new Uint8Array(buf); let out='';
+  for(let i=0;i<u.length;i+=8192) out += String.fromCharCode.apply(null, u.subarray(i, i+8192));
+  return btoa(out);
+}
+/* 持ち出すファイルの中身（v2）
+   { v:2, kind, at, data:<暗号化したままの本体>, files:{ 添付の目印: 暗号化したままの中身 } }
+   ★本体も添付も暗号化したままです。合言葉を知らない人には開けません。 */
+async function aiosHandoffBlob(storeKey, prefixes, kind){
   const raw = localStorage.getItem(storeKey);
   if(!raw) return null;
-  return new Blob([raw], {type:'application/json'});
+  let data=null; try{ data=JSON.parse(raw); }catch(e){ return null; }
+  const files={};
+  if(prefixes && prefixes.length){
+    try{
+      for(const k of (await jinFileKeys())||[]){
+        const key=String(k);
+        if(!prefixes.some(x=>key.startsWith(x))) continue;
+        const rec=await jinFileGet(k);
+        if(!rec || !rec.ct) continue;
+        files[key] = {v:1, salt:aiosB64(rec.salt), iv:aiosB64(rec.iv), ct:aiosB64(rec.ct)};
+      }
+    }catch(e){ /* 添付が取れないときは本体だけ持ち出します */ }
+  }
+  const body = JSON.stringify({v:2, kind:kind||'', at:new Date().toISOString(), data, files});
+  return new Blob([body], {type:'application/json'});
 }
+// 持ち出しファイルの大きさを読みやすく
+const aiosSizeText = n => n>=1048576 ? (n/1048576).toFixed(1)+'MB' : Math.max(1,Math.round(n/1024))+'KB';
 // 読み込む：形を確かめ、合言葉で開けることを確認してから中身を返す
 async function aiosHandoffRead(file, pass){
   const txt = await file.text();
   let o=null; try{ o=JSON.parse(txt); }catch(e){}
-  if(!o || !o.ct || !o.salt || !o.iv) throw new Error('AI-OSの引き継ぎファイルではありません');
+  const env = (o && o.v===2 && o.data) ? o.data : o;          // v2は data の中が本体
+  if(!env || !env.ct || !env.salt || !env.iv) throw new Error('AI-OSの引き継ぎファイルではありません');
   const tmp='__aiosHandoffTmp';
-  localStorage.setItem(tmp, txt);
+  localStorage.setItem(tmp, JSON.stringify(env));
+  let data;
   try{
-    const data = await secLoad(tmp, pass);
+    data = await secLoad(tmp, pass);
     if(!Array.isArray(data)){ const er=new Error('中身を読み取れませんでした'); er.__aios=1; throw er; }
-    return data;
   }catch(e){
     // 形は合っているのに開けない＝合言葉ちがい（またはファイルが壊れている）
     throw new Error(e && e.__aios ? e.message : '合言葉が違います（この端末の合言葉で保存したファイルか、ご確認ください）');
   }finally{ localStorage.removeItem(tmp); }
+  // 添付（写真・PDF）も暗号化したまま、この端末に戻す
+  let n=0;
+  if(o && o.files){
+    for(const id of Object.keys(o.files)){
+      const f=o.files[id]; if(!f || !f.ct) continue;
+      try{
+        await jinFilePut(id, {v:1, salt:b64.dec(f.salt), iv:b64.dec(f.iv), ct:b64.dec(f.ct).buffer});
+        n++;
+      }catch(e){}
+    }
+  }
+  data.__files = n;      // 戻した添付の数（お知らせ用）
+  return data;
 }
-// 「iPadでも見る」ための手順の説明（人事AI・利用者AIの両方で使います）
+/* この端末の役わり
+   パソコン（Chrome/Edge）＝まとめる・Excelに反映する・印刷する「管理」
+   iPad・携帯＝その場で見る・書く・写真をとる「現場で完結」 */
+const aiosIsPC   = ()=> !!window.showDirectoryPicker;
+const aiosThis   = ()=> aiosIsPC() ? 'このパソコン' : 'この端末';
+const aiosOutLbl = ()=> aiosIsPC() ? '📲 iPad・携帯へ渡す' : '💻 パソコンへ返す';
+const aiosInLbl  = ()=> aiosIsPC() ? '📥 iPad・携帯から受け取る' : '📥 パソコンから受け取る';
+// 持ち出し・持ち込みの手順の説明（人事AI・利用者AIの両方で使います）
 function aiosHandoffNote(what){
   const dir = aiosMainDir ? `フォルダ「${hkEsc(aiosMainDir.name)}」` : 'ダウンロードフォルダ';
+  if(!aiosIsPC()) return `<div class="wpNote" style="margin:8px 0 0">
+    📲 <b>この端末（iPad・携帯）での${what}の受けわたし</b><br>
+    ① パソコンから渡されたファイルは「${aiosInLbl()}」→「ファイル」アプリで選びます<br>
+    ② この端末で書いた内容・撮った写真は「${aiosOutLbl()}」でファイルにして、パソコンで受け取ります<br>
+    <small>※写真・PDFも一緒に入ります。ファイルは暗号化したままで、同じ合言葉でしか開けません。</small></div>`;
   return `<div class="wpNote" style="margin:8px 0 0">
     📲 <b>iPad・携帯でも${what}を見るには</b><br>
-    ① このパソコンで「📲 iPadへ持ち出す」→ ${dir}にファイルができます<br>
-    ② そのファイルを共有フォルダ（例：\\192.168.10.100\kyoutsu\AI作成）に置きます<br>
+    ① このパソコンで「${aiosOutLbl()}」→ ${dir}にファイルができます<br>
+    ② そのファイルを共有フォルダ（例：\\\\192.168.10.100\\kyoutsu\\AI作成）に置きます<br>
     　<small>画面いちばん下の「📁 保存先フォルダを設定」を共有フォルダにしておくと、②は要りません</small><br>
-    ③ iPad・携帯で「📥 持ち込んだデータを入れる」→「ファイル」アプリからそのファイルを選びます<br>
-    <small>※ファイルは暗号化したままです。同じ合言葉（この端末と同じもの）でしか開けません。
-    写真・PDFの添付は端末ごとの保管なので、一緒には移りません。</small></div>`;
+    ③ iPad・携帯で「📥 パソコンから受け取る」→「ファイル」アプリからそのファイルを選びます<br>
+    ④ iPadで書いた内容・撮った写真は、iPadの「💻 パソコンへ返す」→ このパソコンで「${aiosInLbl()}」<br>
+    <small>※写真・PDFも一緒に入ります。ファイルは暗号化したままです。同じ合言葉（この端末と同じもの）でしか開けません。</small></div>`;
 }
 function aiosHandoffDate(){ const d=new Date(), p=n=>('0'+n).slice(-2);
   return ''+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate()); }
@@ -3840,7 +3902,7 @@ async function secAutoLoad(storeKey){
 // 「次回から合言葉を聞かない」チェックボックスの共通HTML
 function secRememberBox(id){
   return `<label style="display:flex; gap:6px; align-items:center; font-size:11.5px; color:#5a6f60; margin:8px 0">
-    <input type="checkbox" id="${id}" checked> このパソコンでは次回から合言葉を聞かない</label>`;
+    <input type="checkbox" id="${id}" checked> ${aiosThis()}では次回から合言葉を聞かない</label>`;
 }
 
 const riyouSave  = (list, pass)=> secSave(RIYOU_KEY, list, pass);
@@ -4166,7 +4228,7 @@ function openRiyouPanel(){
 }
 function riyouNote(){
   return `<div class="wpNote" style="background:#fdf6ec; border-color:#e6cfa5">
-    🔐 <b>利用者さんの個人情報</b>を扱います。データは<b>合言葉で暗号化してこのパソコンの中だけ</b>に保存され、
+    🔐 <b>利用者さんの個人情報</b>を扱います。データは<b>合言葉で暗号化して${aiosThis()}の中だけ</b>に保存され、
     公開ページやインターネットには一切出ません（この画面の処理もすべて端末内で行われます）。</div>`;
 }
 function riyouRender(){
@@ -4185,7 +4247,7 @@ function riyouRender(){
       <div style="font-weight:800; font-size:13px; color:#1f3a28; margin:12px 0 6px">はじめの設定（1回だけ）</div>
       <div class="wpNote" style="margin:0 0 10px">
         ① 合言葉を決める　② データの入れ方を選ぶ（あとからでも入れられます）<br>
-        <small>iPad・携帯では、パソコンで「📲 iPadへ持ち出す」で作ったファイルを読むのがかんたんです。</small></div>
+        <small>iPad・携帯では、パソコンで「📲 iPad・携帯へ渡す」で作ったファイルを読むのがかんたんです。</small></div>
 
       <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a">合言葉（4文字以上）</label>
       <input id="riyouPass" type="password" autocomplete="new-password" placeholder="4文字以上"
@@ -4299,7 +4361,7 @@ function riyouRender(){
   document.getElementById('riyouOpen').addEventListener('click', go);
   document.getElementById('riyouPass2').addEventListener('keydown', e=>{ if(e.key==='Enter') go(); });
   document.getElementById('riyouReset').addEventListener('click', ()=>{
-    if(confirm('このパソコンに保存した受給者証データを消して、最初から入れ直します。\n\n原本のExcelから読み直せるので、名簿そのものは失われません。\n（受給者証の写真を保管している場合は、その分は消えます）\n\nよろしいですか？')){
+    if(confirm(aiosThis()+'に保存した受給者証データを消して、最初から入れ直します。\n\n原本のExcelから読み直せるので、名簿そのものは失われません。\n（受給者証の写真を保管している場合は、その分は消えます）\n\nよろしいですか？')){
       localStorage.removeItem(RIYOU_KEY); secForget(RIYOU_KEY); riyouData=null; riyouRender();
     }
   });
@@ -4572,8 +4634,8 @@ function riyouRenderSearch(q){
       <button class="wpBtn" id="riyouReload">📗 Excelから最新に更新</button>
       ${aiosBookBtn('riyouBook')}
       <button class="wpBtn" id="riyouExport">📤 Excelへ書き出す（別名）</button>
-      <button class="wpBtn" id="riyouOut">📲 iPadへ持ち出す</button>
-      <button class="wpBtn" id="riyouIn">📥 持ち込んだデータを入れる</button>
+      <button class="wpBtn" id="riyouOut">${aiosOutLbl()}</button>
+      <button class="wpBtn" id="riyouIn">${aiosInLbl()}</button>
       <input type="file" id="riyouHandFile" accept=".aiosdata,application/json" hidden>
       <div style="width:100%">${aiosHandoffNote('受給者証データ')}</div>
       <input type="file" id="riyouReFile" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden>
@@ -4637,10 +4699,10 @@ function riyouRenderSearch(q){
   if(q!==undefined){ qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
   const rOut=document.getElementById('riyouOut');
   if(rOut) rOut.addEventListener('click', async ()=>{
-    const blob = aiosHandoffBlob(RIYOU_KEY);
+    const blob = await aiosHandoffBlob(RIYOU_KEY, ['r','f'], 'riyou');
     if(!blob){ alert('持ち出すデータがありません。'); return; }
     await aiosDeliver(blob, `受給者証データ_持ち出し_${aiosHandoffDate()}${AIOS_HANDOFF_EXT}`, 'riyouBody', null);
-    banner('📲 引き継ぎファイルを保存しました');
+    banner(`📲 ${(riyouData||[]).length}名ぶん（写真・PDFも一緒）／${aiosSizeText(blob.size)} を保存しました`);
   });
   const rIn=document.getElementById('riyouIn');
   if(rIn) rIn.addEventListener('click', ()=>document.getElementById('riyouHandFile').click());
@@ -4649,11 +4711,13 @@ function riyouRenderSearch(q){
     const f=this.files[0]; this.value=''; if(!f) return;
     try{
       const got = await aiosHandoffRead(f, riyouPw());
+      const nf = got.__files || 0;
       if(!confirm(`この端末のいまの${(riyouData||[]).length}名を、ファイルの${got.length}名と入れ替えます。\n\n`
-                 +`※受給者証の写真・PDFは端末ごとの保管なので、一緒には移りません。\n\nよろしいですか？`)) return;
+                 +(nf?`受給者証の写真・PDF ${nf}件も一緒に入ります。\n\n`:'写真・PDFの添付は入っていません。\n\n')
+                 +`よろしいですか？`)) return;
       riyouData = got; await riyouSave(riyouData, riyouPw()); await riyouGC(); riyouRenderSearch('');
-      banner(`📥 ${got.length}名を読み込みました`);
-      logLine(`<b>利用者AI</b>：引き継ぎファイルから${got.length}名を読み込み`);
+      banner(`📥 ${got.length}名`+(nf?`・添付${nf}件`:'')+`を読み込みました`);
+      logLine(`<b>利用者AI</b>：引き継ぎファイルから${got.length}名`+(nf?`・添付${nf}件`:'')+`を読み込み`);
     }catch(e){ alert('読み込めませんでした：'+(e.message||e)); }
   });
   aiosShareBar('riyou', /受給者証|利用者|master|マスタ/i, 'riyouBody', '受給者証データ',
@@ -4896,7 +4960,7 @@ function openSharyouPanel(){
   });
 }
 function shaNote(){
-  return `<div class="wpNote">🚗 車両の情報は<b>このパソコンの中だけ</b>に保存されます（公開ページには出ません）。</div>`;
+  return `<div class="wpNote">🚗 車両の情報は<b>${aiosThis()}の中だけ</b>に保存されます（公開ページには出ません）。</div>`;
 }
 // 車両データは合言葉なしで開きます（利用者さんの個人情報ではないため）
 function shaRead(){
@@ -4968,7 +5032,7 @@ function shaShareNote(){
     return `<div class="wpNote" style="margin-bottom:8px">📂 <b>共有フォルダを覚える</b>と、次からは画面を開くだけで
       いちばん新しい車両管理表を自動で読み込みます（ファイルを選ぶ操作が要りません）。<br>
       <small>共有フォルダ（例：\\\\192.168.10.100\\kyoutsu\\AI作成）を選んでください。
-      中身はこのパソコンの中だけで読み、公開ページには一切送りません。</small></div>`;
+      中身は${aiosThis()}の中だけで読み、公開ページには一切送りません。</small></div>`;
   const src = shaSrc();
   return `<div class="wpNote" style="margin-bottom:8px; background:#eef7f0">
     📂 共有フォルダ：<b>${hkEsc(aiosShareName)}</b>${
@@ -5033,7 +5097,7 @@ function shaRenderList(){
   b.querySelectorAll('[data-edit]').forEach(btn=>btn.addEventListener('click',()=>shaRenderForm(+btn.dataset.edit)));
   b.querySelectorAll('[data-detail]').forEach(el=>el.addEventListener('click',()=>shaRenderDetail(+el.dataset.detail)));
   document.getElementById('shaClear').addEventListener('click', async ()=>{
-    if(!confirm('登録した車両データをこのパソコンからすべて消します。よろしいですか？')) return;
+    if(!confirm('登録した車両データを'+aiosThis()+'からすべて消します。よろしいですか？')) return;
     sharyouData=[]; await shaPersist(); shaRenderList();
   });
   document.getElementById('shaImport').addEventListener('click',()=>document.getElementById('shaFile').click());
@@ -6037,7 +6101,7 @@ function openJinjiPanel(){
   p.hidden=false; jinRender();
 }
 function jinNote(){
-  return `<div class="wpNote">🔐 従業員の情報は<b>合言葉で暗号化</b>して、<b>このパソコン（この端末）の中だけ</b>に保存します。
+  return `<div class="wpNote">🔐 従業員の情報は<b>合言葉で暗号化</b>して、<b>${aiosThis()}の中だけ</b>に保存します。
     インターネット上の公開ページには一切出ません。</div>`;
 }
 
@@ -6102,7 +6166,7 @@ function jinRender(){
   document.getElementById('jinOpen').addEventListener('click', go);
   document.getElementById('jinPass2').addEventListener('keydown', e=>{ if(e.key==='Enter') go(); });
   document.getElementById('jinReset').addEventListener('click', ()=>{
-    if(confirm('このパソコンに保存した従業員名簿を消して、最初から入れ直します。\n\n原本のExcelから読み直せるので、名簿そのものは失われません。\n（資格証の写真を保管している場合は、その分は消えます）\n\nよろしいですか？')){
+    if(confirm(aiosThis()+'に保存した従業員名簿を消して、最初から入れ直します。\n\n原本のExcelから読み直せるので、名簿そのものは失われません。\n（資格証の写真を保管している場合は、その分は消えます）\n\nよろしいですか？')){
       localStorage.removeItem(JINJI_KEY); secForget(JINJI_KEY); jinjiData=null; jinjiPass=null; jinRender();
     }
   });
@@ -6190,8 +6254,8 @@ function jinRenderList(){
       <button class="wpBtn" id="jinImport">📗 従業員名簿Excelから取り込む</button>
       ${aiosBookBtn('jinBook')}
       <button class="wpBtn" id="jinExport">📤 Excelへ書き出す（別名）</button>
-      <button class="wpBtn" id="jinOut">📲 iPadへ持ち出す</button>
-      <button class="wpBtn" id="jinIn">📥 持ち込んだデータを入れる</button>
+      <button class="wpBtn" id="jinOut">${aiosOutLbl()}</button>
+      <button class="wpBtn" id="jinIn">${aiosInLbl()}</button>
       <span class="grow" style="flex:1"></span>
       <button class="wpBtn" id="jinLock" style="font-size:11px">🔒 閉じる</button>
       <button class="wpBtn" id="jinClear" style="font-size:11px; color:#d0503f; border-color:#e6b3ab">🗑 全部消す</button>
@@ -6231,7 +6295,7 @@ function jinRenderList(){
     jinjiData=null; jinjiPass=null; secForget(JINJI_KEY); jinRender();
   });
   document.getElementById('jinClear').addEventListener('click', async ()=>{
-    if(!confirm('登録した従業員名簿をこのパソコンからすべて消します。よろしいですか？')) return;
+    if(!confirm('登録した従業員名簿を'+aiosThis()+'からすべて消します。よろしいですか？')) return;
     jinjiData=[]; await jinPersist(); await jinGC(); jinRenderList();
   });
   document.getElementById('jinImport').addEventListener('click',()=>document.getElementById('jinFile').click());
@@ -6277,10 +6341,10 @@ function jinRenderList(){
   });
   const jinOut=document.getElementById('jinOut');
   if(jinOut) jinOut.addEventListener('click', async ()=>{
-    const blob = aiosHandoffBlob(JINJI_KEY);
+    const blob = await aiosHandoffBlob(JINJI_KEY, ['j','f'], 'jinji');
     if(!blob){ alert('持ち出すデータがありません。先に従業員名簿を取り込んでください。'); return; }
     await aiosDeliver(blob, `従業員情報_持ち出し_${aiosHandoffDate()}${AIOS_HANDOFF_EXT}`, 'jinBody', null);
-    banner('📲 引き継ぎファイルを保存しました');
+    banner(`📲 ${(jinjiData||[]).length}名ぶん（写真・PDFも一緒）／${aiosSizeText(blob.size)} を保存しました`);
   });
   const jinIn=document.getElementById('jinIn');
   if(jinIn) jinIn.addEventListener('click', ()=>document.getElementById('jinHandFile').click());
@@ -6289,11 +6353,13 @@ function jinRenderList(){
     const f=this.files[0]; this.value=''; if(!f) return;
     try{
       const got = await aiosHandoffRead(f, jinjiPass || secRemembered(JINJI_KEY));
+      const nf = got.__files || 0;
       if(!confirm(`この端末のいまの${(jinjiData||[]).length}名を、ファイルの${got.length}名と入れ替えます。\n\n`
-                 +`※写真やPDFの添付は端末ごとの保管なので、一緒には移りません。\n\nよろしいですか？`)) return;
+                 +(nf?`資格証などの写真・PDF ${nf}件も一緒に入ります。\n\n`:'写真・PDFの添付は入っていません。\n\n')
+                 +`よろしいですか？`)) return;
       jinjiData = got; await jinPersist(); await jinGC(); jinRenderList();
-      banner(`📥 ${got.length}名を読み込みました`);
-      logLine(`<b>人事AI</b>：引き継ぎファイルから${got.length}名を読み込み`);
+      banner(`📥 ${got.length}名`+(nf?`・添付${nf}件`:'')+`を読み込みました`);
+      logLine(`<b>人事AI</b>：引き継ぎファイルから${got.length}名`+(nf?`・添付${nf}件`:'')+`を読み込み`);
     }catch(e){ alert('読み込めませんでした：'+(e.message||e)); }
   });
   aiosShareBar('jin', /従業員|職員|名簿|スタッフ|master|マスタ/i, 'jinBody', '従業員名簿',
@@ -7528,8 +7594,46 @@ function homeRowHtml(x){
     <div class="hgo">ひらく ›</div></div>`;
 }
 let homeQ='', homeCur=null;
+/* この端末の役わりを、はじめの画面に出します
+   iPad・携帯＝その場で見る・書く・撮る（現場で完結）
+   パソコン＝まとめる・Excelに反映する・印刷する（管理） */
+function homeRoleHtml(){
+  if(!aiosIsPC()) return `<div class="roleCard">
+    <div class="rcT">📱 この端末は<span class="rcTag">現場用</span>iPad・携帯</div>
+    <p class="rcS">その場で<b>見る・書き直す・資格証や受給者証を撮る</b>までできます。
+      書いたもの・撮ったものは「💻 パソコンへ返す」でパソコンへわたします。<br>
+      共有フォルダの読み書きと印刷は、パソコンのほうでおこないます。</p>
+    <div class="rcB">
+      <button data-role="利用者">👤 利用者を見る・書く</button>
+      <button data-role="人事">🧑‍💼 従業員を見る・書く</button>
+      <button data-role="back">💻 パソコンへ返す</button>
+    </div></div>`;
+  return `<div class="roleCard">
+    <div class="rcT">💻 この端末は<span class="rcTag">管理用</span>パソコン</div>
+    <p class="rcS">iPad・携帯から戻ってきたものを<b>まとめ・Excelに反映し・印刷</b>します。
+      共有フォルダ（\\\\192.168.10.100\\kyoutsu\\AI作成）への保存もここから。<br>
+      現場で使う分は、下のボタンから「📲 iPad・携帯へ渡す」でわたします。</p>
+    <div class="rcB">
+      <button data-role="利用者">👤 利用者を渡す・受け取る</button>
+      <button data-role="人事">🧑‍💼 従業員を渡す・受け取る</button>
+      <button data-role="シフト">🗓 シフトをまとめて印刷</button>
+    </div></div>`;
+}
+function homeRoleBind(){
+  document.querySelectorAll('#roleCard [data-role]').forEach(b=>{
+    if(b.dataset.bound) return; b.dataset.bound='1';
+    b.addEventListener('click', ()=>{
+      const r=b.dataset.role;
+      if(r==='back'){ banner('👤 利用者・🧑‍💼 人事 のいちばん下に「💻 パソコンへ返す」があります'); homeOpen('人事'); return; }
+      homeOpen(r);
+    });
+  });
+}
 function homeRender(){
   const nav=document.getElementById('navList'); if(!nav) return;
+  const rc=document.getElementById('roleCard');
+  if(rc && !homeQ && !rc.dataset.done){ rc.innerHTML=homeRoleHtml(); rc.dataset.done='1'; homeRoleBind(); }
+  if(rc) rc.hidden = !!homeQ;
   const hit = i => !homeQ || (i.n+i.d+i.g).toLowerCase().includes(homeQ.toLowerCase());
   nav.innerHTML = HOME_MENU.map(g=>{
     const items=g.items.filter(hit); if(!items.length) return '';
