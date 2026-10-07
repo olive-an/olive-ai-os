@@ -2065,14 +2065,37 @@ const SH_HOME_LABELS = ["西九条","九条","酉島","春日出","新郡山","�
 // フルネームから苗字だけを取り出す（テンプレのA列は苗字だけで揃っているため）
 // ★苗字の一覧はこのファイルに書かず、テンプレのA列（＝会社の名簿）から読み取ります。
 //   そうすれば3文字以上の苗字も正しく切れ、公開ファイルに氏名を持たせずに済みます。
+/* 氏名を照合するための正規化。
+   「𠮷住」と「吉住」、「淺野」と「浅野」のように、同じ名字でも
+   旧字体・異体字で書かれていると別人になってしまうため、
+   よくある字をひとつに寄せてから見くらべます。（表示は元のまま）*/
+const SH_KANJI_SAME = {
+  '\u{20BB7}':'吉', '髙':'高', '﨑':'崎', '嵜':'崎', '濱':'浜', '濵':'浜',
+  '齋':'斎', '齊':'斎', '斉':'斎', '邊':'辺', '邉':'辺', '瀨':'瀬',
+  '德':'徳', '眞':'真', '淸':'清', '澤':'沢', '嶋':'島', '嶌':'島',
+  '冨':'富', '淺':'浅', '櫻':'桜', '廣':'広', '龍':'竜', '國':'国',
+  '栁':'柳', '曾':'曽', '藏':'蔵', '惠':'恵', '條':'条', '彌':'弥',
+  '祿':'禄', '穗':'穂', '蘆':'芦', '莊':'荘', '槗':'橋', '舘':'館',
+  '塚':'塚', '祐':'祐', '隆':'隆', '福':'福', '神':'神', '練':'練',
+};
+function shNormName(v){
+  let t = String(v==null ? '' : v);
+  try{ t = t.normalize('NFKC'); }catch(e){}
+  t = t.replace(/[\s　・,，、]/g, '');
+  let out = '';
+  for(const ch of t) out += (SH_KANJI_SAME[ch] || ch);
+  return out;
+}
 function shSurname(fullName, roster){
   const t = String(fullName==null?"":fullName).trim();
   if(!t) return t;
   // ①名簿にある苗字で始まっていれば、それを使う（いちばん長く一致するもの）
   let best='';
+  const tn = shNormName(t);
   for(const nm of (roster||[])){
-    const n=String(nm).replace(/[\s　]/g,'');
-    if(n && n.length>=2 && t.replace(/[\s　]/g,'').indexOf(n)===0 && n.length>best.length) best=n;
+    const n = String(nm).replace(/[\s　]/g,'');
+    const nn = shNormName(nm);
+    if(nn && nn.length>=2 && tn.indexOf(nn)===0 && nn.length>best.length) best=n;
   }
   if(best) return best;
   // ②「山田　太郎」のように姓と名がスペースで分かれている
@@ -2214,14 +2237,24 @@ async function shExportExcel(file){
       }
     });
 
-    // 氏名の照合（空白除去→完全一致→前方一致→末尾1字違い）
+    /* 氏名の照合
+       完全一致 → 旧字体・異体字をそろえて一致 → 前方一致 → 末尾1字違い
+       例：提出「淺野 和子」とテンプレ「浅野」、提出「吉住 淑子」とテンプレ「𠮷住」も同じ人とみなす */
     const tmplNames=Object.keys(nameRows);
+    const normKey={};                       // そろえた名前 → テンプレの書き方
+    for(const nm of tmplNames){ const k=shNormName(nm); if(k && normKey[k]===undefined) normKey[k]=nm; }
     const resolve=(csvName)=>{
-      const cn=csvName.replace(/[\s　]/g,'');
+      const cn=String(csvName).replace(/[\s　]/g,'');
       if(nameRows[cn]) return cn;
-      for(const nm of tmplNames){ if(nm.startsWith(cn)||cn.startsWith(nm)) return nm; }
-      if(cn.length>=3){ const pre=cn.slice(0,-1);
-        for(const nm of tmplNames){ if(nm.startsWith(pre)&&Math.abs(nm.length-cn.length)<=1) return nm; } }
+      const ncn=shNormName(cn);
+      if(normKey[ncn]) return normKey[ncn];
+      for(const nm of tmplNames){
+        const n2=shNormName(nm);
+        if(n2 && (n2.startsWith(ncn) || ncn.startsWith(n2))) return nm;
+      }
+      if(ncn.length>=3){ const pre=ncn.slice(0,-1);
+        for(const nm of tmplNames){ const n2=shNormName(nm);
+          if(n2.startsWith(pre) && Math.abs(n2.length-ncn.length)<=1) return nm; } }
       return null;
     };
 
