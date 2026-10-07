@@ -180,6 +180,48 @@
   .calBar .wpBtn{font-size:11.5px; padding:6px 11px}
   .calBar .on{background:var(--olive); color:#fff; border-color:var(--olive)}
   #calBody .wpNote{overflow-wrap:anywhere}
+  /* 自分のカレンダー（ログインなしで使えます） */
+  .cg{display:grid; grid-template-columns:repeat(7,1fr); gap:4px}
+  .cg .cw{font-size:11px; font-weight:800; color:var(--sub); text-align:center; padding:4px 0}
+  .cg .cw.sun{color:#c0392b} .cg .cw.sat{color:#2b6fb5}
+  .cd{min-height:74px; border:1px solid var(--line); border-radius:6px; background:#fff;
+    padding:4px 5px; text-align:left; cursor:pointer; overflow:hidden; display:flex; flex-direction:column; gap:2px}
+  .cd:hover{border-color:var(--olive)}
+  .cd.out{background:#fafbfc; color:#b9c0c6}
+  .cd.sel{border-color:var(--olive); box-shadow:0 0 0 2px var(--olive-l)}
+  .cd.today .cdn{background:var(--olive); color:#fff; border-radius:999px; padding:0 6px}
+  .cdn{font-size:12px; font-weight:800; align-self:flex-start}
+  .cd.sun .cdn, .cd.hol .cdn{color:#c0392b} .cd.sat .cdn{color:#2b6fb5}
+  .cd.today.sun .cdn, .cd.today.hol .cdn, .cd.today.sat .cdn{color:#fff}
+  .ch{font-size:9.5px; color:#c0392b; line-height:1.2}
+  .ce{font-size:10px; line-height:1.25; background:var(--olive-l); color:var(--olive-d);
+    border-radius:3px; padding:1px 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .ce.lim{background:#fdeceb; color:#b03a2e}
+  .cmore{font-size:9.5px; color:var(--sub)}
+  @media(max-width:700px){ .cd{min-height:58px; padding:3px 4px} .ce{font-size:9px} .ch{display:none} }
+  /* 携帯：マスが小さいので、予定は●（点）で出します（日を押すと下に中身が出ます） */
+  @media(max-width:560px){
+    .cd{display:block; min-height:52px}
+    .cdn{display:block}
+    .ce{display:inline-block; width:7px; height:7px; padding:0; margin:2px 2px 0 0;
+        border-radius:50%; font-size:0; line-height:0; vertical-align:top; background:var(--olive)}
+    .ce.lim{background:#d0503f}
+    .cmore{display:none}
+    .cadd{flex-direction:column; align-items:stretch}
+    .cadd input[type=time]{width:100%}
+  }
+  .cd.out .cdn, .cd.out.sun .cdn, .cd.out.sat .cdn, .cd.out.hol .cdn{color:#c3c9ce}
+  .cday{margin-top:12px; border:1px solid var(--line); border-radius:6px; background:#fff; padding:11px 13px}
+  .cday h3{margin:0 0 8px; font-size:13.5px}
+  .crow{display:flex; gap:8px; align-items:center; padding:7px 0; border-top:1px solid var(--line); font-size:12.5px}
+  .crow:first-of-type{border-top:0}
+  .crow .ct{font-weight:800; color:var(--olive-d); white-space:nowrap; font-variant-numeric:tabular-nums}
+  .crow .cx{flex:1; min-width:0; overflow-wrap:anywhere}
+  .crow .cdel{border:0; background:none; cursor:pointer; font-size:14px; color:var(--sub)}
+  .cadd{display:flex; gap:7px; margin-top:9px; flex-wrap:wrap}
+  .cadd input[type=time]{width:110px}
+  .cadd input{padding:9px 10px; border:1px solid var(--line); border-radius:6px; font-size:14px}
+  .cadd input[type=text]{flex:1; min-width:140px}
   .burger{display:none; border:1px solid var(--line); background:#fff; border-radius:9px;
     padding:7px 11px; font-size:15px; cursor:pointer; flex:0 0 auto}
   .listinner{flex:1 1 auto; overflow:auto; padding:14px 14px 22px}
@@ -643,7 +685,7 @@
           <input id="homeSearch" type="search" placeholder="さがす（例：車検、シフト、受給者証）" autocomplete="off">
           <div class="nowBox" id="nowBox" title="いまの日づけと時刻">
             <b id="nowTime">--:--:--</b><span id="nowDate"></span></div>
-          <button class="calBtn" id="homeCal" title="Googleカレンダーを見る"><span>📅</span><b>カレンダー</b></button>
+          <button class="calBtn" id="homeCal" title="カレンダーを見る"><span>🗓</span><b>カレンダー</b></button>
         </div>
         <div class="listinner">
           <div id="roleCard"></div>
@@ -6825,6 +6867,7 @@ function calLabel(v){
 }
 function calRender(){
   const b=document.getElementById('calBody'); if(!b) return;
+  if(calKind()!=='google') return calFreeRender();
   const cur=calGet(), md=calMode(), src=cur?calEmbedSrc(cur, md):'';
   const btn=(k,lbl)=>`<button class="wpBtn${md===k?' on':''}" data-cmode="${k}">${lbl}</button>`;
   if(src){
@@ -6833,6 +6876,7 @@ function calRender(){
         <span style="flex:1"></span>
         <a class="wpBtn" href="https://calendar.google.com/" target="_blank" rel="noopener">🔗 Googleカレンダーを開く</a>
         <button class="wpBtn" id="calEdit">⚙ カレンダーを変える</button>
+        <button class="wpBtn" id="calToFree">🗓 自分のカレンダーに戻る</button>
       </div>
       <div class="calWrap"><iframe src="${hkEsc(src)}" loading="lazy"
         title="Googleカレンダー" referrerpolicy="no-referrer-when-downgrade"></iframe></div>
@@ -6841,7 +6885,8 @@ function calRender(){
         <small>「権限がありません」と出るときは、そのカレンダーを持っているGoogleアカウントで
         ブラウザにログインしてください。iPad・携帯では「🔗 Googleカレンダーを開く」のほうが見やすいことがあります。</small></div>`;
     b.querySelectorAll('[data-cmode]').forEach(el=>el.addEventListener('click',()=>{ calSetMode(el.dataset.cmode); calRender(); }));
-    document.getElementById('calEdit').addEventListener('click', ()=>{ b.dataset.edit='1'; calRenderSetup(); });
+    document.getElementById('calEdit').addEventListener('click', ()=>calRenderSetup());
+    document.getElementById('calToFree').addEventListener('click', ()=>{ calSetKind('free'); calRender(); });
     return;
   }
   calRenderSetup();
@@ -6862,7 +6907,7 @@ function calRenderSetup(){
         <button class="wpBtn primary" id="calSave">📅 このカレンダーを出す</button>
         <button class="wpBtn" id="calHol">🎌 まず祝日カレンダーで試す</button>
         <a class="wpBtn" href="https://calendar.google.com/" target="_blank" rel="noopener">🔗 Googleカレンダーを開く</a>
-        ${cur?'<button class="wpBtn" id="calBack">← もどる</button>':''}
+        <button class="wpBtn" id="calBack">🗓 自分のカレンダーに戻る</button>
       </div>
       <div class="wpNote" style="margin-top:10px">
         🔐 <small>アドレスは${aiosThis()}の中だけに覚えます。予定の中身はAI-OSでは読み書きしません。
@@ -6870,21 +6915,162 @@ function calRenderSetup(){
     </div>`;
   const go=v=>{ const src=calEmbedSrc(v, calMode());
     if(!src){ alert('Googleカレンダーのアドレスとして読み取れませんでした。\nメールアドレス、または［設定］→［カレンダーの統合］の埋め込みコードを貼ってください。'); return; }
-    calSet(String(v).trim()); delete b.dataset.edit; calRender();
+    calSet(String(v).trim()); calSetKind('google'); calRender();
     banner('📅 カレンダーを出しました');
     logLine('<b>カレンダー</b>：Googleカレンダーを表示'); };
   document.getElementById('calSave').addEventListener('click', ()=>go(document.getElementById('calSrc').value));
   document.getElementById('calHol').addEventListener('click', ()=>go(CAL_HOLIDAY));
   document.getElementById('calSrc').addEventListener('keydown', ev=>{ if(ev.key==='Enter') go(ev.target.value); });
   const bk=document.getElementById('calBack');
-  if(bk) bk.addEventListener('click', ()=>{ delete b.dataset.edit; calRender(); });
+  if(bk) bk.addEventListener('click', ()=>{ calSetKind('free'); calRender(); });
+}
+/* -------------------------------------------------------------------------
+   自分のカレンダー（ログインなし・無料・この端末の中だけ）
+   ・予定は自分で書けます（時刻は書かなくてもかまいません）
+   ・車検／自賠責／任意保険、受給者証、資格の期限が自動でならびます
+   ・日本の祝日（振替休日・国民の休日もふくむ）を自分で計算して出します
+   ★予定はこの端末のブラウザの中だけに保存します。公開ページには出ません。
+   ------------------------------------------------------------------------- */
+const CALEV_KEY  = 'aiosCalEvV1';
+const CALKIND_KEY= 'aiosCalKindV1';          // free＝自分のカレンダー／google＝Googleカレンダー
+const calKind    = ()=>{ try{ return localStorage.getItem(CALKIND_KEY)||'free'; }catch(e){ return 'free'; } };
+const calSetKind = v =>{ try{ localStorage.setItem(CALKIND_KEY,v); }catch(e){} };
+const calEvRead  = ()=>{ try{ return JSON.parse(localStorage.getItem(CALEV_KEY))||[]; }catch(e){ return []; } };
+const calEvSave  = l =>{ try{ localStorage.setItem(CALEV_KEY, JSON.stringify(l)); }catch(e){} };
+const calYmd = d => d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
+let calCurY=null, calCurM=null, calSel=null;
+
+/* 日本の祝日（1980〜2099年）。春分・秋分は計算で出します。 */
+function calHolidays(y){
+  const h={}, set=(m,d,n)=>{ h[y+'-'+('0'+m).slice(-2)+'-'+('0'+d).slice(-2)]=n; };
+  const nth=(m,week,n)=>{ const f=new Date(y,m-1,1).getDay(); return 1 + ((week-f+7)%7) + (n-1)*7; };
+  set(1,1,'元日');               set(1, nth(1,1,2), '成人の日');
+  set(2,11,'建国記念の日');       set(2,23,'天皇誕生日');
+  set(3, Math.floor(20.8431 + 0.242194*(y-1980) - Math.floor((y-1980)/4)), '春分の日');
+  set(4,29,'昭和の日');
+  set(5,3,'憲法記念日');          set(5,4,'みどりの日');        set(5,5,'こどもの日');
+  set(7, nth(7,1,3), '海の日');   set(8,11,'山の日');
+  set(9, nth(9,1,3), '敬老の日');
+  set(9, Math.floor(23.2488 + 0.242194*(y-1980) - Math.floor((y-1980)/4)), '秋分の日');
+  set(10, nth(10,1,2), 'スポーツの日');
+  set(11,3,'文化の日');           set(11,23,'勤労感謝の日');
+  // 日曜と重なったら、つぎの平日が振替休日
+  Object.keys(h).slice().sort().forEach(k=>{
+    const d=new Date(k+'T00:00:00'); if(d.getDay()!==0) return;
+    const n=new Date(d); do{ n.setDate(n.getDate()+1); }while(h[calYmd(n)]);
+    h[calYmd(n)]='振替休日';
+  });
+  // 祝日にはさまれた平日は国民の休日
+  Object.keys(h).slice().sort().forEach(k=>{
+    const a=new Date(k+'T00:00:00'), b=new Date(a); b.setDate(b.getDate()+2);
+    const mid=new Date(a); mid.setDate(mid.getDate()+1);
+    if(h[calYmd(b)] && !h[calYmd(mid)] && mid.getDay()!==0) h[calYmd(mid)]='国民の休日';
+  });
+  return h;
+}
+/* AI-OSが知っている期限を、カレンダーにならべます（開いているデータだけ） */
+function calAuto(){
+  const out=[];
+  try{ for(const v of (shaRead()||[])) for(const [k,label] of SHA_LIMITS){
+    if(v[k]) out.push({d:v[k], x:`🚗 ${v.name||v.no||'車両'}の${label}`, lim:1}); } }catch(e){}
+  try{ if(riyouData) riyouData.forEach(u=>{ if(u.limTo)
+    out.push({d:u.limTo, x:`👤 ${u.name||''} 受給者証の期限`, lim:1}); }); }catch(e){}
+  try{ if(jinjiData) jinjiData.forEach(p=>(p.quals||[]).forEach(q=>{
+    const d=q.limit||q.until||q.exp; if(d) out.push({d, x:`🎓 ${p.name||''} ${q.name||'資格'}の期限`, lim:1}); })); }catch(e){}
+  return out.filter(o=>/^\d{4}-\d{2}-\d{2}$/.test(o.d));
+}
+function calDayList(ymd, auto){
+  // 自分で書いた予定（_idx＝消すときに使うもとの番号）→ 時刻の早い順 → そのあとに期限
+  const mine=[];
+  calEvRead().forEach((e,i)=>{ if(e.d===ymd) mine.push(Object.assign({_idx:i}, e)); });
+  mine.sort((a,b)=>String(a.t||'99').localeCompare(String(b.t||'99')));
+  return mine.concat(auto.filter(a=>a.d===ymd));
+}
+function calFreeRender(){
+  const b=document.getElementById('calBody'); if(!b) return;
+  const now=new Date();
+  if(calCurY===null){ calCurY=now.getFullYear(); calCurM=now.getMonth(); }
+  if(!calSel) calSel=calYmd(now);
+  const hol=Object.assign({}, calHolidays(calCurY), calHolidays(calCurY+(calCurM===11?1:0)), calHolidays(calCurY-(calCurM===0?1:0)));
+  const auto=calAuto();
+  const first=new Date(calCurY, calCurM, 1), start=new Date(first);
+  start.setDate(1-first.getDay());
+  const todayY=calYmd(now);
+  let cells='';
+  for(let i=0;i<42;i++){
+    const d=new Date(start); d.setDate(start.getDate()+i);
+    const y=calYmd(d), out=d.getMonth()!==calCurM;
+    const items=calDayList(y, auto);
+    const cls=['cd', out?'out':'', y===todayY?'today':'', y===calSel?'sel':'',
+               d.getDay()===0?'sun':'', d.getDay()===6?'sat':'', hol[y]?'hol':''].filter(Boolean).join(' ');
+    cells += `<button class="${cls}" data-day="${y}">
+      <span class="cdn">${d.getDate()}</span>
+      ${hol[y]?`<span class="ch">${hkEsc(hol[y])}</span>`:''}
+      ${items.slice(0,2).map(e=>`<span class="ce${e.lim?' lim':''}">${e.t?hkEsc(e.t)+' ':''}${hkEsc(e.x)}</span>`).join('')}
+      ${items.length>2?`<span class="cmore">ほか${items.length-2}件</span>`:''}</button>`;
+  }
+  const wd=['日','月','火','水','木','金','土'];
+  const selD=new Date(calSel+'T00:00:00');
+  const selItems=calDayList(calSel, auto);
+  b.innerHTML = `<div class="calBar">
+      <button class="wpBtn" id="calPrev">‹ 前の月</button>
+      <b style="font-size:15px">${calCurY}年${calCurM+1}月</b>
+      <button class="wpBtn" id="calNext">次の月 ›</button>
+      <button class="wpBtn" id="calToday">今日</button>
+      <span style="flex:1"></span>
+      <button class="wpBtn" id="calToG">🔗 Googleカレンダーを使う</button>
+    </div>
+    <div class="cg">${wd.map((w,i)=>`<div class="cw${i===0?' sun':''}${i===6?' sat':''}">${w}</div>`).join('')}</div>
+    <div class="cg" id="calGrid" style="margin-top:4px">${cells}</div>
+    <div class="cday">
+      <h3>${selD.getMonth()+1}月${selD.getDate()}日（${wd[selD.getDay()]}）${hol[calSel]?`　<span style="color:#c0392b;font-size:12px">${hkEsc(hol[calSel])}</span>`:''}</h3>
+      ${selItems.length ? selItems.map(e=>`<div class="crow">
+          <span class="ct">${e.lim?'期限':(e.t||'終日')}</span>
+          <span class="cx">${hkEsc(e.x)}</span>
+          ${e.lim?'':`<button class="cdel" data-del="${e._idx}" title="消す">🗑</button>`}
+        </div>`).join('')
+        : '<div style="font-size:12px;color:var(--sub)">予定はありません。下に書くと入ります。</div>'}
+      <div class="cadd">
+        <input type="time" id="calNewT" title="時刻（なくてもOK）">
+        <input type="text" id="calNewX" placeholder="予定を書く（例：世話人会議）" maxlength="60">
+        <button class="wpBtn primary" id="calAdd">＋ 入れる</button>
+      </div>
+      <div style="font-size:10.5px; color:var(--sub); margin-top:8px">
+        🔐 予定は${aiosThis()}の中だけに保存します（公開ページには出ません）。
+        車検・受給者証・資格の期限は、登録してあるぶんが自動でならびます。</div>
+    </div>`;
+  const move=n=>{ let m=calCurM+n, y=calCurY; if(m<0){m=11;y--;} if(m>11){m=0;y++;} calCurM=m; calCurY=y; calFreeRender(); };
+  document.getElementById('calPrev').addEventListener('click', ()=>move(-1));
+  document.getElementById('calNext').addEventListener('click', ()=>move(1));
+  document.getElementById('calToday').addEventListener('click', ()=>{
+    const t=new Date(); calCurY=t.getFullYear(); calCurM=t.getMonth(); calSel=calYmd(t); calFreeRender(); });
+  document.getElementById('calToG').addEventListener('click', ()=>{ calSetKind('google'); calRender(); });
+  b.querySelectorAll('[data-day]').forEach(el=>el.addEventListener('click', ()=>{
+    calSel=el.dataset.day;
+    const d=new Date(calSel+'T00:00:00');
+    if(d.getMonth()!==calCurM){ calCurY=d.getFullYear(); calCurM=d.getMonth(); }
+    calFreeRender();
+  }));
+  const add=()=>{ const t=document.getElementById('calNewT').value,
+                        x=document.getElementById('calNewX').value.trim();
+    if(!x){ alert('予定の中身を書いてください'); return; }
+    const l=calEvRead(); l.push({d:calSel, t:t||'', x}); calEvSave(l);
+    calFreeRender(); banner('🗓 予定を入れました');
+    logLine(`<b>カレンダー</b>：${calSel} に予定を追加`); };
+  document.getElementById('calAdd').addEventListener('click', add);
+  document.getElementById('calNewX').addEventListener('keydown', ev=>{ if(ev.key==='Enter') add(); });
+  b.querySelectorAll('[data-del]').forEach(el=>el.addEventListener('click', ()=>{
+    const i=Number(el.dataset.del); const l=calEvRead();
+    if(!confirm('この予定を消します。よろしいですか？')) return;
+    l.splice(i,1); calEvSave(l); calFreeRender();
+  }));
 }
 function openCalPanel(){
   let p=document.getElementById('calPanel');
   if(!p){
     p=document.createElement('div'); p.className='modal'; p.id='calPanel';
     p.innerHTML=`<div class="sheet" style="max-width:980px">
-      <div class="sheetHead"><b>📅 カレンダー（Googleカレンダー）</b><span class="grow"></span>
+      <div class="sheetHead"><b>🗓 カレンダー</b><span class="grow"></span>
         <button onclick="document.getElementById('calPanel').hidden=true">✕</button></div>
       <div class="sheetBody" id="calBody"></div></div>`;
     p.addEventListener('click',ev=>{ if(ev.target.id==='calPanel') p.hidden=true; });
