@@ -84,7 +84,7 @@
   .tile span{font-size:10px; color:var(--sub)}
 
   .wrap{max-width:1720px; margin:0 auto; padding:12px; display:grid;
-    grid-template-columns: 1fr 300px; gap:12px;
+    grid-template-columns: 1fr; gap:12px;
     /* ★残りの高さいっぱいを使い、はみ出さない */
     flex:1 1 auto; min-height:0; width:100%; overflow:hidden;
   }
@@ -125,6 +125,20 @@
   .navcol .ni.soon{opacity:.55}
   .navmask{display:none}
   .listcol{flex:1 1 auto; min-width:0; display:flex; flex-direction:column; background:var(--bg)}
+  /* 上のバナー：今日の行動指針 */
+  .rinenBar{
+    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+    padding:9px 14px; background:#eef6fb; border-bottom:1px solid #d3e3ef; flex:0 0 auto;
+  }
+  .rinenBar .rt{font-size:11.5px; font-weight:800; color:#2b5d8a; white-space:nowrap}
+  .rinenBar b{font-size:13.5px; color:#1f4468; min-width:0}
+  .rinenBar .rs{font-size:10.5px; color:#6b89a5; white-space:nowrap}
+  .rinenBar .wpBtn{font-size:11px; padding:5px 10px; text-decoration:none; white-space:nowrap}
+  @media(max-width:700px){
+    .rinenBar{padding:8px 10px; gap:7px}
+    .rinenBar .rs{display:none}
+    .rinenBar b{font-size:12.5px; width:100%}
+  }
   .listtop{display:flex; gap:9px; align-items:center; padding:10px 14px;
     background:#fff; border-bottom:1px solid var(--line); flex:0 0 auto}
   .listtop input{flex:1; min-width:0; padding:9px 12px; border:1px solid var(--line);
@@ -578,6 +592,14 @@
 
       <!-- 本体：今日みておきたいこと／さいきん使ったもの -->
       <main class="listcol">
+        <div class="rinenBar">
+          <span class="rt">📖 今日の行動指針</span>
+          <b id="rinenToday"></b>
+          <span class="rs">2026年標語「温かい瞬間を作る」</span>
+          <span style="flex:1"></span>
+          <a class="wpBtn" href="rinen.html">📖 手帳をめくって読む</a>
+          <button class="wpBtn" id="rinenOpen">📝 テキスト版</button>
+        </div>
         <div class="listtop">
           <button class="burger" id="navBurger" title="メニュー">☰</button>
           <input id="homeSearch" type="search" placeholder="さがす（例：車検、シフト、受給者証）" autocomplete="off">
@@ -588,6 +610,8 @@
           <div id="todayList"></div>
           <h2 class="hd" style="margin-top:22px">さいきん使ったもの</h2>
           <div id="recentList"></div>
+          <h2 class="hd" style="margin-top:22px">📥 完成トレイ</h2>
+          <div class="tray" id="tray"><div style="font-size:12px;color:var(--sub)">まだ成果物はありません</div></div>
         </div>
       </main>
       <div id="legacyStage" hidden></div>
@@ -602,43 +626,6 @@
     </div>
   </div>
 
-  <!-- サイド -->
-  <aside class="side">
-    <div class="card">
-      <div class="demo-note">
-        ✅ <b>シフト集計</b>…フォーム(GAS)の希望を集計＋人手不足検出＋Excel反映。<br>
-        ✅ <b>変更届</b>…下書き作成＋大阪市「様式第3号」へ直接記入（書式完全保持）。<br>
-        ✅ <b>個別支援計画</b>…ポチパス様式1-1の読込・編集・書き出し。<br>
-        ✅ <b>付表12</b>…GH指定記載事項の読込・編集・書き出し。<br>
-        ✅ <b>勤務形態一覧表</b>…6ホーム＋本社の実績Excelから自動作成。<br>
-        ✅ <b>利用者AI</b>…受給者証の照会と有効期限アラート。<br>
-        ✅ <b>人事AI</b>…従業員名簿と資格・研修・健康診断の期限アラート。<br>
-        ✅ <b>車両AI</b>…車両台帳と車検・自賠責・任意保険の期限アラート。<br>
-        ✅ <b>会議室・議事録</b>…Word取込・全文検索・自動要約。<br>
-        その他（給与・工房売上など）はまだ<b>見た目のデモ</b>で、1業務ずつ本物にしていきます。<br>
-        <small>※個人情報を含むもの（利用者・職員・議事録）は合言葉で暗号化し、
-        <b>使っている端末の中だけ</b>に保存します。公開ページには出ません。</small>
-      </div>
-    </div>
-    <div class="card" style="background:linear-gradient(180deg,#f4f9ff,#eaf3fc); border-color:#c9ddf0">
-      <h3 style="color:#2b5d8a">📖 今日の行動指針</h3>
-      <div id="rinenToday" style="font-size:12.5px; color:#1f4468; font-weight:700; line-height:1.55"></div>
-      <div style="font-size:10px; color:#6b89a5; margin-top:4px">2026年標語「温かい瞬間を作る」</div>
-      <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap">
-        <a class="wpBtn primary" href="rinen.html" style="font-size:11px; text-decoration:none; background:#3d6f9e; border-color:#3d6f9e">📖 手帳をめくって読む</a>
-        <button class="wpBtn" id="rinenOpen" style="font-size:11px; border-color:#7fa8c9; color:#2b5d8a">📝 テキスト版</button>
-      </div>
-    </div>
-    <div class="card">
-      <h3>📥 完成トレイ</h3>
-      <div class="tray" id="tray"><div style="font-size:11px;color:#9aa38c">まだ成果物はありません</div></div>
-    </div>
-    <div class="card">
-      <h3>🔔 社内ログ</h3>
-      <ul class="log" id="log"></ul>
-    </div>
-
-  </aside>
 </div>
 
 <!-- ===== 業務パネル：本物のシフト集計 ===== -->
@@ -1278,8 +1265,9 @@ requestAnimationFrame(tick);
 /* ---- ユーティリティ ---- */
 const wait = ms => new Promise(r=>setTimeout(r,ms));
 function logLine(html){
-  aiosHistAdd(html);
+  aiosHistAdd(html);                    // 履歴（📜）に残します
   const ul = document.getElementById('log');
+  if(!ul) return;                       // 画面の「社内ログ」は廃止しました
   const li = document.createElement('li');
   const t = new Date();
   const hh = String(t.getHours()).padStart(2,'0');
