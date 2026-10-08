@@ -7148,7 +7148,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-08h';
+const AIOS_VER = '2026-10-08i';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
@@ -7242,7 +7242,10 @@ function aiosInstRender(){
    ★名前は「ファイル名」に入れるためだけに使い、どこにも保存しません。
    ========================================================================= */
 const PHOTO_KINDS = ['受給者証','資格証','研修修了証','車検証','保険証券','その他'];
-let photoList = [];          // {name, bytes:jpeg, w, h, url}
+const PHOTO_KEEP = 'aiosPhotoKeepV1';      // 撮った写真を、端末の写真アプリにも残すか
+const photoKeep    = ()=>{ try{ return localStorage.getItem(PHOTO_KEEP)!=='0'; }catch(e){ return true; } };
+const photoSetKeep = v =>{ try{ localStorage.setItem(PHOTO_KEEP, v?'1':'0'); }catch(e){} };
+let photoList = [];          // {bytes:jpeg, w, h, url}
 function photoName(kind, who){
   const d=new Date(), p=n=>('0'+n).slice(-2);
   const nm=(who||'').replace(/[\\\/:*?"<>|\s　]/g,'') || '名前なし';
@@ -7286,10 +7289,12 @@ function photoRender(){
   const b=document.getElementById('photoBody'); if(!b) return;
   const kind = b.dataset.kind || PHOTO_KINDS[0];
   const who  = b.dataset.who || '';
+  const keep = photoKeep();
   b.innerHTML = `<div class="wpNote">
       📷 <b>受給者証・資格証などを撮って、パソコンへ渡します</b><br>
-      <small>撮った写真は<b>この端末に残りません</b>（渡したらその場で消えます）。
-      お名前はファイル名に入れるためだけに使い、どこにも保存しません。</small></div>
+      <small>AI-OSの中には保存しません。お名前もファイル名に使うだけで、どこにも残しません。<br>
+      ${keep ? '「📸 写真アプリに残す」を押したぶんだけ、端末の<b>写真</b>に入ります。'
+             : '写真はこの画面を閉じると消えます。'}</small></div>
 
     <h3 class="wpH">① 何の写真ですか</h3>
     <div class="phKindRow" id="phKinds">${PHOTO_KINDS.map(k=>
@@ -7312,11 +7317,16 @@ function photoRender(){
         <button class="phDel" data-del="${i}" title="この1枚を消す">✕</button></div>`).join('')
       || '<div style="font-size:12px;color:var(--sub)">まだ1枚もありません。</div>'}</div>
 
-    <h3 class="wpH">④ パソコンへ渡す</h3>
+    <h3 class="wpH">④ 渡す・残す</h3>
     <div class="calBar">
       <button class="wpBtn primary" id="phGo" ${photoList.length?'':'disabled'}>
         📤 ${photoList.length||0}枚をPDFにして渡す</button>
+      <button class="wpBtn" id="phKeep" ${photoList.length?'':'disabled'}>
+        📸 写真アプリに残す</button>
     </div>
+    <label style="display:flex; gap:7px; align-items:center; font-size:12px; color:var(--sub); margin:9px 0 0">
+      <input type="checkbox" id="phKeepChk" ${keep?'checked':''}>
+      渡したあとも写真を消さない（つづけて「📸 写真アプリに残す」が押せます）</label>
     <div class="wpNote" style="margin-top:9px">
       ファイル名：<b>${hkEsc(photoName(kind, who))}</b><br>
       <small>iPad・携帯では共有メニューが出ます。「"ファイル"に保存」で共有フォルダへ置くか、
@@ -7350,6 +7360,8 @@ function photoRender(){
     photoList.splice(i,1); photoRender(); }));
   const cl=document.getElementById('phClear');
   if(cl) cl.addEventListener('click', ()=>{ photoClear(); photoRender(); });
+  const chk=document.getElementById('phKeepChk');
+  if(chk) chk.addEventListener('change', ()=>{ photoKeepWho(); photoSetKeep(chk.checked); photoRender(); });
   const go=document.getElementById('phGo');
   if(go) go.addEventListener('click', async ()=>{
     if(!photoList.length) return;
@@ -7359,9 +7371,36 @@ function photoRender(){
     const r=await aiosDeliver(blob, fn, 'photoBody', null);
     if(r && r.aborted) return;
     const n=photoList.length;
-    photoClear(); photoRender();
-    banner(`📤 ${n}枚を「${fn}」にして渡しました`);
-    logLine(`<b>写真</b>：${n}枚をPDFにしてパソコンへ渡した（この端末には残していません）`);
+    logLine(`<b>写真</b>：${n}枚をPDFにしてパソコンへ渡した`);
+    if(photoKeep()){
+      photoRender();
+      banner(`📤 ${n}枚を「${fn}」にして渡しました。つづけて「📸 写真アプリに残す」も押せます`);
+    }else{
+      photoClear(); photoRender();
+      banner(`📤 ${n}枚を「${fn}」にして渡しました`);
+    }
+  });
+  /* 撮った写真を、そのまま端末の「写真」に残す
+     iPad・携帯：共有メニューの「画像を保存」で写真アプリに入ります
+     パソコン：1枚ずつJPEGとして保存します */
+  const kp=document.getElementById('phKeep');
+  if(kp) kp.addEventListener('click', async ()=>{
+    if(!photoList.length) return;
+    photoKeepWho();
+    const base=photoName(b.dataset.kind||PHOTO_KINDS[0], b.dataset.who||'').replace(/\.pdf$/,'');
+    const files=photoList.map((p,i)=>new File([p.bytes],
+      `${base}${photoList.length>1?'_'+(i+1):''}.jpg`, {type:'image/jpeg'}));
+    try{
+      if(navigator.canShare && navigator.share && navigator.canShare({files})){
+        await navigator.share({files, title:base});
+        banner(`📸 ${files.length}枚を渡しました（「画像を保存」で写真アプリに入ります）`);
+        logLine(`<b>写真</b>：${files.length}枚を写真として保存`);
+        return;
+      }
+    }catch(e){ if(e && e.name==='AbortError'){ banner('保存をキャンセルしました'); return; } }
+    for(const f of files) await aiosSaveBlob(f, f.name);
+    banner(`📸 ${files.length}枚を写真（JPEG）として保存しました`);
+    logLine(`<b>写真</b>：${files.length}枚をJPEGで保存`);
   });
 }
 function photoKeepWho(){
