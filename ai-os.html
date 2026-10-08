@@ -511,6 +511,15 @@
     background:#f4f6f5; z-index:50; display:block; padding:0; overflow:hidden;
   }
   .modal[hidden]{display:none}
+
+  /* ★iPhone・iPadで入力欄をタップしたときに、画面が勝手に拡大されないようにする。
+     （文字が16pxより小さいと、Safariが自動で拡大します。それが画面のズレの元でした） */
+  @media (hover:none) and (pointer:coarse){
+    input:not([type=checkbox]):not([type=radio]), select, textarea{ font-size:16px !important }
+  }
+  /* 各AIの画面を出しているあいだは、うしろの画面を動かさない */
+  body.panelShown{ overflow:hidden }
+  body.panelShown .wrap{ overflow:hidden }
   .sheet{
     background:var(--paper); border-radius:0; width:100%; max-width:none;
     height:100%; display:flex; flex-direction:column; overflow:hidden; box-shadow:none;
@@ -7109,7 +7118,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-08c';
+const AIOS_VER = '2026-10-08d';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
@@ -8243,15 +8252,21 @@ function homeNav(open){
 /* 各AIの画面を「真ん中だけ入れ替わる」位置に合わせる（広い画面では左のメニューを残す）*/
 function aiosFitPanels(){
   const col=document.querySelector('.listcol'); if(!col) return;
+  const vv = window.visualViewport;
+  // 画面を指で拡大しているときは、見えているところいっぱいに出します
+  if(vv && Math.abs(vv.scale-1) > 0.02)
+    return aiosSetPanelBox(vv.offsetLeft, vv.offsetTop, vv.width, vv.height);
+  const VW = vv ? vv.width  : innerWidth;
+  const VH = vv ? vv.height : innerHeight;
   const r = col.getBoundingClientRect();
   // 見えている範囲（画面の中）に収めます。スクロールしていてもズレません。
-  const L = Math.max(0, Math.min(r.left,  innerWidth));
-  const T = Math.max(0, Math.min(r.top,   innerHeight));
-  const R = Math.min(innerWidth,  Math.max(r.right,  0));
-  const B = Math.min(innerHeight, Math.max(r.bottom, 0));
-  let w = R-L, h = B-T;
-  if(w < 280 || h < 320){ /* ほとんど画面の外なら、画面いっぱいに */ 
-    return aiosSetPanelBox(0, 0, innerWidth, innerHeight); }
+  const L = Math.max(0, Math.min(r.left, VW));
+  const T = Math.max(0, Math.min(r.top,  VH));
+  const R = Math.min(VW, Math.max(r.right,  0));
+  const B = Math.min(VH, Math.max(r.bottom, 0));
+  const w = R-L, h = B-T;
+  if(w < 280 || h < 320){ /* ほとんど画面の外なら、画面いっぱいに */
+    return aiosSetPanelBox(0, 0, VW, VH); }
   aiosSetPanelBox(L, T, w, h);
 }
 function aiosSetPanelBox(l,t,w,h){
@@ -8268,6 +8283,12 @@ window.addEventListener('scroll', ()=>{
   if(!document.body.classList.contains('panelShown')) return;
   clearTimeout(window._fitS); window._fitS=setTimeout(aiosFitPanels, 60);
 }, {passive:true});
+// 指で拡大した・キーボードが出た ときも位置を合わせ直します
+if(window.visualViewport){
+  const again=()=>{ clearTimeout(window._fitV); window._fitV=setTimeout(aiosFitPanels, 60); };
+  visualViewport.addEventListener('resize', again);
+  visualViewport.addEventListener('scroll', again);
+}
 // 画面が開いた／閉じたときに、位置合わせと左メニューの選択表示を更新
 (()=>{
   const sync=()=>{
