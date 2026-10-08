@@ -2,7 +2,10 @@
 
 AI社員が働く会社画面。障害福祉サービス事業（共同生活援助ほか）の業務を、画面上のAI社員が実際に処理します。
 
-**公開URL**: https://olive-ai-os.netlify.app/ai-os.html （mainへのpushで自動デプロイ）
+**公開URL**: https://olive-an.github.io/olive-ai-os/ai-os.html （GitHub Pages・mainへのpushで自動公開）
+
+> Netlify（https://olive-ai-os.netlify.app/ai-os.html）は2026-10-08時点で古い版のまま。
+> このリポジトリと連携できていないため、つなぎ直すまでは上のGitHub PagesのURLを使う。
 
 ## 実装済みの業務（本物）
 
