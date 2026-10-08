@@ -469,11 +469,12 @@
     border:1px solid var(--line); background:#fff; border-radius:8px;
     padding:4px 9px; cursor:pointer; font-size:11px
   }
-  /* 狭い画面ではツールバーを1行に圧縮（説明文は隠す） */
+  /* 狭い画面ではツールバーを圧縮（説明文は隠す。ただし保存先の案内は残す） */
   @media(max-width:880px){
-    .toolbar{gap:5px; overflow-x:auto; white-space:nowrap; -webkit-overflow-scrolling:touch}
-    .toolbar > span{display:none}
+    .toolbar{gap:5px; flex-wrap:wrap}
+    .toolbar > span:not(#dirLabel){display:none}
     .toolbar button{padding:5px 9px; font-size:11px; flex:0 0 auto}
+    #dirLabel{flex:1 1 100%; line-height:1.7}
   }
 
   /* ===== 業務パネル（本物の集計結果） ===== */
@@ -1577,6 +1578,18 @@ async function aiosBackupWrite(filename, blob){
   return null;
 }
 
+/* iPad・携帯での保存のしかた
+   'share' … 共有メニューを出す（共有フォルダに置く・AirDropでパソコンへ送る・メール等）
+   'dl'    … そのまま「ファイル」アプリのダウンロードに入れる
+   ★ファイルの中身はこの端末の中で作っています。送り先を選ぶのはご本人です。 */
+const AIOS_SAVE_PREF = 'aiosSavePrefV1';
+const aiosSavePref    = ()=>{ try{ return localStorage.getItem(AIOS_SAVE_PREF) || 'share'; }catch(e){ return 'share'; } };
+const aiosSetSavePref = v =>{ try{ localStorage.setItem(AIOS_SAVE_PREF, v); }catch(e){} };
+// 共有メニューが使えるか（iPad・iPhone・Androidなど）
+function aiosCanShareFile(file){
+  try{ return !!(navigator.canShare && navigator.share && navigator.canShare({files:[file]})); }
+  catch(e){ return false; }
+}
 async function aiosSaveBlob(blob, filename){
   // ① 記憶した保存先フォルダがあればそこへ（＋バックアップ）
   if(aiosMainDir && await aiosDirPerm(aiosMainDir)){
@@ -1593,6 +1606,21 @@ async function aiosSaveBlob(blob, filename){
       const w = await handle.createWritable(); await w.write(blob); await w.close();
       return { ok:true, name:handle.name||filename, picked:true };
     }catch(e){ if(e && e.name==='AbortError') return { ok:false, aborted:true }; }
+  }
+  // ②' iPad・携帯：共有メニューを出して、置き場所を選んでもらう
+  //     （「"ファイル"に保存」→ 共有フォルダ、AirDropでパソコンへ、など）
+  if(!window.showSaveFilePicker && aiosSavePref()==='share'){
+    try{
+      const file = new File([blob], filename, {type: blob.type || 'application/octet-stream'});
+      if(aiosCanShareFile(file)){
+        await navigator.share({files:[file], title:filename});
+        return { ok:true, name:filename, shared:true };
+      }
+    }catch(e){
+      // ご本人がやめたときだけ中止。それ以外（共有メニューを出せなかったなど）は
+      // ファイルを失わないよう、下のダウンロードに回します。
+      if(e && e.name==='AbortError') return { ok:false, aborted:true };
+    }
   }
   // ③ 通常ダウンロード（iPad/iPhoneのSafariは「ファイル」アプリに保存されます）
   //    ※Safariは保存が終わる前にURLを消すと失敗するので、少し待ってから片づけます
@@ -1612,6 +1640,7 @@ async function aiosDeliver(blob, filename, targetId, previewHtml){
   if(el){
     const where = res.folder ? ('フォルダ「'+res.folder+'」')
                 : res.picked ? 'お選びの保存先'
+                : res.shared ? '共有メニューで選んだ場所'
                 : 'ブラウザのダウンロードフォルダ';
     const bk = res.backup ? `<br>🗄 バックアップ：<span class="path">${res.backup.where} ／ ${res.backup.name}</span>` : '';
     const note = `<div class="savednote">💾 <b>${filename}</b> を保存しました
@@ -1629,7 +1658,15 @@ function aiosUpdateDirLabel(){
   if(!window.showDirectoryPicker){
     ['setDir','setBk','clrDir'].forEach(id=>{ const b=document.getElementById(id); if(b) b.style.display='none'; });
     const c=document.getElementById('bkChk'); if(c && c.parentElement) c.parentElement.style.display='none';
-    el.innerHTML='📱 保存したファイルは「<b>ファイル</b>」アプリ（ダウンロード）に入ります';
+    const sh = aiosSavePref()==='share';
+    el.innerHTML = '📱 保存のしかた：'
+      + '<button class="wpBtn" id="savePref" style="font-size:11px; padding:4px 9px; margin:0 6px">'
+      + (sh ? '共有メニューを出す' : 'そのままダウンロード') + '</button>'
+      + (sh ? '<small>（「"ファイル"に保存」で共有フォルダへ／AirDropでパソコンへ送れます）</small>'
+            : '<small>（「ファイル」アプリのダウンロードに入ります）</small>');
+    const b=document.getElementById('savePref');
+    if(b) b.addEventListener('click', ()=>{ aiosSetSavePref(sh?'dl':'share'); aiosUpdateDirLabel();
+      banner(sh?'📥 そのままダウンロードします':'📤 保存のとき、共有メニューを出します'); });
     return;
   }
   if(aiosMainDir){
@@ -4824,7 +4861,8 @@ function riyouRenderSearch(q){
   if(rOut) rOut.addEventListener('click', async ()=>{
     const blob = await aiosHandoffBlob(RIYOU_KEY, ['r','f'], 'riyou');
     if(!blob){ alert('持ち出すデータがありません。'); return; }
-    await aiosDeliver(blob, `受給者証データ_持ち出し_${aiosHandoffDate()}${AIOS_HANDOFF_EXT}`, 'riyouBody', null);
+    const r = await aiosDeliver(blob, `受給者証データ_持ち出し_${aiosHandoffDate()}${AIOS_HANDOFF_EXT}`, 'riyouBody', null);
+    if(r && r.aborted) return;
     banner(`📲 ${(riyouData||[]).length}名ぶん（写真・PDFも一緒）／${aiosSizeText(blob.size)} を保存しました`);
   });
   const rIn=document.getElementById('riyouIn');
@@ -6469,7 +6507,8 @@ function jinRenderList(){
   if(jinOut) jinOut.addEventListener('click', async ()=>{
     const blob = await aiosHandoffBlob(JINJI_KEY, ['j','f'], 'jinji');
     if(!blob){ alert('持ち出すデータがありません。先に従業員名簿を取り込んでください。'); return; }
-    await aiosDeliver(blob, `従業員情報_持ち出し_${aiosHandoffDate()}${AIOS_HANDOFF_EXT}`, 'jinBody', null);
+    const r = await aiosDeliver(blob, `従業員情報_持ち出し_${aiosHandoffDate()}${AIOS_HANDOFF_EXT}`, 'jinBody', null);
+    if(r && r.aborted) return;
     banner(`📲 ${(jinjiData||[]).length}名ぶん（写真・PDFも一緒）／${aiosSizeText(blob.size)} を保存しました`);
   });
   const jinIn=document.getElementById('jinIn');
@@ -7091,7 +7130,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-08f';
+const AIOS_VER = '2026-10-08g';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
