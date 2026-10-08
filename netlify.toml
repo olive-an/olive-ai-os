@@ -7,3 +7,9 @@
   from = "/"
   to = "/ai-os.html"
   status = 302
+
+# 画面(HTML)は毎回サーバーに確認する＝iPad・携帯で古い画面が残らないように
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"

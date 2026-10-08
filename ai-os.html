@@ -69,12 +69,13 @@
   header .logo:hover{background:#f2f4f6}
   header .logo:active{background:#e8ebee}
   header .tag{font-size:11px; background:#eef0f2; color:var(--sub); padding:2px 8px; border-radius:999px}
+  @media(max-width:560px){ header .btxt{display:none} }
   header .tiles{display:flex; gap:7px; margin-left:auto; flex-wrap:wrap; align-items:center}
   @media(max-width:860px){
     header{flex-wrap:nowrap; padding:8px 12px; gap:8px}
     header .logo{font-size:15.5px; white-space:nowrap; flex:0 0 auto}
     header .logo img{height:26px !important}
-    header .tag{display:none}
+    header .tag{font-size:9.5px; padding:2px 6px; white-space:nowrap}
   }
   .tile{
     background:#fff; border:1px solid var(--line);
@@ -608,8 +609,8 @@
   @media (max-width: 640px){
     header{ padding:8px 10px; gap:8px }
     header .logo{ font-size:15px }
-    header .tag{ display:none }
-    header .tiles{ width:100%; margin-left:0; gap:6px; justify-content:space-between }
+    header .tag{ font-size:9.5px; padding:2px 6px; white-space:nowrap }
+    header .tiles{ margin-left:auto; gap:6px }
     .tile{ min-width:0; flex:1; padding:5px 4px }
     .tile b{ font-size:14px } .tile span{ font-size:9px }
 
@@ -663,9 +664,10 @@
 
 <header>
   <span class="logo" id="homeLink" role="button" tabindex="0" title="トップ（ホーム）にもどる"><img src="logo.png" alt="おりーぶ庵" style="height:32px;vertical-align:middle;margin-right:8px;background:#fff;border-radius:7px;padding:2px 5px">おりーぶ庵 AI-OS</span>
-  <span class="tag">デモ / 見た目レイヤー</span>
+  <span class="tag" id="aiosVerTag">－</span>
   <div class="tiles">
-    <button id="histBtn" title="これまでの作業の履歴を月ごとに見る">📜 履歴</button>
+    <button id="aiosUpd" title="画面を最新のものに入れ替えます（入れた情報は消えません）">🔄 <span class="btxt">最新にする</span></button>
+    <button id="histBtn" title="これまでの作業の履歴を月ごとに見る">📜 <span class="btxt">履歴</span></button>
   </div>
 </header>
 
@@ -7086,6 +7088,19 @@ function openCalPanel(){
   }
   p.hidden=false; calRender();
 }
+/* この画面の版（直したときに書きかえます）
+   ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
+     「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
+const AIOS_VER = '2026-10-08a';
+(()=>{
+  const t=document.getElementById('aiosVerTag');
+  if(t) t.textContent = AIOS_VER.replace(/^(\d{4})-(\d{2})-(\d{2}).*$/, '$1/$2/$3 版');
+  const b=document.getElementById('aiosUpd');
+  if(b) b.addEventListener('click', ()=>{
+    const u=location.pathname + '?v=' + Date.now() + location.hash;
+    try{ location.replace(u); }catch(e){ location.href=u; }
+  });
+})();
 /* いまの日づけと時刻＋その月のミニカレンダー（はじめの画面のいちばん上）
    ★秒は出しません（時：分だけ）。1分ごとに変わります。 */
 const AIOS_YOBI = ['日','月','火','水','木','金','土'];
