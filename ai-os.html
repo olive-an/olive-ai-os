@@ -171,21 +171,6 @@
   .instCard .s{font-size:11.5px; color:var(--sub); margin-top:3px; line-height:1.6}
   .instCard .b{display:flex; gap:7px; flex-wrap:wrap}
   .instCard .wpBtn{font-size:11.5px; padding:7px 11px}
-  /* 時計だけの細いカード（カレンダーは 🗓 のボタンから開きます） */
-  .wgt{display:flex; gap:12px; align-items:center; justify-content:center;
-    background:#e9ecf2; border-radius:14px; padding:8px 13px; margin:0 0 11px}
-  .wgtD{font-size:13px; color:#5b6169; letter-spacing:.3px; white-space:nowrap}
-  .flip{display:flex; gap:5px}
-  .flipc{position:relative; background:#fff; border-radius:8px; padding:1px 8px 2px;
-    min-width:52px; text-align:center; color:#1f2328; line-height:1.08;
-    font-size:33px; font-weight:800; letter-spacing:-1.5px; font-variant-numeric:tabular-nums;
-    box-shadow:0 1px 2px rgba(0,0,0,.05)}
-  .flipc::after{content:''; position:absolute; left:0; right:0; top:50%; height:1px; background:#eceef2}
-  @media(max-width:620px){
-    .wgt{gap:9px; padding:7px 10px}
-    .flipc{font-size:28px; min-width:44px; padding:1px 6px 2px}
-    .wgtD{font-size:11.5px}
-  }
   .calBtn{display:flex; gap:6px; align-items:center; white-space:nowrap; cursor:pointer;
     padding:9px 12px; border:1px solid var(--line); border-radius:6px; background:#fff;
     color:var(--ink); font-size:12.5px; font-weight:700; min-height:38px}
@@ -723,7 +708,6 @@
           <button class="calBtn" id="homeCal" title="カレンダーを見る"><span>🗓</span><b>カレンダー</b></button>
         </div>
         <div class="listinner">
-          <div id="wgtBox"></div>
           <div id="instBox"></div>
           <div id="roleCard"></div>
           <h2 class="hd">今日みておきたいこと</h2>
@@ -7118,7 +7102,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-08d';
+const AIOS_VER = '2026-10-08e';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
@@ -7203,36 +7187,6 @@ function aiosInstRender(){
   document.getElementById('instNo').addEventListener('click', ()=>{
     try{ localStorage.setItem(AIOS_INST_HIDE,'1'); }catch(e){} aiosInstRender();
   });
-}
-/* いまの日づけと時刻＋その月のミニカレンダー（はじめの画面のいちばん上）
-   ★秒は出しません（時：分だけ）。1分ごとに変わります。 */
-const AIOS_YOBI = ['日','月','火','水','木','金','土'];
-const aiosPad2 = n => ('0'+n).slice(-2);
-function wgtHtml(){
-  return `<div class="wgt">
-      <div class="wgtD" id="wgtDate">--/-- ---曜日</div>
-      <div class="flip"><div class="flipc" id="wgtH">--</div><div class="flipc" id="wgtM">--</div></div>
-    </div>`;
-}
-function aiosClock(){
-  const box=document.getElementById('wgtBox'); if(!box) return;
-  if(!box.dataset.done){ box.innerHTML=wgtHtml(); box.dataset.done='1'; }
-  let lastDay='';
-  const tick=()=>{
-    const n=new Date();
-    const hh=aiosPad2(n.getHours()), mm=aiosPad2(n.getMinutes());
-    const H=document.getElementById('wgtH'), M=document.getElementById('wgtM');
-    if(!H) return;
-    if(H.textContent!==hh) H.textContent=hh;
-    if(M.textContent!==mm) M.textContent=mm;
-    const label=aiosPad2(n.getMonth()+1)+'/'+aiosPad2(n.getDate())+' '+AIOS_YOBI[n.getDay()]+'曜日';
-    if(label!==lastDay){ lastDay=label; document.getElementById('wgtDate').textContent=label; }
-  };
-  tick();
-  if(aiosClock._id) clearInterval(aiosClock._id);
-  aiosClock._id=setInterval(tick, 5000);
-  // 画面にもどってきたときは、ずれないようにすぐ合わせます
-  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) tick(); });
 }
 /* ▲▲▲ カレンダー ここまで ▲▲▲ */
 
@@ -8216,7 +8170,6 @@ function homeNav(open){
   if(q) aiosBindSearch(q, v=>{ homeQ=(v||'').trim(); homeRender(); });
   const cal=document.getElementById('homeCal');
   if(cal) cal.addEventListener('click', ()=>openCalPanel());
-  aiosClock();
   aiosInstRender();
   homeRender();
 
