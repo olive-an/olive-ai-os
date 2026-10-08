@@ -191,6 +191,21 @@
   .phCell img{width:100%; height:100%; object-fit:cover; display:block}
   .phCell span{position:absolute; left:4px; bottom:4px; background:rgba(0,0,0,.6); color:#fff;
     font-size:10.5px; font-weight:800; padding:1px 6px; border-radius:999px}
+  /* 画面の中のカメラ */
+  .camWrap{position:relative; width:100%; background:#000; border-radius:8px; overflow:hidden}
+  .camWrap video{display:block; width:100%; max-height:62vh; object-fit:cover; background:#000}
+  .camWrap.flash::after{content:''; position:absolute; inset:0; background:#fff; opacity:.75}
+  .camBar{position:absolute; left:0; right:0; bottom:0; display:flex; align-items:center;
+    justify-content:center; gap:26px; padding:14px 0 18px;
+    background:linear-gradient(to top, rgba(0,0,0,.55), rgba(0,0,0,0))}
+  .camShot{width:66px; height:66px; border-radius:50%; border:4px solid #fff; background:transparent;
+    cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center}
+  .camShot span{display:block; width:50px; height:50px; border-radius:50%; background:#fff}
+  .camShot:active span{background:#d9d9d9}
+  .camBtn{width:44px; height:44px; border-radius:50%; border:0; background:rgba(255,255,255,.25);
+    color:#fff; font-size:18px; cursor:pointer; padding:0}
+  .camCount{position:absolute; left:10px; top:10px; background:rgba(0,0,0,.55); color:#fff;
+    font-size:11.5px; font-weight:800; padding:3px 9px; border-radius:999px}
   .phDel{position:absolute; right:3px; top:3px; width:24px; height:24px; border:0; border-radius:50%;
     background:rgba(0,0,0,.6); color:#fff; font-size:12px; cursor:pointer; line-height:24px; padding:0}
   /* 自分のカレンダー（ログインなしで使えます） */
@@ -7148,7 +7163,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-08i';
+const AIOS_VER = '2026-10-08j';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
@@ -7306,7 +7321,8 @@ function photoRender(){
 
     <h3 class="wpH">③ 写真をとる（表・裏など、何枚でも）</h3>
     <div class="calBar">
-      <button class="wpBtn primary" id="phCam">📷 カメラでとる</button>
+      ${photoCanCam()?'<button class="wpBtn primary" id="phLive">📷 カメラをひらく（続けて撮れます）</button>':''}
+      <button class="wpBtn${photoCanCam()?'':' primary'}" id="phCam">📸 1枚ずつ撮る</button>
       <button class="wpBtn" id="phPick">🖼 写真から選ぶ</button>
       ${photoList.length?'<button class="wpBtn" id="phClear">🗑 とりなおす</button>':''}
     </div>
@@ -7341,6 +7357,18 @@ function photoRender(){
   const pick=(id,inp)=>{ const x=document.getElementById(id);
     if(x) x.addEventListener('click', ()=>{ photoKeepWho(); document.getElementById(inp).click(); }); };
   pick('phCam','phCamIn'); pick('phPick','phPickIn');
+  const live=document.getElementById('phLive');
+  if(live) live.addEventListener('click', async ()=>{
+    photoKeepWho();
+    try{ await photoCamStart('environment'); }
+    catch(e){
+      alert('カメラを使えませんでした。\n\n'
+        +'・「許可」をおしていただく必要があります\n'
+        +'・iPhone/iPadは 設定 → Safari → カメラ を「確認」か「許可」に\n\n'
+        +'「📸 1枚ずつ撮る」でも撮れます。');
+      document.getElementById('phCamIn').click();
+    }
+  });
   ['phCamIn','phPickIn'].forEach(id=>{
     const x=document.getElementById(id); if(!x) return;
     x.addEventListener('change', async function(){
@@ -7403,6 +7431,73 @@ function photoRender(){
     logLine(`<b>写真</b>：${files.length}枚をJPEGで保存`);
   });
 }
+/* ------------------------------------------------------------------
+   画面の中のカメラ（アプリを出たり入ったりせず、続けて何枚でも撮れます）
+   ★映像はこの端末の中だけで扱います。どこにも送りません。
+   ★「おわる」か画面を閉じると、カメラはすぐ止まります。
+   ------------------------------------------------------------------ */
+let photoCam = null;              // {stream, facing}
+const photoCanCam = ()=> !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+function photoCamStop(){
+  try{ if(photoCam && photoCam.stream) photoCam.stream.getTracks().forEach(t=>t.stop()); }catch(e){}
+  photoCam=null;
+}
+async function photoCamStart(facing){
+  photoCamStop();
+  const want = facing || 'environment';
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video:{ facingMode:{ideal:want}, width:{ideal:1920}, height:{ideal:1440} }, audio:false });
+  photoCam = {stream, facing:want};
+  photoCamRender();
+}
+function photoCamRender(){
+  const b=document.getElementById('photoBody'); if(!b) return;
+  b.innerHTML = `<div class="camWrap">
+      <video id="phVideo" playsinline autoplay muted></video>
+      <div class="camBar">
+        <button class="camBtn" id="phFlip" title="内／外カメラ">🔄</button>
+        <button class="camShot" id="phShot" title="撮る"><span></span></button>
+        <button class="camBtn" id="phDone" title="おわる">✓</button>
+      </div>
+      <div class="camCount" id="phCount">${photoList.length}枚</div>
+    </div>
+    <div class="phGrid" id="phGrid2">${photoList.map((p,i)=>
+      `<div class="phCell"><img src="${p.url}" alt="${i+1}枚目"><span>${i+1}</span></div>`).join('')}</div>
+    <div class="wpNote" style="margin-top:10px">
+      <small>まるいボタンで何枚でも撮れます。撮りおわったら <b>✓</b> をおしてください。<br>
+      映像はこの端末の中だけで扱い、どこにも送りません。</small></div>`;
+  const v=document.getElementById('phVideo');
+  if(v && photoCam){ v.srcObject = photoCam.stream; v.play().catch(()=>{}); }
+  document.getElementById('phShot').addEventListener('click', photoShoot);
+  document.getElementById('phDone').addEventListener('click', ()=>{ photoCamStop(); photoRender(); });
+  document.getElementById('phFlip').addEventListener('click', async ()=>{
+    const next = (photoCam && photoCam.facing==='environment') ? 'user' : 'environment';
+    try{ await photoCamStart(next); }
+    catch(e){ alert('カメラを切りかえられませんでした'); }
+  });
+}
+async function photoShoot(){
+  const v=document.getElementById('phVideo');
+  if(!v || !v.videoWidth){ return; }
+  const c=document.createElement('canvas');
+  c.width=v.videoWidth; c.height=v.videoHeight;
+  c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+  const blob = await new Promise(r=>c.toBlob(r, 'image/jpeg', 0.92));
+  if(!blob) return;
+  try{
+    const r = await jinShrink(new File([blob],'photo.jpg',{type:'image/jpeg'}));
+    photoList.push({bytes:r.jpeg, w:r.w, h:r.h,
+      url:URL.createObjectURL(new Blob([r.jpeg],{type:'image/jpeg'}))});
+  }catch(e){ alert('この写真は取り込めませんでした'); return; }
+  // 「撮れた」合図
+  const wrap=document.querySelector('.camWrap');
+  if(wrap){ wrap.classList.add('flash'); setTimeout(()=>wrap.classList.remove('flash'), 180); }
+  const cnt=document.getElementById('phCount'); if(cnt) cnt.textContent=photoList.length+'枚';
+  const g=document.getElementById('phGrid2');
+  if(g) g.insertAdjacentHTML('beforeend',
+    `<div class="phCell"><img src="${photoList[photoList.length-1].url}" alt="${photoList.length}枚目">
+      <span>${photoList.length}</span></div>`);
+}
 function photoKeepWho(){
   const b=document.getElementById('photoBody'), w=document.getElementById('phWho');
   if(b && w) b.dataset.who=w.value;
@@ -7419,11 +7514,16 @@ function openPhotoPanel(){
       <div class="sheetHead"><b>📷 写真（パソコンへ渡す）</b><span class="grow"></span>
         <button onclick="document.getElementById('photoPanel').hidden=true">✕</button></div>
       <div class="sheetBody" id="photoBody"></div></div>`;
-    p.addEventListener('click',ev=>{ if(ev.target.id==='photoPanel') p.hidden=true; });
+    p.addEventListener('click',ev=>{ if(ev.target.id==='photoPanel'){ photoCamStop(); p.hidden=true; } });
+    // ✕（← もどる）でもカメラを止めます
+    new MutationObserver(()=>{ if(p.hidden) photoCamStop(); })
+      .observe(p, {attributes:true, attributeFilter:['hidden']});
     document.body.appendChild(p);
   }
   p.hidden=false; photoRender();
 }
+// ほかの画面に行ったとき・アプリを閉じたときも止めます
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden) photoCamStop(); });
 /* ▲▲▲ 写真 ここまで ▲▲▲ */
 
 /* ▲▲▲ カレンダー ここまで ▲▲▲ */
