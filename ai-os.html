@@ -13,7 +13,7 @@
 -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>おりーぶ庵 AI-OS（デモ）</title>
+<title>おりーぶ庵 AI-OS</title>
 <!-- アプリアイコン（パソコンのタブ／スマホのホーム画面） -->
 <link rel="icon" href="./favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png">
@@ -156,6 +156,21 @@
     border-radius:6px; font-size:14px; outline:none; background:#fff}
   .listtop input:focus{border-color:var(--olive); box-shadow:0 0 0 2px var(--olive-l)}
   /* 時計とミニカレンダーのウィジェット（はじめの画面のいちばん上） */
+  /* 新しい版のお知らせ（画面のいちばん下） */
+  .newver{position:fixed; left:50%; bottom:14px; transform:translateX(-50%); z-index:9999;
+    display:flex; gap:9px; align-items:center; flex-wrap:wrap; justify-content:center;
+    background:#2a2f36; color:#fff; font-size:12.5px; font-weight:700;
+    padding:10px 14px; border-radius:999px; box-shadow:0 4px 14px rgba(0,0,0,.25); max-width:94vw}
+  .newver button{border:0; border-radius:999px; padding:6px 12px; font-size:12px; font-weight:800;
+    background:#2cab86; color:#fff; cursor:pointer}
+  .newver button.x{background:#4a5059}
+  /* アプリとして入れるご案内 */
+  .instCard{display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:space-between;
+    border:1px solid var(--line); border-radius:8px; background:#fffdf4; padding:10px 13px; margin:0 0 11px}
+  .instCard b{font-size:12.5px; color:var(--ink)}
+  .instCard .s{font-size:11.5px; color:var(--sub); margin-top:3px; line-height:1.6}
+  .instCard .b{display:flex; gap:7px; flex-wrap:wrap}
+  .instCard .wpBtn{font-size:11.5px; padding:7px 11px}
   /* 時計だけの細いカード（カレンダーは 🗓 のボタンから開きます） */
   .wgt{display:flex; gap:12px; align-items:center; justify-content:center;
     background:#e9ecf2; border-radius:14px; padding:8px 13px; margin:0 0 11px}
@@ -698,6 +713,7 @@
         </div>
         <div class="listinner">
           <div id="wgtBox"></div>
+          <div id="instBox"></div>
           <div id="roleCard"></div>
           <h2 class="hd">今日みておきたいこと</h2>
           <p class="hdsub">期限が近いもの・まだ手がついていないものを、上から順に出します。</p>
@@ -7091,16 +7107,92 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-08a';
+const AIOS_VER = '2026-10-08b';
+// ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
+const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
+                   || navigator.standalone === true;
+// しまってある画面を全部すてて、まっさらから読み直します
+async function aiosHardReload(){
+  try{
+    if('caches' in window){ for(const k of await caches.keys()) await caches.delete(k); }
+    if(navigator.serviceWorker){
+      const r = await navigator.serviceWorker.getRegistration();
+      if(r){ r.active && r.active.postMessage('clear'); await r.update(); }
+    }
+  }catch(e){}
+  const u = location.pathname + '?v=' + Date.now() + location.hash;
+  try{ location.replace(u); }catch(e){ location.href=u; }
+}
 (()=>{
   const t=document.getElementById('aiosVerTag');
   if(t) t.textContent = AIOS_VER.replace(/^(\d{4})-(\d{2})-(\d{2}).*$/, '$1/$2/$3 版');
   const b=document.getElementById('aiosUpd');
-  if(b) b.addEventListener('click', ()=>{
-    const u=location.pathname + '?v=' + Date.now() + location.hash;
-    try{ location.replace(u); }catch(e){ location.href=u; }
-  });
+  if(b) b.addEventListener('click', aiosHardReload);
 })();
+
+/* アプリとして使うためのしくみ（Service Worker）
+   ★ホーム画面のアイコンから開いても、画面はいつもサーバーの新しいものになります。
+     電波が無いときだけ、しまっておいた画面が出ます。
+   ★利用者さん・職員の情報は、この中には入れていません（端末の中のまま）。 */
+function aiosNewVerBar(reg){
+  if(document.getElementById('aiosNewVer')) return;
+  const d=document.createElement('div'); d.id='aiosNewVer'; d.className='newver';
+  d.innerHTML='🆕 新しい画面があります <button id="aiosNewVerGo">🔄 いま新しくする</button>'
+            + '<button id="aiosNewVerNo" class="x">あとで</button>';
+  document.body.appendChild(d);
+  document.getElementById('aiosNewVerGo').addEventListener('click', ()=>{
+    try{ (reg.waiting||reg.installing||{postMessage(){}}).postMessage('skipWaiting'); }catch(e){}
+    setTimeout(()=>location.reload(), 300);
+  });
+  document.getElementById('aiosNewVerNo').addEventListener('click', ()=>d.remove());
+}
+const aiosSecure = location.protocol==='https:' || ['localhost','127.0.0.1'].includes(location.hostname);
+if('serviceWorker' in navigator && aiosSecure){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('./sw.js').then(reg=>{
+      setInterval(()=>{ try{ reg.update(); }catch(e){} }, 30*60*1000);   // 30分ごとに見にいく
+      document.addEventListener('visibilitychange', ()=>{ if(!document.hidden){ try{ reg.update(); }catch(e){} } });
+      reg.addEventListener('updatefound', ()=>{
+        const w=reg.installing; if(!w) return;
+        w.addEventListener('statechange', ()=>{
+          if(w.state==='installed' && navigator.serviceWorker.controller) aiosNewVerBar(reg);
+        });
+      });
+    }).catch(()=>{});
+  });
+}
+
+/* 「アプリとして入れる」のご案内（もう入れてある人には出しません） */
+const AIOS_INST_HIDE='aiosInstHideV1';
+let aiosInstEvt=null;
+window.addEventListener('beforeinstallprompt', ev=>{ ev.preventDefault(); aiosInstEvt=ev; aiosInstRender(); });
+function aiosInstRender(){
+  const box=document.getElementById('instBox'); if(!box) return;
+  let hide=false; try{ hide = localStorage.getItem(AIOS_INST_HIDE)==='1'; }catch(e){}
+  if(aiosApp() || hide){ box.innerHTML=''; return; }
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent)
+           || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+  const how = ios
+    ? '画面の下（iPadは右上）の <b>共有ボタン（□から↑が出ているしるし）</b> → <b>「ホーム画面に追加」</b>'
+    : aiosInstEvt ? '下の「📲 いますぐ入れる」をおしてください'
+                  : 'ブラウザのメニュー → <b>「アプリをインストール」</b>（または「ホーム画面に追加」）';
+  box.innerHTML = `<div class="instCard">
+      <div><b>📲 AI-OSをアプリとして入れられます</b>
+        <div class="s">ホーム画面のアイコンから、ふつうのアプリのように開けます。${how}<br>
+        <small>入れたあとも、画面は自動で新しくなります（古いままになりません）。</small></div></div>
+      <div class="b">
+        ${aiosInstEvt?'<button class="wpBtn primary" id="instGo">📲 いますぐ入れる</button>':''}
+        <button class="wpBtn" id="instNo">出さない</button>
+      </div></div>`;
+  const g=document.getElementById('instGo');
+  if(g) g.addEventListener('click', async ()=>{
+    try{ aiosInstEvt.prompt(); const r=await aiosInstEvt.userChoice;
+         if(r && r.outcome==='accepted'){ aiosInstEvt=null; aiosInstRender(); } }catch(e){}
+  });
+  document.getElementById('instNo').addEventListener('click', ()=>{
+    try{ localStorage.setItem(AIOS_INST_HIDE,'1'); }catch(e){} aiosInstRender();
+  });
+}
 /* いまの日づけと時刻＋その月のミニカレンダー（はじめの画面のいちばん上）
    ★秒は出しません（時：分だけ）。1分ごとに変わります。 */
 const AIOS_YOBI = ['日','月','火','水','木','金','土'];
@@ -8114,6 +8206,7 @@ function homeNav(open){
   const cal=document.getElementById('homeCal');
   if(cal) cal.addEventListener('click', ()=>openCalPanel());
   aiosClock();
+  aiosInstRender();
   homeRender();
 
   /* ---- 指でスライドしてメニューを出す／しまう ---- */
