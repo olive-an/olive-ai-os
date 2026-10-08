@@ -507,6 +507,7 @@
   .modal{
     position:fixed;
     left:var(--mL,0px); top:var(--mT,0px); width:var(--mW,100vw); height:var(--mH,100dvh);
+    max-width:100vw; max-height:100dvh;
     background:#f4f6f5; z-index:50; display:block; padding:0; overflow:hidden;
   }
   .modal[hidden]{display:none}
@@ -675,6 +676,7 @@
     .wrap{ grid-template-columns:1fr }
     .stage{ aspect-ratio:16/11; min-height:460px }
   }
+
 </style>
 
 <header>
@@ -7107,7 +7109,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-08b';
+const AIOS_VER = '2026-10-08c';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
@@ -8242,20 +8244,38 @@ function homeNav(open){
 function aiosFitPanels(){
   const col=document.querySelector('.listcol'); if(!col) return;
   const r = col.getBoundingClientRect();
+  // 見えている範囲（画面の中）に収めます。スクロールしていてもズレません。
+  const L = Math.max(0, Math.min(r.left,  innerWidth));
+  const T = Math.max(0, Math.min(r.top,   innerHeight));
+  const R = Math.min(innerWidth,  Math.max(r.right,  0));
+  const B = Math.min(innerHeight, Math.max(r.bottom, 0));
+  let w = R-L, h = B-T;
+  if(w < 280 || h < 320){ /* ほとんど画面の外なら、画面いっぱいに */ 
+    return aiosSetPanelBox(0, 0, innerWidth, innerHeight); }
+  aiosSetPanelBox(L, T, w, h);
+}
+function aiosSetPanelBox(l,t,w,h){
   const st = document.documentElement.style;
-  st.setProperty('--mL', Math.round(r.left)+'px');
-  st.setProperty('--mT', Math.round(r.top)+'px');
-  st.setProperty('--mW', Math.round(r.width)+'px');
-  st.setProperty('--mH', Math.round(r.height)+'px');
+  st.setProperty('--mL', Math.round(l)+'px');
+  st.setProperty('--mT', Math.round(t)+'px');
+  st.setProperty('--mW', Math.round(w)+'px');
+  st.setProperty('--mH', Math.round(h)+'px');
 }
 aiosFitPanels();
 window.addEventListener('resize', ()=>{ clearTimeout(window._fitT);
   window._fitT=setTimeout(aiosFitPanels, 120); });
+window.addEventListener('scroll', ()=>{
+  if(!document.body.classList.contains('panelShown')) return;
+  clearTimeout(window._fitS); window._fitS=setTimeout(aiosFitPanels, 60);
+}, {passive:true});
 // 画面が開いた／閉じたときに、位置合わせと左メニューの選択表示を更新
 (()=>{
   const sync=()=>{
-    aiosFitPanels();
     const open=[...document.querySelectorAll('.modal')].some(m=>!m.hidden);
+    if(open && (scrollY>0 || document.documentElement.scrollTop>0)){
+      try{ window.scrollTo(0,0); }catch(e){}            // 先に上までもどしてから位置を測ります
+    }
+    aiosFitPanels();
     document.body.classList.toggle('panelShown', open);
     // ✕は分かりにくいので「← もどる」に書き換える
     document.querySelectorAll('.modal:not([hidden]) .sheetHead button').forEach(b=>{
