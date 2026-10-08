@@ -180,6 +180,19 @@
   .calBar .wpBtn{font-size:11.5px; padding:6px 11px}
   .calBar .on{background:var(--olive); color:#fff; border-color:var(--olive)}
   #calBody .wpNote{overflow-wrap:anywhere}
+  /* 写真（パソコンへ渡す） */
+  .wpH{font-weight:800; font-size:13px; color:#1f3a28; margin:14px 0 6px}
+  .phKindRow{display:flex; gap:6px; flex-wrap:wrap; margin:4px 0 0}
+  .phKindRow .chip{font-size:12.5px; padding:7px 12px; min-height:34px}
+  .phKindRow .chip.on{background:var(--olive); color:#fff; border-color:var(--olive); font-weight:800}
+  .phGrid{display:flex; gap:9px; flex-wrap:wrap; margin:4px 0 0}
+  .phCell{position:relative; width:104px; height:104px; border:1px solid var(--line);
+    border-radius:6px; overflow:hidden; background:#fff}
+  .phCell img{width:100%; height:100%; object-fit:cover; display:block}
+  .phCell span{position:absolute; left:4px; bottom:4px; background:rgba(0,0,0,.6); color:#fff;
+    font-size:10.5px; font-weight:800; padding:1px 6px; border-radius:999px}
+  .phDel{position:absolute; right:3px; top:3px; width:24px; height:24px; border:0; border-radius:50%;
+    background:rgba(0,0,0,.6); color:#fff; font-size:12px; cursor:pointer; line-height:24px; padding:0}
   /* 自分のカレンダー（ログインなしで使えます） */
   .cg{display:grid; grid-template-columns:repeat(7,1fr); gap:4px}
   .cg .cw{font-size:11px; font-weight:800; color:var(--sub); text-align:center; padding:4px 0}
@@ -1108,6 +1121,11 @@ const AI_ICON = (()=>{
     <circle cx="35" cy="23" r="2.2" fill="#3a9d5d"/>
     <rect x="13" y="28" width="22" height="14" rx="2" fill="#e9eef2" stroke="#5c6b78" stroke-width="1.6"/>
     <path d="M17 33h14M17 37h10" stroke="#9aa7b3" stroke-width="2.2"/>`)},
+  写真: { bg:'#4a5a6b', svg:S(`
+    <path d="M8 15h7l3-4h12l3 4h7a3 3 0 013 3v17a3 3 0 01-3 3H8a3 3 0 01-3-3V18a3 3 0 013-3z" fill="${W}"/>
+    <circle cx="24" cy="26" r="8" fill="#4a5a6b"/>
+    <circle cx="24" cy="26" r="4.4" fill="${W}"/>
+    <rect x="33" y="18" width="5" height="3" rx="1.2" fill="#8fa3b7"/>`)},
   書類棚: { bg:'#8a6a33', svg:S(`
     <rect x="8" y="6" width="32" height="36" rx="3" fill="${W}"/>
     <rect x="11" y="9" width="26" height="9" rx="1.6" fill="#e6d6b8"/>
@@ -7130,7 +7148,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-08g';
+const AIOS_VER = '2026-10-08h';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
@@ -7216,6 +7234,159 @@ function aiosInstRender(){
     try{ localStorage.setItem(AIOS_INST_HIDE,'1'); }catch(e){} aiosInstRender();
   });
 }
+
+/* =========================================================================
+   ▼▼▼ 写真（受給者証・資格証を撮って、パソコンへ渡す） ▼▼▼
+   使い方：現場の携帯・iPadで撮る → PDFにして渡す → パソコンのAI-OSで添付する
+   ★この画面は、撮った写真を端末に保存しません。渡したらその場で消えます。
+   ★名前は「ファイル名」に入れるためだけに使い、どこにも保存しません。
+   ========================================================================= */
+const PHOTO_KINDS = ['受給者証','資格証','研修修了証','車検証','保険証券','その他'];
+let photoList = [];          // {name, bytes:jpeg, w, h, url}
+function photoName(kind, who){
+  const d=new Date(), p=n=>('0'+n).slice(-2);
+  const nm=(who||'').replace(/[\\\/:*?"<>|\s　]/g,'') || '名前なし';
+  return `${kind}_${nm}_${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}.pdf`;
+}
+/* 写真を何枚でも1つのPDFにまとめます（1枚＝1ページ） */
+function aiosPhotosToPdf(pages){
+  const A4W=595.28, A4H=841.89;
+  const enc=s=>{ const a=new Uint8Array(s.length); for(let i=0;i<s.length;i++) a[i]=s.charCodeAt(i)&0xff; return a; };
+  const parts=[]; let len=0; const off=[];
+  const push=u8=>{ parts.push(u8); len+=u8.length; };
+  const pushS=s=>push(enc(s));
+  const obj=(n, dict, stream)=>{ off[n]=len; pushS(n+' 0 obj\n'+dict+'\n');
+    if(stream){ pushS('stream\n'); push(stream); pushS('\nendstream\n'); } pushS('endobj\n'); };
+  pushS('%PDF-1.4\n');
+  const kids = pages.map((_,i)=>(3+i*3)+' 0 R').join(' ');
+  obj(1,'<< /Type /Catalog /Pages 2 0 R >>');
+  obj(2,`<< /Type /Pages /Kids [${kids}] /Count ${pages.length} >>`);
+  pages.forEach((pg,i)=>{
+    const n=3+i*3, nImg=n+1, nCon=n+2;
+    const k=Math.min(A4W/pg.w, A4H/pg.h);
+    const pw=Math.round(pg.w*k), ph=Math.round(pg.h*k);
+    obj(n,`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pw} ${ph}] `
+         +`/Resources << /XObject << /Im0 ${nImg} 0 R >> >> /Contents ${nCon} 0 R >>`);
+    obj(nImg,`<< /Type /XObject /Subtype /Image /Width ${pg.w} /Height ${pg.h} /ColorSpace /DeviceRGB `
+         +`/BitsPerComponent 8 /Filter /DCTDecode /Length ${pg.bytes.length} >>`, pg.bytes);
+    const cs=enc(`q ${pw} 0 0 ${ph} 0 0 cm /Im0 Do Q`);
+    obj(nCon,`<< /Length ${cs.length} >>`, cs);
+  });
+  const last=2+pages.length*3, size=last+1;
+  const xref=len;
+  let x='xref\n0 '+size+'\n0000000000 65535 f \n';
+  for(let i=1;i<=last;i++) x+=String(off[i]||0).padStart(10,'0')+' 00000 n \n';
+  pushS(x);
+  pushS(`trailer\n<< /Size ${size} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+  const out=new Uint8Array(len); let p=0;
+  for(const a of parts){ out.set(a,p); p+=a.length; }
+  return out;
+}
+function photoRender(){
+  const b=document.getElementById('photoBody'); if(!b) return;
+  const kind = b.dataset.kind || PHOTO_KINDS[0];
+  const who  = b.dataset.who || '';
+  b.innerHTML = `<div class="wpNote">
+      📷 <b>受給者証・資格証などを撮って、パソコンへ渡します</b><br>
+      <small>撮った写真は<b>この端末に残りません</b>（渡したらその場で消えます）。
+      お名前はファイル名に入れるためだけに使い、どこにも保存しません。</small></div>
+
+    <h3 class="wpH">① 何の写真ですか</h3>
+    <div class="phKindRow" id="phKinds">${PHOTO_KINDS.map(k=>
+      `<button class="chip${k===kind?' on':''}" data-kind="${k}">${k}</button>`).join('')}</div>
+
+    <h3 class="wpH">② どなたのものですか</h3>
+    <input type="text" id="phWho" value="${hkEsc(who)}" placeholder="例：山田 太郎（空でもかまいません）"
+      style="width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:6px; font-size:16px">
+
+    <h3 class="wpH">③ 写真をとる（表・裏など、何枚でも）</h3>
+    <div class="calBar">
+      <button class="wpBtn primary" id="phCam">📷 カメラでとる</button>
+      <button class="wpBtn" id="phPick">🖼 写真から選ぶ</button>
+      ${photoList.length?'<button class="wpBtn" id="phClear">🗑 とりなおす</button>':''}
+    </div>
+    <input type="file" id="phCamIn" accept="image/*" capture="environment" multiple hidden>
+    <input type="file" id="phPickIn" accept="image/*,application/pdf,.pdf" multiple hidden>
+    <div class="phGrid" id="phGrid">${photoList.map((p,i)=>
+      `<div class="phCell"><img src="${p.url}" alt="${i+1}枚目"><span>${i+1}</span>
+        <button class="phDel" data-del="${i}" title="この1枚を消す">✕</button></div>`).join('')
+      || '<div style="font-size:12px;color:var(--sub)">まだ1枚もありません。</div>'}</div>
+
+    <h3 class="wpH">④ パソコンへ渡す</h3>
+    <div class="calBar">
+      <button class="wpBtn primary" id="phGo" ${photoList.length?'':'disabled'}>
+        📤 ${photoList.length||0}枚をPDFにして渡す</button>
+    </div>
+    <div class="wpNote" style="margin-top:9px">
+      ファイル名：<b>${hkEsc(photoName(kind, who))}</b><br>
+      <small>iPad・携帯では共有メニューが出ます。「"ファイル"に保存」で共有フォルダへ置くか、
+      AirDropでパソコンへ送ってください。<br>
+      パソコンのAI-OSで 👤利用者／🧑‍💼人事 の方をひらき、そのPDFを添付すれば登録できます。</small></div>`;
+
+  b.querySelectorAll('[data-kind]').forEach(el=>el.addEventListener('click', ()=>{
+    b.dataset.kind=el.dataset.kind; photoKeepWho(); photoRender(); }));
+  const who2=document.getElementById('phWho');
+  if(who2) who2.addEventListener('input', ()=>{ b.dataset.who=who2.value;
+    const n=b.querySelector('.wpNote:last-of-type b'); if(n) n.textContent=photoName(b.dataset.kind||PHOTO_KINDS[0], who2.value); });
+  const pick=(id,inp)=>{ const x=document.getElementById(id);
+    if(x) x.addEventListener('click', ()=>{ photoKeepWho(); document.getElementById(inp).click(); }); };
+  pick('phCam','phCamIn'); pick('phPick','phPickIn');
+  ['phCamIn','phPickIn'].forEach(id=>{
+    const x=document.getElementById(id); if(!x) return;
+    x.addEventListener('change', async function(){
+      const files=[...this.files]; this.value='';
+      for(const f of files){
+        try{
+          const r=await jinShrink(f);
+          photoList.push({bytes:r.jpeg, w:r.w, h:r.h, url:URL.createObjectURL(new Blob([r.jpeg],{type:'image/jpeg'}))});
+        }catch(e){ alert('この写真は読み込めませんでした：'+(f.name||'')); }
+      }
+      photoRender();
+    });
+  });
+  b.querySelectorAll('[data-del]').forEach(el=>el.addEventListener('click', ()=>{
+    const i=Number(el.dataset.del);
+    try{ URL.revokeObjectURL(photoList[i].url); }catch(e){}
+    photoList.splice(i,1); photoRender(); }));
+  const cl=document.getElementById('phClear');
+  if(cl) cl.addEventListener('click', ()=>{ photoClear(); photoRender(); });
+  const go=document.getElementById('phGo');
+  if(go) go.addEventListener('click', async ()=>{
+    if(!photoList.length) return;
+    photoKeepWho();
+    const fn=photoName(b.dataset.kind||PHOTO_KINDS[0], b.dataset.who||'');
+    const blob=new Blob([aiosPhotosToPdf(photoList)], {type:'application/pdf'});
+    const r=await aiosDeliver(blob, fn, 'photoBody', null);
+    if(r && r.aborted) return;
+    const n=photoList.length;
+    photoClear(); photoRender();
+    banner(`📤 ${n}枚を「${fn}」にして渡しました`);
+    logLine(`<b>写真</b>：${n}枚をPDFにしてパソコンへ渡した（この端末には残していません）`);
+  });
+}
+function photoKeepWho(){
+  const b=document.getElementById('photoBody'), w=document.getElementById('phWho');
+  if(b && w) b.dataset.who=w.value;
+}
+function photoClear(){
+  photoList.forEach(p=>{ try{ URL.revokeObjectURL(p.url); }catch(e){} });
+  photoList=[];
+}
+function openPhotoPanel(){
+  let p=document.getElementById('photoPanel');
+  if(!p){
+    p=document.createElement('div'); p.className='modal'; p.id='photoPanel';
+    p.innerHTML=`<div class="sheet" style="max-width:760px">
+      <div class="sheetHead"><b>📷 写真（パソコンへ渡す）</b><span class="grow"></span>
+        <button onclick="document.getElementById('photoPanel').hidden=true">✕</button></div>
+      <div class="sheetBody" id="photoBody"></div></div>`;
+    p.addEventListener('click',ev=>{ if(ev.target.id==='photoPanel') p.hidden=true; });
+    document.body.appendChild(p);
+  }
+  p.hidden=false; photoRender();
+}
+/* ▲▲▲ 写真 ここまで ▲▲▲ */
+
 /* ▲▲▲ カレンダー ここまで ▲▲▲ */
 
 
@@ -8030,6 +8201,7 @@ const HOME_MENU = [
     {k:'利用者', n:'利用者',      d:'受給者証の照会と期限',            fn:()=>openRiyouPanel()},
     {k:'ホーム', n:'ホーム管理',   d:'個別支援計画・空室状況',          fn:()=>openKeikakuPanel()},
     {k:'会議室', n:'会議室・議事録', d:'議事録の保管・検索・要約',        fn:()=>openGijiPanel()},
+    {k:'写真',   n:'写真',       d:'受給者証・資格証を撮ってパソコンへ渡す', fn:()=>openPhotoPanel()},
   ]},
   {g:'設備', items:[
     {k:'車両',     n:'車両',     d:'車検・自賠責・任意保険の期限',     fn:()=>openSharyouPanel()},
