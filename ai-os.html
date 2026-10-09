@@ -774,11 +774,17 @@
   <div class="sheet">
     <div class="sheetHead">
       <b>🗓️ シフト集計</b>
-      <span class="real-badge">本物の処理</span>
+      <span class="real-badge" style="background:#6b7a88">集計用（サブ）</span>
       <span class="grow"></span>
       <button id="wpClose" title="閉じる">✕</button>
     </div>
     <div class="sheetBody">
+      <div class="wpNote" style="margin:0 0 10px; background:#eef4fb; border-color:#cfe0ee">
+        📌 <b>本番は「シフト希望フォーム」です。この画面はサブ（集計する係）です。</b><br>
+        <small>希望の受付・集計そのものはフォーム側が本番。ここでできるのは
+        <b>集めた希望をシフト集計表のExcelに反映すること</b>と<b>印刷</b>です。
+        数えかた（旧字・新字のそろえ方、💬コメント、同じ方のまとめ方）はフォームに合わせてあり、
+        フォームが新しくなったときは、すぐ下にお知らせが出ます。</small></div>
       <div class="wpControls">
         <label>期間 <input type="date" id="wpStart"></label>
         <span>〜</span>
@@ -7275,7 +7281,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-09c';
+const AIOS_VER = '2026-10-09d';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
