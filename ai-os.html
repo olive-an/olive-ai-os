@@ -7285,7 +7285,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-09g';
+const AIOS_VER = '2026-10-09h';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
@@ -7839,12 +7839,13 @@ function openDrivePanel(){
       <div style="margin-top:7px"><small>会社のGoogleアカウントでログインします。
       入れ終わると、エクスプローラーに <b>G:（Google Drive）</b> が出ます。</small></div></div>
 
-    <h3 class="wpH">② 置き場所（作成ずみ）</h3>
+    <h3 class="wpH">② 置き場所（できています）</h3>
     <div class="wpNote" style="margin:0"><small>
-      マイドライブに <b>AI-OS2026</b> を用意してあります。中は3つです。<br>
-      　<b>G:\\マイドライブ\\AI-OS2026\\書類</b> … できあがった書類<br>
-      　<b>G:\\マイドライブ\\AI-OS2026\\バックアップ</b> … 自動のひかえ<br>
-      　<b>G:\\マイドライブ\\AI-OS2026\\控え（AI-OS・暗号化）</b> … 🗄控えファイル</small></div>
+      マイドライブの <b>AI-OS2026</b> がAI-OSの置き場所です。<br>
+      　<b>AI-OS2026</b>（直下）… <b>原本のExcel</b>（従業員名簿・受給者証・車両管理表）<br>
+      　<b>AI-OS2026\\書類</b> … AI-OSが作った書類<br>
+      　<b>AI-OS2026\\バックアップ</b> … 自動のひかえ<br>
+      　<b>AI-OS2026\\控え（AI-OS・暗号化）</b> … 🗄控えファイル</small></div>
 
     <h3 class="wpH">③ AI-OSの保存先に、そのフォルダを選ぶ</h3>
     <div class="wpNote" style="margin:0"><small>
@@ -7855,8 +7856,10 @@ function openDrivePanel(){
 
     <h3 class="wpH">④ 読み込みもドライブから</h3>
     <div class="wpNote" style="margin:0"><small>
-      車両AIの <b>📂 共有フォルダを覚える</b> にも <b>…\\AI-OS2026\\書類</b> を選べます。
-      いちばん新しいExcelを自動で読みにいくので、事務所のLANに行かなくても最新になります。</small></div>
+      車両AI・人事・利用者の <b>📂 共有フォルダを覚える</b> には
+      <b>G:\\マイドライブ\\AI-OS2026</b>（直下）を選んでください。
+      原本のExcelがここにあるので、いちばん新しいものを自動で読みにいきます。
+      事務所のLANに行かなくても最新になります。</small></div>
 
     <h3 class="wpH">⑤ 携帯・iPadから見る</h3>
     <div class="wpNote" style="margin:0"><small>
