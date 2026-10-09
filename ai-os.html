@@ -191,6 +191,18 @@
   .phCell img{width:100%; height:100%; object-fit:cover; display:block}
   .phCell span{position:absolute; left:4px; bottom:4px; background:rgba(0,0,0,.6); color:#fff;
     font-size:10.5px; font-weight:800; padding:1px 6px; border-radius:999px}
+  /* どの画面からでも出るカメラ（画面いっぱい） */
+  .camOv{position:fixed; inset:0; z-index:200; background:#000; display:flex;
+    flex-direction:column; align-items:center; justify-content:center}
+  .camOv video{width:100%; height:100%; object-fit:contain; background:#000}
+  .camOv.flash::after{content:''; position:absolute; inset:0; background:#fff; opacity:.75}
+  .camTtl{position:absolute; left:0; right:0; top:0; padding:12px 14px; color:#fff;
+    font-size:13px; font-weight:800; background:linear-gradient(to bottom, rgba(0,0,0,.55), rgba(0,0,0,0))}
+  .camX{position:absolute; right:12px; top:10px; border:0; border-radius:999px; cursor:pointer;
+    background:rgba(255,255,255,.22); color:#fff; font-size:12px; font-weight:800; padding:7px 12px}
+  .camStrip{position:absolute; left:0; right:0; bottom:96px; display:flex; gap:6px;
+    padding:0 12px; overflow-x:auto}
+  .camStrip img{width:54px; height:54px; object-fit:cover; border-radius:6px; border:2px solid #fff}
   /* 画面の中のカメラ */
   .camWrap{position:relative; width:100%; background:#000; border-radius:8px; overflow:hidden}
   .camWrap video{display:block; width:100%; max-height:62vh; object-fit:cover; background:#000}
@@ -4582,7 +4594,8 @@ function riyouAttHtml(u){
     <button class="wpBtn" data-rsave="${u._i}" style="font-size:11px; padding:3px 9px">⬇ PDFを保存</button>
     <button class="wpBtn" data-rdel="${u._i}" style="font-size:11px; padding:3px 9px; color:#d0503f; border-color:#e6b3ab">外す</button>`);
   return wrap(`
-    <button class="wpBtn" data-rcam="${u._i}" style="font-size:11px">📷 受給者証を撮る</button>
+    <button class="wpBtn" data-rlive="${u._i}" style="font-size:11px">📷 撮る（表・裏つづけて）</button>
+    <button class="wpBtn" data-rcam="${u._i}" style="font-size:11px">📸 1枚だけ</button>
     <button class="wpBtn" data-rpick="${u._i}" style="font-size:11px">📎 写真・PDFを選ぶ</button>
     <input type="file" data-rin="cam${u._i}" accept="image/*" capture="environment" hidden>
     <input type="file" data-rin="pick${u._i}" accept="image/*,application/pdf,.pdf" hidden>`);
@@ -4614,6 +4627,19 @@ async function riyouShowFile(i, backQ){
 function riyouBindAtt(b, q){
   const pick=(i,kind)=>b.querySelector(`[data-rin="${kind}${i}"]`);
   b.querySelectorAll('[data-rcam]').forEach(x=>x.addEventListener('click',()=>pick(x.dataset.rcam,'cam').click()));
+  b.querySelectorAll('[data-rlive]').forEach(x=>x.addEventListener('click', async ()=>{
+    const i=+x.dataset.rlive;
+    const pages=await aiosCamShoot((riyouData[i]||{}).name ? riyouData[i].name+' さんの受給者証' : '受給者証');
+    if(!pages){ if(!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)) pick(i,'cam').click(); return; }
+    try{
+      const pw=riyouPw(); if(!pw) throw new Error('画面を開き直してからお試しください');
+      const r=await aiosAttachPages(pages, '受給者証_'+(riyouData[i].name||''), pw, riyouData[i].file, 'r');
+      riyouData[i].file=r.meta; riyouData[i]._m=Date.now(); riyouPass=pw; await riyouSave(riyouData, pw);
+      riyouRenderSearch(q);
+      banner(`📄 ${riyouData[i].name}さんの受給者証を${pages.length}枚ぶん保存しました`);
+      logLine(`<b>利用者AI</b>：受給者証をカメラで保管（${pages.length}枚・この端末のみ・暗号化）`);
+    }catch(e){ alert('保存できませんでした：'+e.message); }
+  }));
   b.querySelectorAll('[data-rpick]').forEach(x=>x.addEventListener('click',()=>pick(x.dataset.rpick,'pick').click()));
   b.querySelectorAll('[data-rin]').forEach(inp=>inp.addEventListener('change', async function(){
     const f=this.files[0]; this.value=''; if(!f) return;
@@ -5762,6 +5788,67 @@ async function riyouGC(){
   riyouData.forEach(u=>{ if(u.file&&u.file.id) used.add(u.file.id); });
   await aiosFileGC(['r'], used);
 }
+/* どの画面からでも呼べるカメラ（画面いっぱい・続けて何枚でも）
+   ・おわると、撮ったページの配列を返します（やめたときは null）
+   ・映像はこの端末の中だけで扱い、どこにも送りません。終わればすぐ止めます。 */
+function aiosCamShoot(title){
+  return new Promise(async resolve=>{
+    if(!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) return resolve(null);
+    let stream=null, facing='environment';
+    const pages=[];
+    const ov=document.createElement('div'); ov.className='camOv';
+    ov.innerHTML=`<div class="camTtl">${hkEsc(title||'写真をとる')}　<b id="acN">0</b>枚</div>
+      <video id="acV" playsinline autoplay muted></video>
+      <div class="camBar">
+        <button class="camBtn" id="acFlip" title="内／外カメラ">🔄</button>
+        <button class="camShot" id="acShot" title="撮る"><span></span></button>
+        <button class="camBtn" id="acOk" title="これでおわる">✓</button>
+      </div>
+      <button class="camX" id="acX" title="やめる">✕ やめる</button>
+      <div class="camStrip" id="acStrip"></div>`;
+    document.body.appendChild(ov);
+    const stop=()=>{ try{ stream && stream.getTracks().forEach(t=>t.stop()); }catch(e){} stream=null; };
+    const close=v=>{ stop(); ov.remove(); resolve(v); };
+    const start=async f=>{
+      stop();
+      stream=await navigator.mediaDevices.getUserMedia({
+        video:{facingMode:{ideal:f}, width:{ideal:1920}, height:{ideal:1440}}, audio:false});
+      const v=ov.querySelector('#acV'); v.srcObject=stream; v.play().catch(()=>{});
+    };
+    try{ await start(facing); }
+    catch(e){ ov.remove(); return resolve(null); }
+    ov.querySelector('#acShot').addEventListener('click', async ()=>{
+      const v=ov.querySelector('#acV'); if(!v.videoWidth) return;
+      const c=document.createElement('canvas'); c.width=v.videoWidth; c.height=v.videoHeight;
+      c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+      const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',0.92)); if(!blob) return;
+      try{
+        const r=await jinShrink(new File([blob],'p.jpg',{type:'image/jpeg'}));
+        pages.push({bytes:r.jpeg, w:r.w, h:r.h});
+        const url=URL.createObjectURL(new Blob([r.jpeg],{type:'image/jpeg'}));
+        ov.querySelector('#acStrip').insertAdjacentHTML('beforeend',
+          `<img src="${url}" alt="${pages.length}枚目">`);
+        ov.querySelector('#acN').textContent=pages.length;
+        ov.classList.add('flash'); setTimeout(()=>ov.classList.remove('flash'),170);
+      }catch(e){}
+    });
+    ov.querySelector('#acFlip').addEventListener('click', async ()=>{
+      facing = facing==='environment' ? 'user' : 'environment';
+      try{ await start(facing); }catch(e){}
+    });
+    ov.querySelector('#acOk').addEventListener('click', ()=>close(pages.length?pages:null));
+    ov.querySelector('#acX').addEventListener('click', ()=>close(null));
+  });
+}
+// 撮ったページを、そのままPDFにして暗号化保存する
+async function aiosAttachPages(pages, name, pass, oldMeta, prefix){
+  const bytes = aiosPhotosToPdf(pages);
+  if(bytes.length > 8*1024*1024) throw new Error('写真が多すぎます（8MBまで）');
+  const id = (prefix||'j') + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+  await jinFilePut(id, await jinEncBytes(bytes, pass));
+  if(oldMeta && oldMeta.id){ try{ await jinFileDel(oldMeta.id); }catch(e){} }
+  return {meta:{id, name:(name||'写真')+'.pdf', size:bytes.length, src:'photo'}, bytes};
+}
 // 写真・PDFを受け取り、PDFにして暗号化保存し、目印（メタ情報）を返す
 async function aiosAttachSave(file, pass, oldMeta, prefix){
   const pdf = await jinToPdf(file);
@@ -6635,7 +6722,8 @@ function jinRenderForm(idx, draft){
       </div>${hint}`;
     return `
       <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; align-items:center">
-        <button class="wpBtn" data-fcam="${i}" style="font-size:11px">📷 資格証を撮る</button>
+        <button class="wpBtn" data-flive="${i}" style="font-size:11px">📷 撮る（表・裏つづけて）</button>
+        <button class="wpBtn" data-fcam="${i}" style="font-size:11px">📸 1枚だけ</button>
         <button class="wpBtn" data-fpick="${i}" style="font-size:11px">📎 写真・PDFを選ぶ</button>
         <span data-fmsg="${i}" style="font-size:11px; color:#7a8b80"></span>
         <input type="file" data-fin="cam${i}" accept="image/*" capture="environment" hidden>
@@ -6713,6 +6801,17 @@ function jinRenderForm(idx, draft){
     // 資格証を撮る／選ぶ
     const pickFor=(i,kind)=>qbox.querySelector(`[data-fin="${kind}${i}"]`);
     qbox.querySelectorAll('[data-fcam]').forEach(btn=>btn.addEventListener('click',()=>pickFor(+btn.dataset.fcam,'cam').click()));
+    qbox.querySelectorAll('[data-flive]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      const i=+btn.dataset.flive;
+      readQuals();
+      const pages=await aiosCamShoot((quals[i]&&quals[i].name ? quals[i].name : '資格証')+'をとる');
+      if(!pages){ if(!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)) pickFor(i,'cam').click(); return; }
+      try{
+        const r=await aiosAttachPages(pages, (quals[i].name||'資格証'), jinjiPass, quals[i].file, 'j');
+        quals[i].file=r.meta; drawQuals();
+        banner(`📄 ${quals[i].name||'資格証'}を${pages.length}枚ぶん保存しました`);
+      }catch(e){ alert('保存できませんでした：'+e.message); }
+    }));
     qbox.querySelectorAll('[data-fpick]').forEach(btn=>btn.addEventListener('click',()=>pickFor(+btn.dataset.fpick,'pick').click()));
     qbox.querySelectorAll('[data-fin]').forEach(inp=>inp.addEventListener('change', async function(){
       const f=this.files[0]; this.value=''; if(!f) return;
@@ -7163,7 +7262,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-08j';
+const AIOS_VER = '2026-10-09a';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
