@@ -191,6 +191,12 @@
   .phCell img{width:100%; height:100%; object-fit:cover; display:block}
   .phCell span{position:absolute; left:4px; bottom:4px; background:rgba(0,0,0,.6); color:#fff;
     font-size:10.5px; font-weight:800; padding:1px 6px; border-radius:999px}
+  /* 控え（バックアップ） */
+  .bkList{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:7px; margin:10px 0 0}
+  .bkList div{display:flex; justify-content:space-between; align-items:center; gap:8px;
+    border:1px solid var(--line); border-radius:6px; background:#fff; padding:8px 11px; font-size:12px}
+  .bkList b{font-weight:700; color:var(--ink)}
+  .bkList span{color:var(--sub); font-weight:800}
   /* どの画面からでも出るカメラ（画面いっぱい） */
   .camOv{position:fixed; inset:0; z-index:200; background:#000; display:flex;
     flex-direction:column; align-items:center; justify-content:center}
@@ -1148,6 +1154,11 @@ const AI_ICON = (()=>{
     <circle cx="35" cy="23" r="2.2" fill="#3a9d5d"/>
     <rect x="13" y="28" width="22" height="14" rx="2" fill="#e9eef2" stroke="#5c6b78" stroke-width="1.6"/>
     <path d="M17 33h14M17 37h10" stroke="#9aa7b3" stroke-width="2.2"/>`)},
+  控え: { bg:'#4a7a6a', svg:S(`
+    <rect x="7" y="10" width="34" height="28" rx="3" fill="${W}"/>
+    <rect x="7" y="10" width="34" height="7" rx="3" fill="#bfe0d4"/>
+    <path d="M24 21v11M24 32l-5-5M24 32l5-5" stroke="#4a7a6a" stroke-width="3"/>
+    <rect x="15" y="34" width="18" height="3" rx="1.5" fill="#bfe0d4"/>`)},
   写真: { bg:'#4a5a6b', svg:S(`
     <path d="M8 15h7l3-4h12l3 4h7a3 3 0 013 3v17a3 3 0 01-3 3H8a3 3 0 01-3-3V18a3 3 0 013-3z" fill="${W}"/>
     <circle cx="24" cy="26" r="8" fill="#4a5a6b"/>
@@ -4432,6 +4443,7 @@ function openRiyouPanel(){
 }
 function riyouNote(){
   return `<div class="wpNote" style="background:#fdf6ec; border-color:#e6cfa5">
+    📌 <b>ここが原本です。</b>入力と修正はこの画面で行い、Excelは提出・印刷のときに出します。<br>
     🔐 <b>利用者さんの個人情報</b>を扱います。データは<b>合言葉で暗号化して${aiosThis()}の中だけ</b>に保存され、
     公開ページやインターネットには一切出ません（この画面の処理もすべて端末内で行われます）。</div>`;
 }
@@ -6385,7 +6397,8 @@ function openJinjiPanel(){
   p.hidden=false; jinRender();
 }
 function jinNote(){
-  return `<div class="wpNote">🔐 従業員の情報は<b>合言葉で暗号化</b>して、<b>${aiosThis()}の中だけ</b>に保存します。
+  return `<div class="wpNote">📌 <b>ここが原本です。</b>入力と修正はこの画面で行い、Excelは提出・印刷のときに出します。<br>
+    🔐 従業員の情報は<b>合言葉で暗号化</b>して、<b>${aiosThis()}の中だけ</b>に保存します。
     インターネット上の公開ページには一切出ません。</div>`;
 }
 
@@ -7262,7 +7275,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-09a';
+const AIOS_VER = '2026-10-09c';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
@@ -7623,6 +7636,167 @@ function openPhotoPanel(){
 }
 // ほかの画面に行ったとき・アプリを閉じたときも止めます
 document.addEventListener('visibilitychange', ()=>{ if(document.hidden) photoCamStop(); });
+
+/* =========================================================================
+   ▼▼▼ 控え（バックアップ）：ぜんぶまとめて1つのファイルに ▼▼▼
+   ねらい：AI-OSを「原本」にして、事務所の共有フォルダまで行かなくても
+           仕事が進むようにする。そのかわり控えは必ず取れるようにする。
+   中身：従業員・受給者証（それぞれの合言葉で暗号化されたまま）
+         車両・カレンダー・議事録・設定（この画面の合言葉で暗号化してから入れる）
+         写真・PDFの添付（すでに暗号化されたまま）
+   ★どの部分も暗号化して入れます。合言葉を知らない人には開けません。
+   ★置き場所は「ファイル」アプリのiCloud Drive や Google Drive がおすすめです。
+   ========================================================================= */
+const BK_LAST  = 'aiosBkLastV1';            // 最後に控えを取った日時
+const BK_EXT   = '.aiosbackup';
+// ★このファイルの後ろで決めている名前もあるので、使うときに組み立てます
+const BK_PLAIN_KEYS = ()=> [SHARYOU_PLAIN, SHARYOU_KEY, GIJI_PLAIN, CALEV_KEY, CAL_KEY, CAL_MODE,
+                       CALKIND_KEY, AIOS_HIST, 'aiosRecentV1', 'aiosKoubouUrlV1'];
+const BK_SEC_KEYS   = ()=> [JINJI_KEY, RIYOU_KEY];
+const bkLast    = ()=>{ try{ return localStorage.getItem(BK_LAST)||''; }catch(e){ return ''; } };
+const bkSetLast = ()=>{ try{ localStorage.setItem(BK_LAST, new Date().toISOString()); }catch(e){} };
+function bkDaysSince(){
+  const t=bkLast(); if(!t) return null;
+  const d=new Date(t); if(isNaN(d)) return null;
+  return Math.floor((Date.now()-d.getTime())/86400000);
+}
+function bkWhen(){
+  const t=bkLast(); if(!t) return 'まだ一度も取っていません';
+  const d=new Date(t), p=n=>('0'+n).slice(-2);
+  return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+// いま端末に入っている量（控えを取る前のめやす）
+function bkCounts(){
+  const n=k=>{ try{ const o=JSON.parse(localStorage.getItem(k)); return o&&o.n!==undefined?o.n:null; }catch(e){ return null; } };
+  const arr=k=>{ try{ const a=JSON.parse(localStorage.getItem(k)); return Array.isArray(a)?a.length:0; }catch(e){ return 0; } };
+  return { jin:n(JINJI_KEY), riyou:n(RIYOU_KEY), sha:arr(SHARYOU_PLAIN), giji:arr(GIJI_PLAIN), cal:arr(CALEV_KEY) };
+}
+// 控えを作る（ぜんぶ入り・暗号化）
+async function bkMakeBlob(pass){
+  const sec={}, plain={};
+  BK_SEC_KEYS().forEach(k=>{ const v=localStorage.getItem(k); if(v){ try{ sec[k]=JSON.parse(v); }catch(e){} } });
+  BK_PLAIN_KEYS().forEach(k=>{ const v=localStorage.getItem(k); if(v!==null) plain[k]=v; });
+  // 合言葉なしで持っている分は、ここで暗号化してから入れます
+  const tmp='__aiosBkTmp';
+  await secSave(tmp, plain, pass);
+  let env=null; try{ env=JSON.parse(localStorage.getItem(tmp)); }catch(e){}
+  localStorage.removeItem(tmp);
+  // 写真・PDFの添付（すでに暗号化されたまま）
+  const files={};
+  try{
+    for(const k of (await jinFileKeys())||[]){
+      const rec=await jinFileGet(k); if(!rec||!rec.ct) continue;
+      files[String(k)]={v:1, salt:aiosB64(rec.salt), iv:aiosB64(rec.iv), ct:aiosB64(rec.ct)};
+    }
+  }catch(e){}
+  const body=JSON.stringify({v:3, kind:'full', at:new Date().toISOString(), sec, plain:env, files});
+  return new Blob([body], {type:'application/json'});
+}
+// 控えをもどす
+async function bkRestore(file, pass){
+  const txt=await file.text();
+  let o=null; try{ o=JSON.parse(txt); }catch(e){}
+  if(!o || o.kind!=='full' || !o.plain) throw new Error('AI-OSの控えファイルではありません');
+  const tmp='__aiosBkTmp';
+  localStorage.setItem(tmp, JSON.stringify(o.plain));
+  let plain=null;
+  try{ plain=await secLoad(tmp, pass); }
+  catch(e){ localStorage.removeItem(tmp); throw new Error('合言葉が違います（控えを取ったときの合言葉を入れてください）'); }
+  localStorage.removeItem(tmp);
+  Object.keys(o.sec||{}).forEach(k=>{ try{ localStorage.setItem(k, JSON.stringify(o.sec[k])); }catch(e){} });
+  Object.keys(plain||{}).forEach(k=>{ try{ localStorage.setItem(k, plain[k]); }catch(e){} });
+  let nf=0;
+  for(const id of Object.keys(o.files||{})){
+    const f=o.files[id]; if(!f||!f.ct) continue;
+    try{ await jinFilePut(id, {v:1, salt:b64.dec(f.salt), iv:b64.dec(f.iv), ct:b64.dec(f.ct).buffer}); nf++; }catch(e){}
+  }
+  return {at:o.at, files:nf, people:(o.sec&&o.sec[JINJI_KEY]&&o.sec[JINJI_KEY].n)||0};
+}
+function bkRender(){
+  const b=document.getElementById('bkBody'); if(!b) return;
+  const c=bkCounts(), d=bkDaysSince();
+  const warn = d===null ? 'まだ一度も控えを取っていません。'
+             : d>=7 ? `前の控えから <b>${d}日</b> たっています。`
+             : `前の控えは ${d}日前です。`;
+  b.innerHTML = `<div class="wpNote" style="${(d===null||d>=7)?'background:#fff6e6; border-color:#e6cfa5':''}">
+      🗄 <b>ぜんぶまとめて、1つのファイルに控えます</b><br>
+      ${warn}（最後の控え：${bkWhen()}）</div>
+
+    <div class="bkList">
+      <div><b>🧑‍💼 従業員</b><span>${c.jin!==null?c.jin+'名':'未登録'}</span></div>
+      <div><b>👤 受給者証</b><span>${c.riyou!==null?c.riyou+'名':'未登録'}</span></div>
+      <div><b>🚗 車両</b><span>${c.sha?c.sha+'台':'未登録'}</span></div>
+      <div><b>📝 議事録</b><span>${c.giji?c.giji+'件':'なし'}</span></div>
+      <div><b>🗓 予定</b><span>${c.cal?c.cal+'件':'なし'}</span></div>
+      <div><b>📄 写真・PDF</b><span id="bkFiles">かぞえています…</span></div>
+    </div>
+
+    <h3 class="wpH">控えを取る</h3>
+    <div class="wpNote" style="margin:0 0 9px">
+      <small>合言葉で暗号化してから保存します。<b>置き場所は「ファイル」アプリの
+      iCloud Drive か Google Drive がおすすめ</b>です（事務所に行かなくても戻せます）。
+      中身は暗号のままなので、AppleにもGoogleにも読めません。</small></div>
+    <input type="password" id="bkPass" placeholder="控えの合言葉（4文字以上）" autocomplete="new-password"
+      style="width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:6px; font-size:16px">
+    <div class="calBar" style="margin-top:9px">
+      <button class="wpBtn primary" id="bkGo">🗄 控えを取る</button>
+      <button class="wpBtn" id="bkIn">📥 控えからもどす</button>
+    </div>
+    <input type="file" id="bkFile" accept=".aiosbackup,.aiosdata,application/json,.json" hidden>
+
+    <div class="wpNote" style="margin-top:12px">
+      📌 <b>おすすめの置き場所（iPhone・iPad）</b><br>
+      <small>「ファイル」アプリ →（…）→「サーバへ接続」で共有フォルダもつなげますが、
+      <b>外からは見えません</b>。iCloud Drive か Google Drive に置けば、どこからでも戻せます。<br>
+      パソコンでは、画面いちばん下の「🗄 バックアップ先」に同じ場所を指しておくと自動で2か所に残ります。</small></div>`;
+  (async()=>{
+    try{ const k=(await jinFileKeys())||[]; const el=document.getElementById('bkFiles');
+      if(el) el.textContent = k.length? k.length+'件' : 'なし';
+    }catch(e){ const el=document.getElementById('bkFiles'); if(el) el.textContent='—'; }
+  })();
+  document.getElementById('bkGo').addEventListener('click', async ()=>{
+    const pw=document.getElementById('bkPass').value;
+    if(!pw || pw.length<4){ alert('控えの合言葉を4文字以上で入れてください'); return; }
+    try{
+      const blob=await bkMakeBlob(pw);
+      const d=new Date(), p=n=>('0'+n).slice(-2);
+      const fn=`AI-OS控え_${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${BK_EXT}`;
+      const r=await aiosDeliver(blob, fn, 'bkBody', null);
+      if(r && r.aborted) return;
+      bkSetLast(); bkRender();
+      banner(`🗄 控えを取りました（${aiosSizeText(blob.size)}）`);
+      logLine(`<b>控え</b>：ぜんぶまとめて保存（${aiosSizeText(blob.size)}・暗号化）`);
+    }catch(e){ alert('控えを作れませんでした：'+(e.message||e)); }
+  });
+  document.getElementById('bkIn').addEventListener('click', ()=>document.getElementById('bkFile').click());
+  document.getElementById('bkFile').addEventListener('change', async function(){
+    const f=this.files[0]; this.value=''; if(!f) return;
+    const pw=document.getElementById('bkPass').value;
+    if(!pw){ alert('控えを取ったときの合言葉を入れてから、もう一度お選びください'); return; }
+    if(!confirm('この端末のいまの中身を、控えの内容で置きかえます。\n\n従業員・受給者証・車両・議事録・予定・写真が、控えを取ったときの状態にもどります。\n\nよろしいですか？')) return;
+    try{
+      const r=await bkRestore(f, pw);
+      alert('もどしました。画面を読み直します。\n\n控えの日付：'+(r.at?new Date(r.at).toLocaleString('ja-JP'):'—')
+            +'\n写真・PDF：'+r.files+'件');
+      location.reload();
+    }catch(e){ alert('もどせませんでした：'+(e.message||e)); }
+  });
+}
+function openBackupPanel(){
+  let p=document.getElementById('bkPanel');
+  if(!p){
+    p=document.createElement('div'); p.className='modal'; p.id='bkPanel';
+    p.innerHTML=`<div class="sheet" style="max-width:720px">
+      <div class="sheetHead"><b>🗄 控え（バックアップ）</b><span class="grow"></span>
+        <button onclick="document.getElementById('bkPanel').hidden=true">✕</button></div>
+      <div class="sheetBody" id="bkBody"></div></div>`;
+    p.addEventListener('click',ev=>{ if(ev.target.id==='bkPanel') p.hidden=true; });
+    document.body.appendChild(p);
+  }
+  p.hidden=false; bkRender();
+}
+/* ▲▲▲ 控え ここまで ▲▲▲ */
+
 /* ▲▲▲ 写真 ここまで ▲▲▲ */
 
 /* ▲▲▲ カレンダー ここまで ▲▲▲ */
@@ -8444,6 +8618,7 @@ const HOME_MENU = [
   {g:'設備', items:[
     {k:'車両',     n:'車両',     d:'車検・自賠責・任意保険の期限',     fn:()=>openSharyouPanel()},
     {k:'ポチパス', n:'ポチパス',    d:'ポチパスを開く・連携',            fn:()=>openPochiPanel()},
+    {k:'控え',     n:'控え（バックアップ）', d:'ぜんぶまとめて保存・もどす',  fn:()=>openBackupPanel()},
     {k:'書類棚',   n:'書類棚',      d:'理念手帳など保管した書類',         fn:()=>openShelfPanel()},
     {k:'プリンター', n:'プリンター', d:'印刷メニュー',                   fn:()=>openPrinterPanel()},
     {k:'DX',       n:'DX',      d:'自動化のしくみ'},
@@ -8470,6 +8645,13 @@ function homeOpen(k){
 function homeToday(){
   const out=[];
   const push=(lv,k,t,s,sub)=>out.push({lv,k,t,s,sub});
+  // 控え（AI-OSが原本なので、ここだけは忘れないように出します）
+  try{
+    const d=bkDaysSince();
+    if(d===null) push('red','控え','データの控えをとりましょう','まだ一度もありません',
+      'ぜんぶまとめて1つのファイルに。iCloud Drive か Google Drive に置けば、どこからでも戻せます');
+    else if(d>=7) push('orange','控え','データの控えをとりましょう',`前回から${d}日`, bkWhen()+' 以来');
+  }catch(e){}
   // 車両（合言葉なしで読めます）
   try{
     for(const v of (shaRead()||[])){
