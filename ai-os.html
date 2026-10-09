@@ -7285,7 +7285,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-09h';
+const AIOS_VER = '2026-10-09i';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
@@ -7868,11 +7868,14 @@ function openDrivePanel(){
       <b>共有メニュー →「"ファイル"に保存」→ Googleドライブ</b> が選べます。</small></div>
 
     <div class="wpNote" style="margin-top:12px; background:#fff6e6; border-color:#e6cfa5">
-      ⚠ <b>気をつけること</b><br>
-      <small>・Googleドライブに置いた書類は、<b>Googleのサーバーにそのまま保存</b>されます。
-      利用者さん・職員の個人情報を含む書類を置く場合は、<b>会社のGoogle Workspace</b>を使い、
-      共有範囲を「自分だけ」または社内だけにしてください。<br>
-      ・AI-OSの <b>🗄 控え</b> は暗号化されているので、ドライブに置いてもGoogleには読めません。</small></div>`;
+      ⚠ <b>個人情報をドライブに置くときの約束ごと</b><br>
+      <small>Googleドライブに置いた書類は、<b>Googleのサーバーにそのまま保存</b>されます。
+      名簿や受給者証など個人情報を含むものを置くので、つぎの4つを守ってください。<br>
+      　① <b>だれにも共有しない</b>（フォルダの共有は「自分のみ」。リンクを配らない）<br>
+      　② Googleアカウントに <b>2段階認証</b> をかける<br>
+      　③ パソコン・携帯に <b>画面ロック</b> をかける（紛失時にドライブごと見られないように）<br>
+      　④ 退職者の名簿など、<b>不要になったものは消す</b>（ゴミ箱も空に）<br>
+      AI-OSの <b>🗄 控え</b> は暗号化されているので、置いてもGoogleには読めません。</small></div>`;
 }
 /* ▲▲▲ Googleドライブのご案内 ここまで ▲▲▲ */
 
