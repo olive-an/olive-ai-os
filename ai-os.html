@@ -4449,7 +4449,6 @@ function openRiyouPanel(){
 }
 function riyouNote(){
   return `<div class="wpNote" style="background:#fdf6ec; border-color:#e6cfa5">
-    📌 <b>ここが原本です。</b>入力と修正はこの画面で行い、Excelは提出・印刷のときに出します。<br>
     🔐 <b>利用者さんの個人情報</b>を扱います。データは<b>合言葉で暗号化して${aiosThis()}の中だけ</b>に保存され、
     公開ページやインターネットには一切出ません（この画面の処理もすべて端末内で行われます）。</div>`;
 }
@@ -6403,8 +6402,7 @@ function openJinjiPanel(){
   p.hidden=false; jinRender();
 }
 function jinNote(){
-  return `<div class="wpNote">📌 <b>ここが原本です。</b>入力と修正はこの画面で行い、Excelは提出・印刷のときに出します。<br>
-    🔐 従業員の情報は<b>合言葉で暗号化</b>して、<b>${aiosThis()}の中だけ</b>に保存します。
+  return `<div class="wpNote">🔐 従業員の情報は<b>合言葉で暗号化</b>して、<b>${aiosThis()}の中だけ</b>に保存します。
     インターネット上の公開ページには一切出ません。</div>`;
 }
 
@@ -7281,7 +7279,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-09d';
+const AIOS_VER = '2026-10-09e';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
