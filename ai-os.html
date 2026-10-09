@@ -7285,7 +7285,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-09f';
+const AIOS_VER = '2026-10-09g';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
@@ -7839,21 +7839,23 @@ function openDrivePanel(){
       <div style="margin-top:7px"><small>会社のGoogleアカウントでログインします。
       入れ終わると、エクスプローラーに <b>G:（Google Drive）</b> が出ます。</small></div></div>
 
-    <h3 class="wpH">② ドライブの中に置き場所を作る</h3>
+    <h3 class="wpH">② 置き場所（作成ずみ）</h3>
     <div class="wpNote" style="margin:0"><small>
-      例：<b>G:\\マイドライブ\\おりーぶ庵\\AI作成</b>　と
-      <b>G:\\マイドライブ\\おりーぶ庵\\バックアップ</b> の2つ</small></div>
+      マイドライブに <b>AI-OS2026</b> を用意してあります。中は3つです。<br>
+      　<b>G:\\マイドライブ\\AI-OS2026\\書類</b> … できあがった書類<br>
+      　<b>G:\\マイドライブ\\AI-OS2026\\バックアップ</b> … 自動のひかえ<br>
+      　<b>G:\\マイドライブ\\AI-OS2026\\控え（AI-OS・暗号化）</b> … 🗄控えファイル</small></div>
 
     <h3 class="wpH">③ AI-OSの保存先に、そのフォルダを選ぶ</h3>
     <div class="wpNote" style="margin:0"><small>
-      画面いちばん下の <b>📁 保存先フォルダを設定</b> → <b>G:\\マイドライブ\\おりーぶ庵\\AI作成</b><br>
-      <b>🗄 バックアップ先</b> → <b>…\\バックアップ</b><br>
-      これで、シフト集計表・変更届・付表12・勤務形態一覧表・議事録・控え が
+      画面いちばん下の <b>📁 保存先フォルダを設定</b> → <b>G:\\マイドライブ\\AI-OS2026\\書類</b><br>
+      <b>🗄 バックアップ先</b> → <b>…\\AI-OS2026\\バックアップ</b><br>
+      これで、シフト集計表・変更届・付表12・勤務形態一覧表・議事録が
       <b>保存した瞬間にドライブへ入ります</b>（1回だけの設定で、次からは自動です）。</small></div>
 
     <h3 class="wpH">④ 読み込みもドライブから</h3>
     <div class="wpNote" style="margin:0"><small>
-      車両AIの <b>📂 共有フォルダを覚える</b> にも、同じドライブのフォルダを選べます。
+      車両AIの <b>📂 共有フォルダを覚える</b> にも <b>…\\AI-OS2026\\書類</b> を選べます。
       いちばん新しいExcelを自動で読みにいくので、事務所のLANに行かなくても最新になります。</small></div>
 
     <h3 class="wpH">⑤ 携帯・iPadから見る</h3>
