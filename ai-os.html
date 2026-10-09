@@ -763,6 +763,7 @@
       <button id="setBk">🗄 バックアップ先（任意）</button>
       <label style="font-size:11px"><input type="checkbox" id="bkChk" checked> バックアップを作成</label>
       <button id="clrDir">解除</button>
+      <button id="driveHelp" title="Googleドライブに保存するやり方">📘 Googleドライブに保存するには</button>
       <span id="dirLabel">保存先：未設定（現在はダウンロードフォルダ）</span>
     </div>
   </div>
@@ -1718,7 +1719,7 @@ function aiosUpdateDirLabel(){
   const el=document.getElementById('dirLabel'); if(!el) return;
   // iPad/iPhoneには「保存先フォルダを決める」しくみが無いので、ボタンを出さずに案内だけにする
   if(!window.showDirectoryPicker){
-    ['setDir','setBk','clrDir'].forEach(id=>{ const b=document.getElementById(id); if(b) b.style.display='none'; });
+    ['setDir','setBk','clrDir','driveHelp'].forEach(id=>{ const b=document.getElementById(id); if(b) b.style.display='none'; });
     const c=document.getElementById('bkChk'); if(c && c.parentElement) c.parentElement.style.display='none';
     const sh = aiosSavePref()==='share';
     el.innerHTML = '📱 保存のしかた：'
@@ -1737,6 +1738,7 @@ function aiosUpdateDirLabel(){
          : (aiosBackupOn ? '（＋サブフォルダ「バックアップ」に自動保存）' : '（バックアップOFF）'));
   } else el.textContent='保存先：未設定（現在はダウンロードフォルダ）';
 }
+document.getElementById('driveHelp').addEventListener('click', ()=>openDrivePanel());
 document.getElementById('setDir').addEventListener('click', ()=>aiosPickDir('main'));
 document.getElementById('setBk').addEventListener('click', ()=>aiosPickDir('backup'));
 document.getElementById('clrDir').addEventListener('click', aiosClearDir);
@@ -4041,15 +4043,18 @@ function aiosHandoffNote(what){
   const dir = aiosMainDir ? `フォルダ「${hkEsc(aiosMainDir.name)}」` : 'ダウンロードフォルダ';
   if(!aiosIsPC()) return `<div class="wpNote" style="margin:8px 0 0">
     📲 <b>この端末（iPad・携帯）での${what}の受けわたし</b><br>
-    ① パソコンから渡されたファイルは「${aiosInLbl()}」→「ファイル」アプリで選びます<br>
-    ② この端末で書いた内容・撮った写真は「${aiosOutLbl()}」でファイルにして、パソコンで受け取ります<br>
+    ① パソコンから渡されたファイルは「${aiosInLbl()}」→「ファイル」アプリの
+       <b>Googleドライブ</b>から選びます<br>
+    ② この端末で書いた内容・撮った写真は「${aiosOutLbl()}」→ 共有メニュー →
+       「"ファイル"に保存」→ <b>Googleドライブ</b>に置きます<br>
     <small>※写真・PDFも一緒に入ります。ファイルは暗号化したままで、同じ合言葉でしか開けません。</small></div>`;
   return `<div class="wpNote" style="margin:8px 0 0">
     📲 <b>iPad・携帯でも${what}を見るには</b><br>
     ① このパソコンで「${aiosOutLbl()}」→ ${dir}にファイルができます<br>
-    ② そのファイルを共有フォルダ（例：\\\\192.168.10.100\\kyoutsu\\AI作成）に置きます<br>
-    　<small>画面いちばん下の「📁 保存先フォルダを設定」を共有フォルダにしておくと、②は要りません</small><br>
-    ③ iPad・携帯で「📥 パソコンから受け取る」→「ファイル」アプリからそのファイルを選びます<br>
+    ② そのファイルを<b>Googleドライブ</b>（例：G:\\マイドライブ\\おりーぶ庵\\AI作成）に置きます<br>
+    　<small>画面いちばん下の「📁 保存先フォルダを設定」をドライブのフォルダにしておくと、②は要りません
+    （やり方は「📘 Googleドライブに保存するには」）</small><br>
+    ③ iPad・携帯で「📥 パソコンから受け取る」→「ファイル」アプリの<b>Googleドライブ</b>から選びます<br>
     ④ iPadで書いた内容・撮った写真は、iPadの「💻 パソコンへ返す」→ このパソコンで「${aiosInLbl()}」<br>
     <small>※写真・PDFも一緒に入ります。ファイルは暗号化したままです。同じ合言葉（この端末と同じもの）でしか開けません。</small></div>`;
 }
@@ -5271,7 +5276,8 @@ function shaShareNote(){
   if(!aiosShareName)
     return `<div class="wpNote" style="margin-bottom:8px">📂 <b>共有フォルダを覚える</b>と、次からは画面を開くだけで
       いちばん新しい車両管理表を自動で読み込みます（ファイルを選ぶ操作が要りません）。<br>
-      <small>共有フォルダ（例：\\\\192.168.10.100\\kyoutsu\\AI作成）を選んでください。
+      <small>共有フォルダ（例：\\\\192.168.10.100\\kyoutsu\\AI作成）や
+      <b>Googleドライブのフォルダ（例：G:\\マイドライブ\\おりーぶ庵\\AI作成）</b>を選んでください。
       中身は${aiosThis()}の中だけで読み、公開ページには一切送りません。</small></div>`;
   const src = shaSrc();
   return `<div class="wpNote" style="margin-bottom:8px; background:#eef7f0">
@@ -7279,7 +7285,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-09e';
+const AIOS_VER = '2026-10-09f';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
@@ -7799,6 +7805,72 @@ function openBackupPanel(){
   }
   p.hidden=false; bkRender();
 }
+
+/* =========================================================================
+   ▼▼▼ Googleドライブに保存するやり方（ご案内だけ） ▼▼▼
+   ★AI-OSがGoogleに接続するのではありません。
+     パソコンに「Googleドライブ パソコン版」を入れると、ドライブが
+     ふつうのフォルダ（Gドライブ）として見えるので、AI-OSの保存先に
+     そのフォルダを選ぶだけで、できあがった書類がドライブに入ります。
+   ========================================================================= */
+function openDrivePanel(){
+  let p=document.getElementById('drivePanel');
+  if(!p){
+    p=document.createElement('div'); p.className='modal'; p.id='drivePanel';
+    p.innerHTML=`<div class="sheet" style="max-width:760px">
+      <div class="sheetHead"><b>📘 Googleドライブに保存するには</b><span class="grow"></span>
+        <button onclick="document.getElementById('drivePanel').hidden=true">✕</button></div>
+      <div class="sheetBody" id="driveBody"></div></div>`;
+    p.addEventListener('click',ev=>{ if(ev.target.id==='drivePanel') p.hidden=true; });
+    document.body.appendChild(p);
+  }
+  p.hidden=false;
+  document.getElementById('driveBody').innerHTML = `
+    <div class="wpNote">
+      📘 <b>できあがった書類を、そのままGoogleドライブに入れられます。</b><br>
+      <small>AI-OSがGoogleにつなぐのではありません。パソコンにGoogleドライブを入れると、
+      ドライブが<b>ふつうのフォルダ（Gドライブ）</b>として見えるようになります。
+      AI-OSの保存先にそのフォルダを選ぶだけです。</small></div>
+
+    <h3 class="wpH">① パソコンに「Googleドライブ パソコン版」を入れる（1回だけ）</h3>
+    <div class="wpNote" style="margin:0">
+      <a class="wpBtn" href="https://www.google.com/intl/ja/drive/download/" target="_blank" rel="noopener"
+         style="text-decoration:none">🔗 ダウンロードのページを開く</a>
+      <div style="margin-top:7px"><small>会社のGoogleアカウントでログインします。
+      入れ終わると、エクスプローラーに <b>G:（Google Drive）</b> が出ます。</small></div></div>
+
+    <h3 class="wpH">② ドライブの中に置き場所を作る</h3>
+    <div class="wpNote" style="margin:0"><small>
+      例：<b>G:\\マイドライブ\\おりーぶ庵\\AI作成</b>　と
+      <b>G:\\マイドライブ\\おりーぶ庵\\バックアップ</b> の2つ</small></div>
+
+    <h3 class="wpH">③ AI-OSの保存先に、そのフォルダを選ぶ</h3>
+    <div class="wpNote" style="margin:0"><small>
+      画面いちばん下の <b>📁 保存先フォルダを設定</b> → <b>G:\\マイドライブ\\おりーぶ庵\\AI作成</b><br>
+      <b>🗄 バックアップ先</b> → <b>…\\バックアップ</b><br>
+      これで、シフト集計表・変更届・付表12・勤務形態一覧表・議事録・控え が
+      <b>保存した瞬間にドライブへ入ります</b>（1回だけの設定で、次からは自動です）。</small></div>
+
+    <h3 class="wpH">④ 読み込みもドライブから</h3>
+    <div class="wpNote" style="margin:0"><small>
+      車両AIの <b>📂 共有フォルダを覚える</b> にも、同じドライブのフォルダを選べます。
+      いちばん新しいExcelを自動で読みにいくので、事務所のLANに行かなくても最新になります。</small></div>
+
+    <h3 class="wpH">⑤ 携帯・iPadから見る</h3>
+    <div class="wpNote" style="margin:0"><small>
+      <b>Googleドライブのアプリ</b>を入れておけば、同じ書類がそのまま見られます。<br>
+      「ファイル」アプリにもGoogleドライブが出るので、AI-OSの保存で
+      <b>共有メニュー →「"ファイル"に保存」→ Googleドライブ</b> が選べます。</small></div>
+
+    <div class="wpNote" style="margin-top:12px; background:#fff6e6; border-color:#e6cfa5">
+      ⚠ <b>気をつけること</b><br>
+      <small>・Googleドライブに置いた書類は、<b>Googleのサーバーにそのまま保存</b>されます。
+      利用者さん・職員の個人情報を含む書類を置く場合は、<b>会社のGoogle Workspace</b>を使い、
+      共有範囲を「自分だけ」または社内だけにしてください。<br>
+      ・AI-OSの <b>🗄 控え</b> は暗号化されているので、ドライブに置いてもGoogleには読めません。</small></div>`;
+}
+/* ▲▲▲ Googleドライブのご案内 ここまで ▲▲▲ */
+
 /* ▲▲▲ 控え ここまで ▲▲▲ */
 
 /* ▲▲▲ 写真 ここまで ▲▲▲ */
