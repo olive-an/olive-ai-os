@@ -91,13 +91,11 @@
 ## デプロイ・構成
 
 - 本リポジトリは「おりーぶ庵 AI-OS」専用（`ai-os.html` 1ファイル完結）。
-- **公開URL（最新・確認ずみ）**: https://olive-an.github.io/olive-ai-os/ai-os.html
-  GitHub Pages がmainへのpushごとに自動公開している（deployments APIで成功を確認）。
-- Netlify `olive-ai-os`（https://olive-ai-os.netlify.app/ai-os.html）は
-  **2026-10-08時点で古い版のまま＝このリポジトリと連携できていない**。
-  このリポジトリにNetlify用のGitHub Actionsワークフローは存在しない。
-  直すには Netlify の Site configuration → Build & deploy → Link repository で
-  `olive-an/olive-ai-os` の main につなぎ直す（publish dir は `.`）。
+- **公開URLはここだけ**: https://olive-an.github.io/olive-ai-os/ai-os.html
+  （短い形 https://olive-an.github.io/olive-ai-os/ でも index.html から転送される）
+  GitHub Pages がmainへのpushごとに自動公開する。
+- **Netlifyは使わない**（2026-10-09に連携解除。netlify.toml も削除した）。
+  netlify.app のURLは案内しないこと。
 - シフト希望フォーム本番は別リポジトリ `olive-an/olive-anshift`（index.html）。本リポジトリからは触らない。
 - 利用者・職員の実個人情報を、公開されるファイル（ai-os.html等）やサンプルに埋め込まない。
 

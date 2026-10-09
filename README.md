@@ -4,8 +4,7 @@ AI社員が働く会社画面。障害福祉サービス事業（共同生活援
 
 **公開URL**: https://olive-an.github.io/olive-ai-os/ai-os.html （GitHub Pages・mainへのpushで自動公開）
 
-> Netlify（https://olive-ai-os.netlify.app/ai-os.html）は2026-10-08時点で古い版のまま。
-> このリポジトリと連携できていないため、つなぎ直すまでは上のGitHub PagesのURLを使う。
+> Netlifyは2026-10-09に連携解除。netlify.toml も削除した。公開先はGitHub Pagesだけ。
 
 ## 実装済みの業務（本物）
 
@@ -21,7 +20,6 @@ AI社員が働く会社画面。障害福祉サービス事業（共同生活援
 ## 構成
 
 - `ai-os.html` … 1ファイル完結のアプリ本体（外部ライブラリ：SheetJS＝読取専用・JSZip）
-- `netlify.toml` … 公開設定（`/` → `/ai-os.html`）
 - `CLAUDE.md` … 開発ルール（元フォーマット完全維持ほか）
 
 ※シフト希望フォーム本番は別リポジトリ [`olive-an/olive-anshift`](https://github.com/olive-an/olive-anshift)。
