@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>名刺管理 | おりーぶ庵</title>
+<link rel="icon" href="favicon.ico">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+:root{--navy:#1b2a49;--gold:#c9a45c;--bg:#edf0f7;--card:#fff;--text:#1b2a49;--sub:#6b7691;--line:#dde2ee;--danger:#c0392b;--ok:#2e7d5b}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",sans-serif;-webkit-text-size-adjust:100%}
+body{padding-bottom:calc(76px + env(safe-area-inset-bottom))}
+header{background:var(--navy);border-bottom:3px solid var(--gold);padding:12px 16px;color:#fff;font-weight:700;font-size:18px;position:sticky;top:0;z-index:5}
+main{padding:14px 16px;max-width:720px;margin:0 auto}
+.card{background:var(--card);border-radius:16px;box-shadow:0 1px 4px rgba(27,42,73,.08)}
+input,select,textarea{width:100%;box-sizing:border-box;font:inherit;font-size:16px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--text)}
+textarea{min-height:70px}
+label{display:block;font-size:12px;font-weight:700;color:var(--sub);margin:12px 0 4px}
+.row{display:flex;gap:8px;align-items:center}
+.row>*{flex:1}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 14px;font-size:14px;font-weight:700;color:var(--navy);cursor:pointer}
+.chip small{color:var(--sub);font-weight:700;margin-left:4px}
+.chip.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.chip.on small{color:#cfd6e8}
+.btn{display:inline-block;border:0;border-radius:12px;padding:13px 18px;font-size:16px;font-weight:700;background:var(--navy);color:#fff;cursor:pointer;text-align:center}
+.btn.gold{background:var(--gold);color:#1b2a49}
+.btn.ghost{background:#eef1f8;color:var(--navy)}
+.btn.danger{background:#fdecea;color:var(--danger)}
+.btn:disabled{opacity:.5}
+.item{padding:14px 16px;margin-bottom:10px;cursor:pointer;display:flex;gap:12px;align-items:center}
+.item img{width:84px;height:54px;object-fit:cover;border-radius:6px;background:#000;flex:none}
+.item .co{font-size:12px;color:var(--sub);font-weight:700}
+.item .nm{font-size:18px;font-weight:800}
+.item .ti{font-size:13px;color:var(--sub)}
+.empty{text-align:center;color:var(--sub);padding:40px 0;font-size:14px;line-height:1.8}
+nav{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:6}
+nav button{flex:1;border:0;background:none;padding:10px 0 8px;font-size:12px;font-weight:700;color:var(--sub);cursor:pointer}
+nav button b{display:block;font-size:24px;line-height:1.2}
+nav button.on{color:var(--navy)}
+.sheet{position:fixed;inset:0;background:rgba(27,42,73,.5);display:none;align-items:flex-end;z-index:20}
+.sheet.show{display:flex}
+.sheet .in{background:var(--bg);width:100%;max-height:92vh;overflow:auto;border-radius:24px 24px 0 0;padding:20px 18px calc(24px + env(safe-area-inset-bottom));box-sizing:border-box;max-width:720px;margin:0 auto}
+.sheet h2{margin:0 0 6px;font-size:22px}
+.x{float:right;width:40px;height:40px;border-radius:50%;border:0;background:#e3e7f1;font-size:20px;cursor:pointer}
+.big{font-size:30px;font-weight:800;margin:10px 0 0}
+.kana{color:var(--sub);font-size:16px}
+.f{margin:10px 0;font-size:15px;line-height:1.6;word-break:break-all}
+.f span{display:block;font-size:11px;font-weight:700;color:var(--sub)}
+.f a{color:#1a5fb4}
+.pic{width:100%;border-radius:12px;margin-top:14px;background:#000}
+.msg{padding:12px 14px;border-radius:12px;font-size:14px;line-height:1.6;margin:10px 0}
+.msg.info{background:#fff7e0}
+.msg.err{background:#fdecea;color:var(--danger)}
+.msg.ok{background:#e6f4ec;color:var(--ok)}
+.pad{padding:16px}
+h3{margin:0 0 6px;font-size:16px}
+.note{font-size:12px;color:var(--sub);line-height:1.7}
+.circ{width:46px;height:46px;border-radius:50%;border:0;background:var(--navy);color:#fff;font-size:20px;cursor:pointer;flex:none}
+.circ.msg2{background:#2563eb}
+.dh{display:flex;gap:14px;align-items:center;margin-top:14px}
+.dh .big{margin:0;flex:1;font-size:26px}
+.rowi{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line);font-size:16px;line-height:1.5;word-break:break-all;background:none;border-left:0;border-right:0;border-top:0;width:100%;text-align:left;font-family:inherit;color:inherit}
+.rowi:last-child{border-bottom:0}
+.rowi i{font-style:normal;width:26px;flex:none;text-align:center}
+.rowi.lk .v{color:#1a5fb4;cursor:pointer}
+.rowi small{display:inline-block;border:1px solid var(--sub);color:var(--sub);border-radius:4px;padding:0 5px;font-size:11px;margin-left:6px}
+.pk{display:block;width:100%;margin-top:10px}
+#toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#1b2a49;color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;z-index:40;display:none}
+.hide{display:none!important}
+.spin{display:inline-block;width:18px;height:18px;border:3px solid #cfd6e8;border-top-color:var(--navy);border-radius:50%;animation:s 1s linear infinite;vertical-align:-3px;margin-right:8px}
+@keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header>名刺管理</header>
+<main>
+  <!-- 一覧 -->
+  <section id="v-list">
+    <div class="row" style="margin-bottom:10px">
+      <input id="q" type="search" placeholder="会社名・氏名・電話などで検索" style="flex:2">
+      <select id="fReg" style="flex:1"></select>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div id="list"></div>
+  </section>
+
+  <!-- 追加 -->
+  <section id="v-add" class="hide">
+    <div class="card pad">
+      <h3>名刺を撮影して読み込む</h3>
+      <p class="note">名刺の全体が写るように、明るい場所でまっすぐ撮影してください。読み取り後に必ず内容を確認・修正してから保存します。</p>
+      <input id="cam" type="file" accept="image/*" capture="environment" class="hide">
+      <input id="pick" type="file" accept="image/*" class="hide">
+      <div class="row">
+        <button class="btn gold" id="btnCam">📷 撮影する</button>
+        <button class="btn ghost" id="btnPick">🖼 写真を選ぶ</button>
+      </div>
+      <div style="margin-top:10px"><button class="btn ghost" id="btnManual" style="width:100%">画像なしで手入力する</button></div>
+      <div id="addMsg"></div>
+    </div>
+  </section>
+
+  <!-- 設定 -->
+  <section id="v-set" class="hide">
+    <div class="card pad" style="margin-bottom:12px">
+      <h3>Claude APIキー（文字の読み取りに使用）</h3>
+      <input id="apiKey" type="password" placeholder="sk-ant-..." autocomplete="off">
+      <label>モデル名</label>
+      <input id="model">
+      <p class="note">キーはこの端末のブラウザ内にだけ保存され、読み取り時にAnthropicへ直接送られます。このページ（公開URL）にはキーは含まれません。共用の端末には保存しないでください。名刺画像は読み取りのためAnthropicに送信されます。</p>
+      <button class="btn" id="saveKey">保存</button>
+    </div>
+    <div class="card pad" style="margin-bottom:12px">
+      <h3>メールの開き方</h3>
+      <select id="mailMode">
+        <option value="auto">自動（スマホは標準アプリ、パソコンは毎回選ぶ）</option>
+        <option value="default">標準のメールアプリ</option>
+        <option value="gmail">Gmail（ブラウザ）</option>
+        <option value="outlook">Outlook（会社・Microsoft 365）</option>
+        <option value="outlookp">Outlook（個人・outlook.com）</option>
+      </select>
+      <p class="note">パソコンはEdgeやChromeなど使うブラウザやメールの種類が人によって違うため、ここで固定できます。電話は、スマホはそのまま発信、パソコンは電話アプリで発信かコピーを選びます。</p>
+    </div>
+    <div class="card pad" style="margin-bottom:12px">
+      <h3>登録者・分類</h3>
+      <label>登録者（1行に1名）</label>
+      <textarea id="regs"></textarea>
+      <label>分類（1行に1つ）</label>
+      <textarea id="cats"></textarea>
+      <div style="margin-top:12px"><button class="btn" id="saveLists">保存</button></div>
+    </div>
+    <div class="card pad">
+      <h3>書き出し・バックアップ</h3>
+      <p class="note">名刺データは個人情報です。Googleドライブに置く場合は、共有せず自分のみ・2段階認証・端末の画面ロックを前提にしてください。</p>
+      <div class="row" style="margin-bottom:8px">
+        <button class="btn ghost" id="expCsv">CSV書き出し</button>
+        <button class="btn ghost" id="expJson">全データ書き出し（画像つき）</button>
+      </div>
+      <input id="impFile" type="file" accept=".json" class="hide">
+      <button class="btn ghost" id="impJson" style="width:100%">全データ読み込み（復元）</button>
+      <div id="setMsg"></div>
+    </div>
+  </section>
+</main>
+
+<!-- 詳細 -->
+<div class="sheet" id="detail"><div class="in" id="detailIn"></div></div>
+<!-- 編集 -->
+<div class="sheet" id="edit"><div class="in" id="editIn"></div></div>
+
+<div class="sheet" id="pick2" style="z-index:30"><div class="in" id="pickIn"></div></div>
+<div id="toast"></div>
+<nav>
+  <button data-v="list" class="on"><b>📋</b>一覧</button>
+  <button data-v="add"><b>📸</b>追加</button>
+  <button data-v="set"><b>⚙️</b>設定</button>
+</nav>
+
+<script>
+"use strict";
+var FIELDS=[["company","会社名"],["department","部署"],["title","役職"],["name","氏名"],["kana","ふりがな"],["postal","郵便番号"],["address","住所"],["tel","電話番号"],["fax","FAX"],["mobile","携帯電話"],["email","メールアドレス"],["url","URL"],["memo","メモ"]];
+var DEF_CATS=["取引先","協力業者","行政","金融機関","その他"];
+var $=function(id){return document.getElementById(id)};
+var cards=[],view="list",cat="すべて";
+
+/* ---------- IndexedDB ---------- */
+var db;
+function openDB(){return new Promise(function(res,rej){
+  var r=indexedDB.open("meishi",1);
+  r.onupgradeneeded=function(){r.result.createObjectStore("cards",{keyPath:"id"})};
+  r.onsuccess=function(){db=r.result;res()};r.onerror=function(){rej(r.error)};
+})}
+function tx(mode){return db.transaction("cards",mode).objectStore("cards")}
+function dbAll(){return new Promise(function(res){var q=tx("readonly").getAll();q.onsuccess=function(){res(q.result)}})}
+function dbPut(c){return new Promise(function(res){var q=tx("readwrite").put(c);q.onsuccess=function(){res()}})}
+function dbDel(id){return new Promise(function(res){var q=tx("readwrite").delete(id);q.onsuccess=function(){res()}})}
+
+/* ---------- 設定（localStorage） ---------- */
+function lsGet(k,d){try{var v=localStorage.getItem(k);return v===null?d:v}catch(e){return d}}
+function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+function getCats(){try{return JSON.parse(lsGet("m_cats",""))||DEF_CATS}catch(e){return DEF_CATS}}
+function getRegs(){try{return JSON.parse(lsGet("m_regs",""))||[]}catch(e){return []}}
+
+/* ---------- 共通 ---------- */
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+function show(id,on){$(id).classList.toggle("show",on)}
+function msg(id,type,text){$(id).innerHTML=text?'<div class="msg '+type+'">'+text+'</div>':""}
+
+/* ---------- 画面切替 ---------- */
+function go(v){
+  view=v;
+  ["list","add","set"].forEach(function(n){$("v-"+n).classList.toggle("hide",n!==v)});
+  document.querySelectorAll("nav button").forEach(function(b){b.classList.toggle("on",b.dataset.v===v)});
+  if(v==="list")render();
+  if(v==="set")loadSettings();
+  window.scrollTo(0,0);
+}
+document.querySelectorAll("nav button").forEach(function(b){b.onclick=function(){go(b.dataset.v)}});
+
+/* ---------- 一覧 ---------- */
+function render(){
+  var regs=getRegs(),sel=$("fReg"),cur=sel.value;
+  sel.innerHTML='<option value="">登録者：全体</option>'+regs.map(function(r){return '<option>'+esc(r)+'</option>'}).join("");
+  sel.value=cur;
+  var q=$("q").value.trim().toLowerCase(),reg=sel.value;
+  var base=cards.filter(function(c){
+    if(reg&&c.registrant!==reg)return false;
+    if(!q)return true;
+    return FIELDS.map(function(f){return c[f[0]]||""}).join(" ").toLowerCase().indexOf(q)>=0;
+  });
+  var names=getCats();
+  cards.forEach(function(c){if(c.category&&names.indexOf(c.category)<0)names.push(c.category)});
+  var h='<button class="chip'+(cat==="すべて"?" on":"")+'" data-c="すべて">すべて<small>'+base.length+'</small></button>';
+  names.forEach(function(n){
+    var k=base.filter(function(c){return c.category===n}).length;
+    h+='<button class="chip'+(cat===n?" on":"")+'" data-c="'+esc(n)+'">'+esc(n)+'<small>'+k+'</small></button>';
+  });
+  $("chips").innerHTML=h;
+  $("chips").querySelectorAll(".chip").forEach(function(b){b.onclick=function(){cat=b.dataset.c;render()}});
+  var shown=base.filter(function(c){return cat==="すべて"||c.category===cat})
+    .sort(function(a,b){return (b.created||0)-(a.created||0)});
+  if(!shown.length){$("list").innerHTML='<div class="empty">名刺がありません。<br>下の「追加」から撮影してください。</div>';return}
+  $("list").innerHTML=shown.map(function(c){
+    return '<div class="card item" data-id="'+c.id+'">'+(c.thumb?'<img src="'+c.thumb+'" alt="">':'')+
+      '<div><div class="co">'+esc(c.company)+'</div><div class="nm">'+esc(c.name||"（氏名なし）")+'</div><div class="ti">'+esc([c.department,c.title].filter(Boolean).join(" "))+'</div></div></div>';
+  }).join("");
+  $("list").querySelectorAll(".item").forEach(function(d){d.onclick=function(){openDetail(d.dataset.id)}});
+}
+$("q").oninput=render;$("fReg").onchange=render;
+
+/* ---------- 詳細 ---------- */
+function find(id){return cards.filter(function(c){return c.id===id})[0]}
+var IS_MOBILE=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Macintosh/.test(navigator.userAgent));
+function toast(t){var e=$("toast");e.textContent=t;e.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(function(){e.style.display="none"},2200)}
+function copyText(t){
+  var done=function(){toast("コピーしました："+t)};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done,function(){fallbackCopy(t);done()})}
+  else{fallbackCopy(t);done()}
+}
+function fallbackCopy(t){var a=document.createElement("textarea");a.value=t;document.body.appendChild(a);a.select();try{document.execCommand("copy")}catch(e){}a.remove()}
+function openPick(title,items){
+  $("pickIn").innerHTML='<button class="x" id="px">×</button><h2>'+esc(title)+'</h2>'+
+    items.map(function(it,i){return '<button class="btn pk '+(it.cls||"ghost")+'" data-i="'+i+'">'+esc(it.label)+'</button>'}).join("");
+  $("pickIn").querySelectorAll("[data-i]").forEach(function(b){b.onclick=function(){show("pick2",false);items[b.dataset.i].fn()}});
+  $("px").onclick=function(){show("pick2",false)};
+  show("pick2",true);
+}
+function callNum(num){
+  var clean=num.replace(/[^0-9+]/g,"");
+  if(IS_MOBILE){location.href="tel:"+clean;return}
+  openPick("電話番号 "+num,[
+    {label:"電話アプリで発信する",cls:"",fn:function(){location.href="tel:"+clean}},
+    {label:"番号をコピーする",fn:function(){copyText(num)}}
+  ]);
+}
+function mailTo(addr){
+  var mode=lsGet("m_mail","auto"),enc=encodeURIComponent(addr);
+  var open={
+    default:function(){location.href="mailto:"+addr},
+    gmail:function(){window.open("https://mail.google.com/mail/?view=cm&fs=1&to="+enc,"_blank","noopener")},
+    outlook:function(){window.open("https://outlook.office.com/mail/deeplink/compose?to="+enc,"_blank","noopener")},
+    outlookp:function(){window.open("https://outlook.live.com/mail/0/deeplink/compose?to="+enc,"_blank","noopener")}
+  };
+  if(mode!=="auto"&&open[mode]){open[mode]();return}
+  if(IS_MOBILE){open.default();return}
+  openPick("メールの作成方法を選んでください",[
+    {label:"この端末の標準メールアプリ",cls:"",fn:open.default},
+    {label:"Gmail（ブラウザ）",fn:open.gmail},
+    {label:"Outlook（会社・Microsoft 365）",fn:open.outlook},
+    {label:"Outlook（個人・outlook.com）",fn:open.outlookp},
+    {label:"アドレスをコピーする",fn:function(){copyText(addr)}}
+  ]);
+}
+function openDetail(id){
+  var c=find(id);if(!c)return;
+  var phones=[];
+  if(c.tel)phones.push(["電話",c.tel]);if(c.mobile)phones.push(["携帯",c.mobile]);
+  function row(ic,val,act,extra){
+    if(!val)return"";
+    return '<button class="rowi'+(act?" lk":"")+'" data-a="'+(act||"")+'" data-v="'+esc(val)+'"><i>'+ic+'</i><span class="v">'+esc(val)+(extra||"")+'</span></button>';
+  }
+  $("detailIn").innerHTML='<button class="x" id="dx">×</button><h2>名刺詳細</h2>'+
+    '<div class="dh"><div class="big">'+esc(c.name||"（氏名なし）")+'</div>'+
+    (phones.length?'<button class="circ" id="bCall" aria-label="電話">📞</button>':'')+
+    (c.email?'<button class="circ msg2" id="bMail" aria-label="メール">✉️</button>':'')+'</div>'+
+    '<div class="kana">'+esc(c.kana)+'</div>'+
+    '<div style="font-weight:800;margin-top:14px;font-size:18px">'+esc(c.company)+'</div>'+
+    '<div class="kana">'+esc([c.department,c.title].filter(Boolean).join(" "))+'</div>'+
+    '<div style="margin-top:12px" class="card pad">'+
+    row("📞",c.tel,"call")+row("📱",c.mobile,"call")+row("✉️",c.email,"mail")+
+    row("📍",[c.postal&&"〒"+c.postal,c.address].filter(Boolean).join(" "),c.address?"map":"")+
+    row("🖨",c.fax,"copy",'<small>FAX</small>')+row("🌐",c.url,"url")+
+    row("🏷",c.category)+row("👤",c.registrant&&"登録者："+c.registrant)+row("📝",c.memo)+'</div>'+
+    (c.image?'<img class="pic" src="'+c.image+'" alt="名刺画像">':'')+
+    '<div class="row" style="margin-top:16px"><button class="btn" id="de">編集</button><button class="btn danger" id="dd">削除</button></div>';
+  $("dx").onclick=function(){show("detail",false)};
+  if($("bCall"))$("bCall").onclick=function(){
+    if(phones.length===1)callNum(phones[0][1]);
+    else openPick("どちらに電話しますか？",phones.map(function(p){return {label:p[0]+"　"+p[1],cls:"",fn:function(){callNum(p[1])}}}));
+  };
+  if($("bMail"))$("bMail").onclick=function(){mailTo(c.email)};
+  $("detailIn").querySelectorAll(".rowi[data-a]").forEach(function(r){r.onclick=function(){
+    var v=r.dataset.v,a=r.dataset.a;
+    if(a==="call")callNum(v);
+    else if(a==="mail")mailTo(v);
+    else if(a==="copy")copyText(v);
+    else if(a==="url")window.open(/^https?:/.test(v)?v:"https://"+v,"_blank","noopener");
+    else if(a==="map")window.open("https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(c.address),"_blank","noopener");
+  }});
+  $("de").onclick=function(){show("detail",false);openEdit(c,false)};
+  $("dd").onclick=function(){
+    if(confirm("この名刺を削除します。よろしいですか？")){dbDel(c.id).then(reload).then(function(){show("detail",false)})}
+  };
+  show("detail",true);
+}
+
+/* ---------- 編集 ---------- */
+function openEdit(c,isNew,note){
+  var regs=getRegs(),cats=getCats();
+  var h='<button class="x" id="ex">×</button><h2>'+(isNew?"内容の確認":"名刺の編集")+'</h2>';
+  if(note)h+=note;
+  h+='<div class="card pad">';
+  FIELDS.forEach(function(f){
+    var k=f[0];
+    h+='<label>'+f[1]+'</label>'+(k==="memo"||k==="address"?'<textarea data-k="'+k+'">'+esc(c[k])+'</textarea>':'<input data-k="'+k+'" value="'+esc(c[k])+'">');
+  });
+  h+='<label>分類</label><select data-k="category">'+cats.map(function(n){return '<option'+(c.category===n?" selected":"")+'>'+esc(n)+'</option>'}).join("")+'</select>';
+  h+='<label>登録者</label><input data-k="registrant" list="regList" value="'+esc(c.registrant||lsGet("m_lastReg",""))+'"><datalist id="regList">'+regs.map(function(r){return '<option value="'+esc(r)+'">'}).join("")+'</datalist>';
+  h+='</div>'+(c.image?'<img class="pic" src="'+c.image+'" alt="名刺画像">':'')+
+     '<div class="row" style="margin-top:16px"><button class="btn gold" id="es">保存</button><button class="btn ghost" id="ec">キャンセル</button></div>';
+  $("editIn").innerHTML=h;
+  $("ex").onclick=$("ec").onclick=function(){show("edit",false)};
+  $("es").onclick=function(){
+    $("editIn").querySelectorAll("[data-k]").forEach(function(e){c[e.dataset.k]=e.value.trim()});
+    if(!c.company&&!c.name){alert("会社名か氏名のどちらかは入力してください。");return}
+    if(c.registrant)lsSet("m_lastReg",c.registrant);
+    if(c.registrant&&getRegs().indexOf(c.registrant)<0){var r=getRegs();r.push(c.registrant);lsSet("m_regs",JSON.stringify(r))}
+    if(!c.created)c.created=Date.now();
+    dbPut(c).then(reload).then(function(){show("edit",false);go("list")});
+  };
+  show("edit",true);
+  $("editIn").scrollTop=0;
+}
+function blank(){var o={id:uid(),created:Date.now(),category:getCats()[0]};FIELDS.forEach(function(f){o[f[0]]=""});return o}
+
+/* ---------- 撮影・読み取り ---------- */
+$("btnCam").onclick=function(){$("cam").click()};
+$("btnPick").onclick=function(){$("pick").click()};
+$("btnManual").onclick=function(){openEdit(blank(),true)};
+$("cam").onchange=$("pick").onchange=function(e){var f=e.target.files[0];e.target.value="";if(f)handleImage(f)};
+
+function loadImg(file){return new Promise(function(res,rej){
+  var u=URL.createObjectURL(file),i=new Image();
+  i.onload=function(){URL.revokeObjectURL(u);res(i)};i.onerror=function(){rej(new Error("画像を開けませんでした"))};i.src=u;
+})}
+function scale(img,max,q){
+  var r=Math.min(1,max/Math.max(img.width,img.height)),c=document.createElement("canvas");
+  c.width=Math.round(img.width*r);c.height=Math.round(img.height*r);
+  c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+  return c.toDataURL("image/jpeg",q);
+}
+function handleImage(file){
+  var key=lsGet("m_key","");
+  if(!key){msg("addMsg","err","先に「設定」でClaude APIキーを入力してください。");return}
+  msg("addMsg","info",'<span class="spin"></span>読み取り中です。数秒かかります…');
+  loadImg(file).then(function(img){
+    var big=scale(img,1600,0.85),image=scale(img,1000,0.7),thumb=scale(img,240,0.7);
+    return ocr(big,key).then(function(data){
+      var c=blank();
+      FIELDS.forEach(function(f){if(data[f[0]])c[f[0]]=String(data[f[0]])});
+      c.image=image;c.thumb=thumb;
+      msg("addMsg","","");
+      openEdit(c,true,'<div class="msg info">読み取り結果です。数字や漢字の読み違いがないか、名刺と見比べて確認してください。</div>');
+    });
+  }).catch(function(err){msg("addMsg","err","読み取りに失敗しました："+esc(err.message))});
+}
+var PROMPT="これは日本の名刺の写真です。印字されている情報を読み取り、次のキーだけを持つJSONオブジェクトのみを出力してください（説明文やコードブロックは不要）。"+
+"キー：company（会社名）, department（部署）, title（役職）, name（氏名。姓と名の間は全角スペース1つ）, kana（ふりがな。印字がなければ読みを推測してひらがなで）, postal（郵便番号。例 590-0126）, address（住所。建物名・階を含む）, tel（電話番号）, fax（FAX番号）, mobile（携帯電話）, email（メールアドレス）, url（ホームページURL）。"+
+"ルール：印字されていない項目は空文字にする。推測で補わない（ふりがなのみ例外）。電話番号やメールアドレスの数字・英字は特に正確に読む。裏面や複数枚が写っていても、最も大きく写る1枚の表面を対象にする。";
+function ocr(dataUrl,key){
+  var model=lsGet("m_model","claude-sonnet-5-5");
+  return fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{"content-type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+    body:JSON.stringify({model:model,max_tokens:1024,messages:[{role:"user",content:[
+      {type:"image",source:{type:"base64",media_type:"image/jpeg",data:dataUrl.split(",")[1]}},
+      {type:"text",text:PROMPT}]}]})
+  }).then(function(r){
+    return r.json().then(function(j){
+      if(!r.ok)throw new Error((j&&j.error&&j.error.message)||("HTTP "+r.status));
+      return j;
+    });
+  }).then(function(j){
+    var t=(j.content||[]).map(function(b){return b.text||""}).join("");
+    var m=t.match(/\{[\s\S]*\}/);
+    if(!m)throw new Error("読み取り結果を解釈できませんでした");
+    return JSON.parse(m[0]);
+  });
+}
+
+/* ---------- 設定 ---------- */
+function loadSettings(){
+  $("apiKey").value=lsGet("m_key","");
+  $("model").value=lsGet("m_model","claude-sonnet-5-5");
+  $("regs").value=getRegs().join("\n");$("mailMode").value=lsGet("m_mail","auto");
+  $("cats").value=getCats().join("\n");
+}
+function lines(s){return s.split("\n").map(function(x){return x.trim()}).filter(Boolean)}
+$("mailMode").onchange=function(){lsSet("m_mail",this.value);msg("setMsg","ok","メールの開き方を保存しました。")};
+$("saveKey").onclick=function(){
+  lsSet("m_key",$("apiKey").value.trim());lsSet("m_model",$("model").value.trim()||"claude-sonnet-5-5");
+  msg("setMsg","ok","保存しました。");
+};
+$("saveLists").onclick=function(){
+  lsSet("m_regs",JSON.stringify(lines($("regs").value)));
+  var c=lines($("cats").value);lsSet("m_cats",JSON.stringify(c.length?c:DEF_CATS));
+  msg("setMsg","ok","保存しました。");
+};
+function download(name,type,text){
+  var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type:type}));a.download=name;
+  document.body.appendChild(a);a.click();a.remove();
+}
+function stamp(){var d=new Date(),p=function(n){return ("0"+n).slice(-2)};return ""+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())}
+$("expCsv").onclick=function(){
+  var cols=FIELDS.map(function(f){return f[0]}).concat(["category","registrant"]);
+  var head=FIELDS.map(function(f){return f[1]}).concat(["分類","登録者"]);
+  var q=function(v){return '"'+String(v==null?"":v).replace(/"/g,'""')+'"'};
+  var rows=[head.map(q).join(",")].concat(cards.map(function(c){return cols.map(function(k){return q(c[k])}).join(",")}));
+  download("名刺一覧"+stamp()+".csv","text/csv;charset=utf-8","﻿"+rows.join("\r\n"));
+};
+$("expJson").onclick=function(){
+  download("名刺バックアップ"+stamp()+".json","application/json",JSON.stringify({v:1,cards:cards,regs:getRegs(),cats:getCats()}));
+};
+$("impJson").onclick=function(){$("impFile").click()};
+$("impFile").onchange=function(e){
+  var f=e.target.files[0];e.target.value="";if(!f)return;
+  var r=new FileReader();
+  r.onload=function(){
+    try{
+      var d=JSON.parse(r.result);
+      if(!d.cards)throw 0;
+      if(!confirm(d.cards.length+"件を読み込みます。同じIDの名刺は上書きされます。よろしいですか？"))return;
+      Promise.all(d.cards.map(dbPut)).then(function(){
+        if(d.regs)lsSet("m_regs",JSON.stringify(d.regs));
+        if(d.cats)lsSet("m_cats",JSON.stringify(d.cats));
+        return reload();
+      }).then(function(){msg("setMsg","ok","読み込みました。");loadSettings()});
+    }catch(x){msg("setMsg","err","このファイルは読み込めません。")}
+  };
+  r.readAsText(f);
+};
+
+function reload(){return dbAll().then(function(a){cards=a;render()})}
+[$("detail"),$("edit"),$("pick2")].forEach(function(s){s.onclick=function(e){if(e.target===s)s.classList.remove("show")}});
+openDB().then(reload).catch(function(){$("list").innerHTML='<div class="empty">この環境では保存機能が使えません（プライベートモードなど）。</div>'});
+</script>
+</body>
+</html>
