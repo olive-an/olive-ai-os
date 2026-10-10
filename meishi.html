@@ -56,6 +56,17 @@ nav button.on{color:var(--navy)}
 .pad{padding:16px}
 h3{margin:0 0 6px;font-size:16px}
 .note{font-size:12px;color:var(--sub);line-height:1.7}
+.circ{width:46px;height:46px;border-radius:50%;border:0;background:var(--navy);color:#fff;font-size:20px;cursor:pointer;flex:none}
+.circ.msg2{background:#2563eb}
+.dh{display:flex;gap:14px;align-items:center;margin-top:14px}
+.dh .big{margin:0;flex:1;font-size:26px}
+.rowi{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line);font-size:16px;line-height:1.5;word-break:break-all;background:none;border-left:0;border-right:0;border-top:0;width:100%;text-align:left;font-family:inherit;color:inherit}
+.rowi:last-child{border-bottom:0}
+.rowi i{font-style:normal;width:26px;flex:none;text-align:center}
+.rowi.lk .v{color:#1a5fb4;cursor:pointer}
+.rowi small{display:inline-block;border:1px solid var(--sub);color:var(--sub);border-radius:4px;padding:0 5px;font-size:11px;margin-left:6px}
+.pk{display:block;width:100%;margin-top:10px}
+#toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#1b2a49;color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;z-index:40;display:none}
 .hide{display:none!important}
 .spin{display:inline-block;width:18px;height:18px;border:3px solid #cfd6e8;border-top-color:var(--navy);border-radius:50%;animation:s 1s linear infinite;vertical-align:-3px;margin-right:8px}
 @keyframes s{to{transform:rotate(360deg)}}
@@ -101,6 +112,17 @@ h3{margin:0 0 6px;font-size:16px}
       <button class="btn" id="saveKey">保存</button>
     </div>
     <div class="card pad" style="margin-bottom:12px">
+      <h3>メールの開き方</h3>
+      <select id="mailMode">
+        <option value="auto">自動（スマホは標準アプリ、パソコンは毎回選ぶ）</option>
+        <option value="default">標準のメールアプリ</option>
+        <option value="gmail">Gmail（ブラウザ）</option>
+        <option value="outlook">Outlook（会社・Microsoft 365）</option>
+        <option value="outlookp">Outlook（個人・outlook.com）</option>
+      </select>
+      <p class="note">パソコンはEdgeやChromeなど使うブラウザやメールの種類が人によって違うため、ここで固定できます。電話は、スマホはそのまま発信、パソコンは電話アプリで発信かコピーを選びます。</p>
+    </div>
+    <div class="card pad" style="margin-bottom:12px">
       <h3>登録者・分類</h3>
       <label>登録者（1行に1名）</label>
       <textarea id="regs"></textarea>
@@ -127,6 +149,8 @@ h3{margin:0 0 6px;font-size:16px}
 <!-- 編集 -->
 <div class="sheet" id="edit"><div class="in" id="editIn"></div></div>
 
+<div class="sheet" id="pick2" style="z-index:30"><div class="in" id="pickIn"></div></div>
+<div id="toast"></div>
 <nav>
   <button data-v="list" class="on"><b>📋</b>一覧</button>
   <button data-v="add"><b>📸</b>追加</button>
@@ -208,27 +232,83 @@ $("q").oninput=render;$("fReg").onchange=render;
 
 /* ---------- 詳細 ---------- */
 function find(id){return cards.filter(function(c){return c.id===id})[0]}
+var IS_MOBILE=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Macintosh/.test(navigator.userAgent));
+function toast(t){var e=$("toast");e.textContent=t;e.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(function(){e.style.display="none"},2200)}
+function copyText(t){
+  var done=function(){toast("コピーしました："+t)};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done,function(){fallbackCopy(t);done()})}
+  else{fallbackCopy(t);done()}
+}
+function fallbackCopy(t){var a=document.createElement("textarea");a.value=t;document.body.appendChild(a);a.select();try{document.execCommand("copy")}catch(e){}a.remove()}
+function openPick(title,items){
+  $("pickIn").innerHTML='<button class="x" id="px">×</button><h2>'+esc(title)+'</h2>'+
+    items.map(function(it,i){return '<button class="btn pk '+(it.cls||"ghost")+'" data-i="'+i+'">'+esc(it.label)+'</button>'}).join("");
+  $("pickIn").querySelectorAll("[data-i]").forEach(function(b){b.onclick=function(){show("pick2",false);items[b.dataset.i].fn()}});
+  $("px").onclick=function(){show("pick2",false)};
+  show("pick2",true);
+}
+function callNum(num){
+  var clean=num.replace(/[^0-9+]/g,"");
+  if(IS_MOBILE){location.href="tel:"+clean;return}
+  openPick("電話番号 "+num,[
+    {label:"電話アプリで発信する",cls:"",fn:function(){location.href="tel:"+clean}},
+    {label:"番号をコピーする",fn:function(){copyText(num)}}
+  ]);
+}
+function mailTo(addr){
+  var mode=lsGet("m_mail","auto"),enc=encodeURIComponent(addr);
+  var open={
+    default:function(){location.href="mailto:"+addr},
+    gmail:function(){window.open("https://mail.google.com/mail/?view=cm&fs=1&to="+enc,"_blank","noopener")},
+    outlook:function(){window.open("https://outlook.office.com/mail/deeplink/compose?to="+enc,"_blank","noopener")},
+    outlookp:function(){window.open("https://outlook.live.com/mail/0/deeplink/compose?to="+enc,"_blank","noopener")}
+  };
+  if(mode!=="auto"&&open[mode]){open[mode]();return}
+  if(IS_MOBILE){open.default();return}
+  openPick("メールの作成方法を選んでください",[
+    {label:"この端末の標準メールアプリ",cls:"",fn:open.default},
+    {label:"Gmail（ブラウザ）",fn:open.gmail},
+    {label:"Outlook（会社・Microsoft 365）",fn:open.outlook},
+    {label:"Outlook（個人・outlook.com）",fn:open.outlookp},
+    {label:"アドレスをコピーする",fn:function(){copyText(addr)}}
+  ]);
+}
 function openDetail(id){
   var c=find(id);if(!c)return;
-  function f(label,val,link){
+  var phones=[];
+  if(c.tel)phones.push(["電話",c.tel]);if(c.mobile)phones.push(["携帯",c.mobile]);
+  function row(ic,val,act,extra){
     if(!val)return"";
-    var v=esc(val);
-    if(link==="tel")v='<a href="tel:'+esc(val.replace(/[^0-9+]/g,""))+'">'+v+'</a>';
-    if(link==="mail")v='<a href="mailto:'+esc(val)+'">'+v+'</a>';
-    if(link==="url")v='<a href="'+esc(/^https?:/.test(val)?val:"https://"+val)+'" target="_blank" rel="noopener">'+v+'</a>';
-    if(link==="map")v='<a href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(val)+'" target="_blank" rel="noopener">'+v+'</a>';
-    return '<div class="f"><span>'+label+'</span>'+v+'</div>';
+    return '<button class="rowi'+(act?" lk":"")+'" data-a="'+(act||"")+'" data-v="'+esc(val)+'"><i>'+ic+'</i><span class="v">'+esc(val)+(extra||"")+'</span></button>';
   }
   $("detailIn").innerHTML='<button class="x" id="dx">×</button><h2>名刺詳細</h2>'+
-    '<div style="font-weight:800;margin-top:14px">'+esc(c.company)+'</div>'+
-    '<div class="big">'+esc(c.name)+'</div><div class="kana">'+esc(c.kana)+'</div>'+
-    '<div class="kana" style="margin-top:4px">'+esc([c.department,c.title].filter(Boolean).join(" "))+'</div>'+
-    '<div style="margin-top:14px" class="card pad">'+
-    f("郵便番号",c.postal)+f("住所",c.address,"map")+f("電話番号",c.tel,"tel")+f("携帯電話",c.mobile,"tel")+f("FAX",c.fax)+
-    f("メールアドレス",c.email,"mail")+f("URL",c.url,"url")+f("分類",c.category)+f("登録者",c.registrant)+f("メモ",c.memo)+'</div>'+
+    '<div class="dh"><div class="big">'+esc(c.name||"（氏名なし）")+'</div>'+
+    (phones.length?'<button class="circ" id="bCall" aria-label="電話">📞</button>':'')+
+    (c.email?'<button class="circ msg2" id="bMail" aria-label="メール">✉️</button>':'')+'</div>'+
+    '<div class="kana">'+esc(c.kana)+'</div>'+
+    '<div style="font-weight:800;margin-top:14px;font-size:18px">'+esc(c.company)+'</div>'+
+    '<div class="kana">'+esc([c.department,c.title].filter(Boolean).join(" "))+'</div>'+
+    '<div style="margin-top:12px" class="card pad">'+
+    row("📞",c.tel,"call")+row("📱",c.mobile,"call")+row("✉️",c.email,"mail")+
+    row("📍",[c.postal&&"〒"+c.postal,c.address].filter(Boolean).join(" "),c.address?"map":"")+
+    row("🖨",c.fax,"copy",'<small>FAX</small>')+row("🌐",c.url,"url")+
+    row("🏷",c.category)+row("👤",c.registrant&&"登録者："+c.registrant)+row("📝",c.memo)+'</div>'+
     (c.image?'<img class="pic" src="'+c.image+'" alt="名刺画像">':'')+
     '<div class="row" style="margin-top:16px"><button class="btn" id="de">編集</button><button class="btn danger" id="dd">削除</button></div>';
   $("dx").onclick=function(){show("detail",false)};
+  if($("bCall"))$("bCall").onclick=function(){
+    if(phones.length===1)callNum(phones[0][1]);
+    else openPick("どちらに電話しますか？",phones.map(function(p){return {label:p[0]+"　"+p[1],cls:"",fn:function(){callNum(p[1])}}}));
+  };
+  if($("bMail"))$("bMail").onclick=function(){mailTo(c.email)};
+  $("detailIn").querySelectorAll(".rowi[data-a]").forEach(function(r){r.onclick=function(){
+    var v=r.dataset.v,a=r.dataset.a;
+    if(a==="call")callNum(v);
+    else if(a==="mail")mailTo(v);
+    else if(a==="copy")copyText(v);
+    else if(a==="url")window.open(/^https?:/.test(v)?v:"https://"+v,"_blank","noopener");
+    else if(a==="map")window.open("https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(c.address),"_blank","noopener");
+  }});
   $("de").onclick=function(){show("detail",false);openEdit(c,false)};
   $("dd").onclick=function(){
     if(confirm("この名刺を削除します。よろしいですか？")){dbDel(c.id).then(reload).then(function(){show("detail",false)})}
@@ -324,10 +404,11 @@ function ocr(dataUrl,key){
 function loadSettings(){
   $("apiKey").value=lsGet("m_key","");
   $("model").value=lsGet("m_model","claude-sonnet-5-5");
-  $("regs").value=getRegs().join("\n");
+  $("regs").value=getRegs().join("\n");$("mailMode").value=lsGet("m_mail","auto");
   $("cats").value=getCats().join("\n");
 }
 function lines(s){return s.split("\n").map(function(x){return x.trim()}).filter(Boolean)}
+$("mailMode").onchange=function(){lsSet("m_mail",this.value);msg("setMsg","ok","メールの開き方を保存しました。")};
 $("saveKey").onclick=function(){
   lsSet("m_key",$("apiKey").value.trim());lsSet("m_model",$("model").value.trim()||"claude-sonnet-5-5");
   msg("setMsg","ok","保存しました。");
@@ -372,7 +453,7 @@ $("impFile").onchange=function(e){
 };
 
 function reload(){return dbAll().then(function(a){cards=a;render()})}
-[$("detail"),$("edit")].forEach(function(s){s.onclick=function(e){if(e.target===s)s.classList.remove("show")}});
+[$("detail"),$("edit"),$("pick2")].forEach(function(s){s.onclick=function(e){if(e.target===s)s.classList.remove("show")}});
 openDB().then(reload).catch(function(){$("list").innerHTML='<div class="empty">この環境では保存機能が使えません（プライベートモードなど）。</div>'});
 </script>
 </body>
