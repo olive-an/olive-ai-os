@@ -108,6 +108,7 @@ h3{margin:0 0 6px;font-size:16px}
       <select id="ocrMode">
         <option value="auto">自動（キーがあればClaude API、なければ端末内）</option>
         <option value="local">常に端末内で読み取る（画像を外に送らない）</option>
+        <option value="none">読み取りしない（写真だけ保存し、文字は自分で入力）</option>
       </select>
       <label>Claude APIキー（任意。入れると読み取りの精度が上がります）</label>
       <input id="apiKey" type="password" placeholder="sk-ant-..." autocomplete="off">
@@ -367,7 +368,15 @@ function scale(img,max,q){
   return c.toDataURL("image/jpeg",q);
 }
 function handleImage(file){
-  var key=lsGet("m_key",""),local=lsGet("m_ocr","auto")==="local"||!key;
+  var mode=lsGet("m_ocr","auto"),key=lsGet("m_key",""),local=mode==="local"||!key;
+  if(mode==="none"){
+    msg("addMsg","info",'<span class="spin"></span>写真を保存用に整えています…');
+    return loadImg(file).then(function(img){
+      var c=blank();c.image=scale(img,1000,0.7);c.thumb=scale(img,240,0.7);
+      msg("addMsg","","");
+      openEdit(c,true,'<div class="msg info">写真だけを保存します。検索や発信に使うため、会社名・氏名・電話などは下の欄に入力してください。</div>');
+    }).catch(function(err){msg("addMsg","err","写真を開けませんでした："+esc(err.message))});
+  }
   msg("addMsg","info",'<span class="spin"></span>'+(local?"端末内で読み取り中です。初回は読み取り用データの取得で1分ほどかかります…":"読み取り中です。数秒かかります…"));
   loadImg(file).then(function(img){
     var big=scale(img,1600,0.85),image=scale(img,1000,0.7),thumb=scale(img,240,0.7);
