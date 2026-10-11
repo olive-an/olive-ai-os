@@ -115,6 +115,7 @@ h3{margin:0 0 6px;font-size:16px}
       <p class="note">自分のGoogleアカウントに小さなスクリプトを1回設置すると、Claude APIなしで、Googleの文字認識で名刺を読み取れます。設置手順はリポジトリの meishi-gas/README.md にあります。写真は読み取りのためGoogleに送られます。「共有する」をオンにすると、名刺のデータはあなたのスプレッドシート、写真はドライブに保存され、同じURLと合言葉を入れた人と共有されます。合言葉を知っている人は全員が全名刺を見られます。</p>
       <div class="row"><button class="btn" id="gasSaveBtn">保存</button><button class="btn ghost" id="gasTest">接続テスト</button></div>
       <button class="btn ghost" id="gasUp" style="width:100%;margin-top:8px">この端末だけにある名刺を共有に送る</button>
+      <div id="gasMsg"></div>
     </div>
     <div class="card pad" style="margin-bottom:12px">
       <h3>文字の読み取り方法</h3>
@@ -631,35 +632,35 @@ function loadSettings(){
   $("cats").value=getCats().join("\n");
 }
 function lines(s){return s.split("\n").map(function(x){return x.trim()}).filter(Boolean)}
-$("mailMode").onchange=function(){lsSet("m_mail",this.value);msg("setMsg","ok","メールの開き方を保存しました。")};
+$("mailMode").onchange=function(){lsSet("m_mail",this.value);msg("setMsg","ok","メールの開き方を保存しました。");toast("メールの開き方を保存しました")};
 function saveGas(){lsSet("m_gasUrl",$("gasUrl").value.trim());lsSet("m_gasToken",$("gasToken").value.trim());lsSet("m_shared",$("gasShared").checked?"1":"0");render()}
-$("gasSaveBtn").onclick=function(){saveGas();msg("setMsg","ok","保存しました。")};
+$("gasSaveBtn").onclick=function(){saveGas();msg("gasMsg","ok","保存しました。");toast("保存しました")};
 $("gasTest").onclick=function(){
-  saveGas();msg("setMsg","info",'<span class="spin"></span>接続を確認しています…');
-  gasCall({action:"ping"}).then(function(){msg("setMsg","ok","接続できました。")}).catch(function(e){msg("setMsg","err","接続できません："+esc(e.message))});
+  saveGas();msg("gasMsg","info",'<span class="spin"></span>接続を確認しています…');
+  gasCall({action:"ping"}).then(function(){msg("gasMsg","ok","接続できました。");toast("接続できました")}).catch(function(e){msg("gasMsg","err","接続できません："+esc(e.message));toast("接続できませんでした")});
 };
 $("gasUp").onclick=function(){
   saveGas();
-  if(!shared()){msg("setMsg","err","「名刺データをスプレッドシートで共有する」をオンにして、URLと合言葉を入れてから押してください。");return}
+  if(!shared()){msg("gasMsg","err","「名刺データをスプレッドシートで共有する」をオンにして、URLと合言葉を入れてから押してください。");return}
   var todo=cards.filter(function(c){return !c.synced});
-  if(!todo.length){msg("setMsg","ok","共有に送っていない名刺はありません。");return}
+  if(!todo.length){msg("gasMsg","ok","共有に送っていない名刺はありません。");return}
   if(!confirm(todo.length+"件を共有に送ります。よろしいですか？"))return;
   var i=0,ok=0;
   (function next(){
-    if(i>=todo.length){reload().then(function(){msg("setMsg","ok",ok+"件を共有に送りました。")});return}
-    msg("setMsg","info",'<span class="spin"></span>'+(i+1)+" / "+todo.length+"件を送っています…");
-    pushCard(todo[i++]).then(function(){ok++;next()},function(e){msg("setMsg","err","途中で止まりました（"+ok+"件送信済み）："+esc(e.message))});
+    if(i>=todo.length){reload().then(function(){msg("gasMsg","ok",ok+"件を共有に送りました。")});return}
+    msg("gasMsg","info",'<span class="spin"></span>'+(i+1)+" / "+todo.length+"件を送っています…");
+    pushCard(todo[i++]).then(function(){ok++;next()},function(e){msg("gasMsg","err","途中で止まりました（"+ok+"件送信済み）："+esc(e.message))});
   })();
 };
 $("saveKey").onclick=function(){
   lsSet("m_ocr",$("ocrMode").value);
   lsSet("m_key",$("apiKey").value.trim());lsSet("m_model",$("model").value.trim()||"claude-sonnet-5-5");
-  msg("setMsg","ok","保存しました。");
+  msg("setMsg","ok","保存しました。");toast("保存しました");
 };
 $("saveLists").onclick=function(){
   lsSet("m_regs",JSON.stringify(lines($("regs").value)));
   var c=lines($("cats").value);lsSet("m_cats",JSON.stringify(c.length?c:DEF_CATS));
-  msg("setMsg","ok","保存しました。");
+  msg("setMsg","ok","保存しました。");toast("保存しました");
 };
 function download(name,type,text){
   var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type:type}));a.download=name;
