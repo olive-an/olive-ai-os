@@ -104,11 +104,16 @@ h3{margin:0 0 6px;font-size:16px}
   <!-- 設定 -->
   <section id="v-set" class="hide">
     <div class="card pad" style="margin-bottom:12px">
-      <h3>Claude APIキー（文字の読み取りに使用）</h3>
+      <h3>文字の読み取り方法</h3>
+      <select id="ocrMode">
+        <option value="auto">自動（キーがあればClaude API、なければ端末内）</option>
+        <option value="local">常に端末内で読み取る（画像を外に送らない）</option>
+      </select>
+      <label>Claude APIキー（任意。入れると読み取りの精度が上がります）</label>
       <input id="apiKey" type="password" placeholder="sk-ant-..." autocomplete="off">
       <label>モデル名</label>
       <input id="model">
-      <p class="note">キーはこの端末のブラウザ内にだけ保存され、読み取り時にAnthropicへ直接送られます。このページ（公開URL）にはキーは含まれません。共用の端末には保存しないでください。名刺画像は読み取りのためAnthropicに送信されます。</p>
+      <p class="note">キーなしでも使えます。端末内の読み取りは無料で画像も外に出ませんが、日本語の精度は低めなので、確認と修正が前提です。キーはこの端末のブラウザ内にだけ保存され、読み取り時にAnthropicへ直接送られます。このページ（公開URL）にはキーは含まれません。共用の端末には保存しないでください。名刺画像は読み取りのためAnthropicに送信されます。</p>
       <button class="btn" id="saveKey">保存</button>
     </div>
     <div class="card pad" style="margin-bottom:12px">
@@ -362,20 +367,102 @@ function scale(img,max,q){
   return c.toDataURL("image/jpeg",q);
 }
 function handleImage(file){
-  var key=lsGet("m_key","");
-  if(!key){msg("addMsg","err","先に「設定」でClaude APIキーを入力してください。");return}
-  msg("addMsg","info",'<span class="spin"></span>読み取り中です。数秒かかります…');
+  var key=lsGet("m_key",""),local=lsGet("m_ocr","auto")==="local"||!key;
+  msg("addMsg","info",'<span class="spin"></span>'+(local?"端末内で読み取り中です。初回は読み取り用データの取得で1分ほどかかります…":"読み取り中です。数秒かかります…"));
   loadImg(file).then(function(img){
     var big=scale(img,1600,0.85),image=scale(img,1000,0.7),thumb=scale(img,240,0.7);
-    return ocr(big,key).then(function(data){
+    var job=local?ocrLocal(img):ocr(big,key);
+    return job.then(function(data){
       var c=blank();
       FIELDS.forEach(function(f){if(data[f[0]])c[f[0]]=String(data[f[0]])});
       c.image=image;c.thumb=thumb;
       msg("addMsg","","");
-      openEdit(c,true,'<div class="msg info">読み取り結果です。数字や漢字の読み違いがないか、名刺と見比べて確認してください。</div>');
+      openEdit(c,true,local
+        ?'<div class="msg info">端末内で読み取りました。精度は低めなので、会社名・氏名・電話番号・メールアドレスを名刺と見比べて必ず直してください。</div>'
+        :'<div class="msg info">読み取り結果です。数字や漢字の読み違いがないか、名刺と見比べて確認してください。</div>');
     });
   }).catch(function(err){msg("addMsg","err","読み取りに失敗しました："+esc(err.message))});
 }
+
+/* ---------- キー不要の端末内OCR（Tesseract.js） ---------- */
+var TESS_URL="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+function loadTess(){return new Promise(function(res,rej){
+  if(window.Tesseract)return res();
+  var t=document.createElement("script");t.src=TESS_URL;
+  t.onload=res;t.onerror=function(){rej(new Error("読み取り用の部品を取得できません。通信状況を確認してください"))};
+  document.head.appendChild(t);
+})}
+function prep(img){
+  var r=Math.min(2.5,2200/Math.max(img.width,img.height)),c=document.createElement("canvas");
+  c.width=Math.round(img.width*r);c.height=Math.round(img.height*r);
+  var x=c.getContext("2d");x.drawImage(img,0,0,c.width,c.height);
+  var d=x.getImageData(0,0,c.width,c.height),px=d.data,sum=0,n=px.length/4,i;
+  for(i=0;i<px.length;i+=4){px[i]=px[i+1]=px[i+2]=0.299*px[i]+0.587*px[i+1]+0.114*px[i+2];sum+=px[i]}
+  var inv=sum/n<110;
+  for(i=0;i<px.length;i+=4){var v=inv?255-px[i]:px[i];v=Math.max(0,Math.min(255,(v-40)*1.4));px[i]=px[i+1]=px[i+2]=v}
+  x.putImageData(d,0,0);return c;
+}
+function ocrLocal(img){
+  return loadTess().then(function(){
+    return Tesseract.recognize(prep(img),"jpn+eng",{logger:function(m){
+      if(m.status&&m.progress!=null)msg("addMsg","info",'<span class="spin"></span>端末内で読み取り中… '+esc(m.status)+" "+Math.round(m.progress*100)+"%");
+    }});
+  }).then(function(r){return parseCard(r.data.text||"")});
+}
+var CJK="\\u3040-\\u30ff\\u4e00-\\u9fff々ヶ";
+function parseCard(raw){
+  var out={},used={};
+  var lines=raw.normalize("NFKC").split(/\r?\n/).map(function(l){
+    return l.replace(new RegExp("(["+CJK+"])[ \\t]+(?=["+CJK+"])","g"),"$1").trim();
+  }).filter(function(l){return l.length>1});
+  function take(i){used[i]=1}
+  lines.forEach(function(l,i){
+    var m;
+    if(!out.email&&(m=l.match(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/))){out.email=m[0];take(i)}
+    if(!out.url&&(m=l.match(/(https?:\/\/[^\s]+|www\.[A-Za-z0-9.\-\/]+)/))){out.url=m[0];take(i)}
+    var re=/\+?\d{2,4}[-‐‑–ー−\s]\d{2,4}[-‐‑–ー−\s]\d{3,4}/g,pm,last=0,got=false;
+    while((pm=re.exec(l))){
+      var num=pm[0].replace(/[‐‑–ー−\s]/g,"-"),seg=l.slice(last,pm.index);last=pm.index+pm[0].length;got=true;
+      var isF=/FAX|ファックス|ファクス/i.test(seg),isT=/TEL|電話/i.test(seg),isM=/Mobile|携帯|モバイル/i.test(seg)||(!isF&&!isT&&/^0[5789]0/.test(num));
+      if(isF&&!out.fax)out.fax=num;
+      if(isM){if(!out.mobile)out.mobile=num}
+      else if((isT||!isF)&&!out.tel)out.tel=num;
+    }
+    if(got)take(i);
+    if(!out.postal&&(m=l.match(/〒\s*(\d{3})\s*[-‐‑–ー−]?\s*(\d{4})/))){out.postal=m[1]+"-"+m[2];var left=l.replace(m[0],"").trim();if(left.length<4)take(i);else if(!out.address&&/[市区郡町村]/.test(left)){out.address=left.replace(/\s+/g,"");take(i)}}
+    if(!out.address&&(m=l.match(/(北海道|東京都|大阪府|京都府|.{2,3}県).*[市区郡町村]/))){out.address=l.slice(l.indexOf(m[1])).replace(/\s+/g,"");take(i)}
+  });
+  var TI=/(代表取締役|取締役|代表理事|理事長|理事|社長|副社長|会長|専務|常務|部長|次長|課長|係長|主任|所長|施設長|管理者|店長|室長|代表|院長|園長|看護師|Manager|Director|CEO)/;
+  var CO=/(株式会社|有限会社|合同会社|一般社団法人|社会福祉法人|医療法人|NPO法人|特定非営利活動法人|㈱|\(株\)|Inc\.|Co\.|Ltd)/;
+  lines.forEach(function(l,i){
+    if(used[i])return;
+    if(!out.company&&CO.test(l)&&!/@/.test(l)){out.company=l.replace(/\s+/g," ");take(i);return}
+  });
+  lines.forEach(function(l,i){
+    if(used[i])return;
+    var m=l.match(TI);
+    if(!out.title&&m&&l.length<=24){
+      out.title=m[1];var rest=l.replace(m[1],"").replace(/[・\s]/g,"");
+      if(/^[一-鿿々ぁ-んァ-ヶー]{2,6}$/.test(rest)&&!out.name)out.name=rest;
+      take(i);
+    }
+  });
+  lines.forEach(function(l,i){
+    if(used[i])return;
+    if(!out.kana&&/^[ぁ-んー\s]{3,16}$/.test(l)){out.kana=l;take(i);return}
+    if(!out.department&&/(部|課|室|支店|営業所|事業所|センター|チーム|グループ)$/.test(l)&&l.length<=16){out.department=l;take(i);return}
+  });
+  if(!out.name){
+    var best="";
+    lines.forEach(function(l,i){
+      if(used[i])return;
+      if(/^[一-鿿々ぁ-んァ-ヶー]{2,6}$/.test(l)&&!/\d/.test(l)&&l.length>best.length)best=l;
+    });
+    if(best)out.name=best;
+  }
+  return out;
+}
+
 var PROMPT="これは日本の名刺の写真です。印字されている情報を読み取り、次のキーだけを持つJSONオブジェクトのみを出力してください（説明文やコードブロックは不要）。"+
 "キー：company（会社名）, department（部署）, title（役職）, name（氏名。姓と名の間は全角スペース1つ）, kana（ふりがな。印字がなければ読みを推測してひらがなで）, postal（郵便番号。例 590-0126）, address（住所。建物名・階を含む）, tel（電話番号）, fax（FAX番号）, mobile（携帯電話）, email（メールアドレス）, url（ホームページURL）。"+
 "ルール：印字されていない項目は空文字にする。推測で補わない（ふりがなのみ例外）。電話番号やメールアドレスの数字・英字は特に正確に読む。裏面や複数枚が写っていても、最も大きく写る1枚の表面を対象にする。";
@@ -404,12 +491,13 @@ function ocr(dataUrl,key){
 function loadSettings(){
   $("apiKey").value=lsGet("m_key","");
   $("model").value=lsGet("m_model","claude-sonnet-5-5");
-  $("regs").value=getRegs().join("\n");$("mailMode").value=lsGet("m_mail","auto");
+  $("regs").value=getRegs().join("\n");$("mailMode").value=lsGet("m_mail","auto");$("ocrMode").value=lsGet("m_ocr","auto");
   $("cats").value=getCats().join("\n");
 }
 function lines(s){return s.split("\n").map(function(x){return x.trim()}).filter(Boolean)}
 $("mailMode").onchange=function(){lsSet("m_mail",this.value);msg("setMsg","ok","メールの開き方を保存しました。")};
 $("saveKey").onclick=function(){
+  lsSet("m_ocr",$("ocrMode").value);
   lsSet("m_key",$("apiKey").value.trim());lsSet("m_model",$("model").value.trim()||"claude-sonnet-5-5");
   msg("setMsg","ok","保存しました。");
 };
