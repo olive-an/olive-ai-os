@@ -433,9 +433,18 @@ function gasCall(payload){
   if(!url||!token)return Promise.reject(new Error("設定でURLと合言葉を入れてください"));
   payload.token=token;
   return fetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)})
-    .then(function(r){return r.json()})
-    .then(function(j){if(!j.ok)throw new Error(j.error||"失敗しました");return j},
-      function(){throw new Error("通信できません。URLと通信状況を確認してください")});
+    .then(function(r){
+      return r.text().then(function(t){
+        var j;
+        try{j=JSON.parse(t)}catch(e){
+          throw new Error("サーバーの応答を読めません（HTTP "+r.status+"）："+t.replace(/<[^>]*>/g," ").replace(/\s+/g," ").trim().slice(0,160));
+        }
+        if(!j.ok)throw new Error(j.error||"失敗しました");
+        return j;
+      });
+    },function(err){
+      throw new Error("通信できません（"+(err&&err.message?err.message:err)+"）。URLと通信状況を確認してください");
+    });
 }
 function shared(){return lsGet("m_shared","0")==="1"&&!!lsGet("m_gasUrl","")&&!!lsGet("m_gasToken","")}
 function b64(d){return d.split(",")[1]}
