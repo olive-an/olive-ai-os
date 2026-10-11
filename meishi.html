@@ -105,10 +105,22 @@ h3{margin:0 0 6px;font-size:16px}
   <!-- 設定 -->
   <section id="v-set" class="hide">
     <div class="card pad" style="margin-bottom:12px">
+      <h3>Googleドライブ連携（無料・おすすめ）</h3>
+      <label>ウェブアプリのURL</label>
+      <input id="gasUrl" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
+      <label>合言葉</label>
+      <input id="gasToken" type="password" autocomplete="off">
+      <label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--text)"><input id="gasSave" type="checkbox" style="width:auto"> 名刺の写真をGoogleドライブにも保存する</label>
+      <p class="note">自分のGoogleアカウントに小さなスクリプトを1回設置すると、Claude APIなしで、Googleの文字認識で名刺を読み取れます。設置手順はリポジトリの meishi-gas/README.md にあります。写真は読み取りのためGoogleに送られます。</p>
+      <div class="row"><button class="btn" id="gasSaveBtn">保存</button><button class="btn ghost" id="gasTest">接続テスト</button></div>
+    </div>
+    <div class="card pad" style="margin-bottom:12px">
       <h3>文字の読み取り方法</h3>
       <select id="ocrMode">
-        <option value="auto">自動（キーがあればClaude API、なければ端末内）</option>
-        <option value="local">常に端末内で読み取る（画像を外に送らない）</option>
+        <option value="auto">自動（Googleドライブ連携 → Claude API → 端末内 の順に使う）</option>
+        <option value="gas">Googleドライブ連携（無料のGoogle文字認識）</option>
+        <option value="claude">Claude API（精度が高い・有料）</option>
+        <option value="local">端末内で読み取る（画像を外に送らない）</option>
         <option value="none">読み取りしない（写真だけ保存し、文字は自分で入力）</option>
       </select>
       <label>Claude APIキー（任意。入れると読み取りの精度が上がります）</label>
@@ -299,7 +311,7 @@ function openDetail(id){
     row("📞",c.tel,"call")+row("📱",c.mobile,"call")+row("✉️",c.email,"mail")+
     row("📍",[c.postal&&"〒"+c.postal,c.address].filter(Boolean).join(" "),c.address?"map":"")+
     row("🖨",c.fax,"copy",'<small>FAX</small>')+row("🌐",c.url,"url")+
-    row("🏷",c.category)+row("👤",c.registrant&&"登録者："+c.registrant)+row("📝",c.memo)+'</div>'+
+    row("🏷",c.category)+(c.driveFileId?row("☁️","Googleドライブの写真を開く","drive"):"")+row("👤",c.registrant&&"登録者："+c.registrant)+row("📝",c.memo)+'</div>'+
     (c.image?'<img class="pic" src="'+c.image+'" alt="名刺画像">':'')+
     '<div class="row" style="margin-top:16px"><button class="btn" id="de">編集</button><button class="btn danger" id="dd">削除</button></div>';
   $("dx").onclick=function(){show("detail",false)};
@@ -313,6 +325,7 @@ function openDetail(id){
     if(a==="call")callNum(v);
     else if(a==="mail")mailTo(v);
     else if(a==="copy")copyText(v);
+    else if(a==="drive")window.open("https://drive.google.com/file/d/"+c.driveFileId+"/view","_blank","noopener");
     else if(a==="url")window.open(/^https?:/.test(v)?v:"https://"+v,"_blank","noopener");
     else if(a==="map")window.open("https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(c.address),"_blank","noopener");
   }});
@@ -391,34 +404,60 @@ function scale(img,max,q){
   c.getContext("2d").drawImage(img,0,0,c.width,c.height);
   return c.toDataURL("image/jpeg",q);
 }
+function pickMethod(){
+  var mode=lsGet("m_ocr","auto"),gas=lsGet("m_gasUrl","")&&lsGet("m_gasToken",""),key=lsGet("m_key","");
+  if(mode==="none"||mode==="local")return mode;
+  if(mode==="gas")return "gas";
+  if(mode==="claude")return "claude";
+  return gas?"gas":key?"claude":"local";
+}
+function gasCall(payload){
+  var url=lsGet("m_gasUrl",""),token=lsGet("m_gasToken","");
+  if(!url||!token)return Promise.reject(new Error("設定でURLと合言葉を入れてください"));
+  payload.token=token;
+  return fetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)})
+    .then(function(r){return r.json()})
+    .then(function(j){if(!j.ok)throw new Error(j.error||"失敗しました");return j},
+      function(){throw new Error("通信できません。URLと通信状況を確認してください")});
+}
+function ocrGas(dataUrl){
+  return gasCall({action:"ocr",image:dataUrl.split(",")[1],mime:"image/jpeg",filename:"meishi_"+Date.now()+".jpg",save:lsGet("m_gasSave","1")==="1"})
+    .then(function(j){var d=parseCard(j.text||"");d.driveFileId=j.fileId||"";d._raw=j.text||"";return d});
+}
 function handleImage(file,label){
   var lb=label?"<b>"+esc(label)+"</b>　":"";
-  var mode=lsGet("m_ocr","auto"),key=lsGet("m_key",""),local=mode==="local"||!key;
-  if(mode==="none"){
+  var method=pickMethod();
+  function fail(err,what){
+    msg("addMsg","err",what+esc(err.message));
+    var cb=editDone;editDone=null;if(cb&&QN>1)cb(false);
+  }
+  if(method==="none"){
     msg("addMsg","info",'<span class="spin"></span>写真を保存用に整えています…');
     return loadImg(file).then(function(img){
       var c=blank();c.image=scale(img,1000,0.7);c.thumb=scale(img,240,0.7);
       msg("addMsg","","");
       openEdit(c,true,'<div class="msg info">'+lb+'写真だけを保存します。検索や発信に使うため、会社名・氏名・電話などは下の欄に入力してください。</div>');
-    }).catch(function(err){msg("addMsg","err","写真を開けませんでした："+esc(err.message));var cb=editDone;editDone=null;if(cb&&QN>1)cb(false)});
+    }).catch(function(err){fail(err,"写真を開けませんでした：")});
   }
-  msg("addMsg","info",'<span class="spin"></span>'+(local?"端末内で読み取り中です。初回は読み取り用データの取得で1分ほどかかります…":"読み取り中です。数秒かかります…"));
+  var wait={gas:"Googleドライブで読み取り中です。数秒かかります…",claude:"読み取り中です。数秒かかります…",local:"端末内で読み取り中です。初回は読み取り用データの取得で1分ほどかかります…"};
+  var note={
+    gas:"Googleの文字認識で読み取りました。数字や漢字の読み違いがないか、名刺と見比べて確認してください。",
+    claude:"読み取り結果です。数字や漢字の読み違いがないか、名刺と見比べて確認してください。",
+    local:"端末内で読み取りました。精度は低めなので、会社名・氏名・電話番号・メールアドレスを名刺と見比べて必ず直してください。"
+  };
+  msg("addMsg","info",'<span class="spin"></span>'+wait[method]);
   loadImg(file).then(function(img){
     var big=scale(img,1600,0.85),image=scale(img,1000,0.7),thumb=scale(img,240,0.7);
-    var job=local?ocrLocal(img):ocr(big,key);
+    var job=method==="gas"?ocrGas(big):method==="claude"?ocr(big,lsGet("m_key","")):ocrLocal(img);
     return job.then(function(data){
       var c=blank();
       FIELDS.forEach(function(f){if(data[f[0]])c[f[0]]=String(data[f[0]])});
+      if(data.driveFileId)c.driveFileId=data.driveFileId;
       c.image=image;c.thumb=thumb;
       msg("addMsg","","");
-      openEdit(c,true,local
-        ?'<div class="msg info">'+lb+'端末内で読み取りました。精度は低めなので、会社名・氏名・電話番号・メールアドレスを名刺と見比べて必ず直してください。</div>'
-        :'<div class="msg info">'+lb+'読み取り結果です。数字や漢字の読み違いがないか、名刺と見比べて確認してください。</div>');
+      openEdit(c,true,'<div class="msg info">'+lb+note[method]+'</div>');
     });
-  }).catch(function(err){
-    msg("addMsg","err","読み取りに失敗しました："+esc(err.message));
-    var cb=editDone;editDone=null;if(cb&&QN>1)cb(false);
-  });
+  }).catch(function(err){fail(err,"読み取りに失敗しました：")});
 }
 
 /* ---------- キー不要の端末内OCR（Tesseract.js） ---------- */
@@ -528,11 +567,17 @@ function ocr(dataUrl,key){
 function loadSettings(){
   $("apiKey").value=lsGet("m_key","");
   $("model").value=lsGet("m_model","claude-sonnet-5-5");
-  $("regs").value=getRegs().join("\n");$("mailMode").value=lsGet("m_mail","auto");$("ocrMode").value=lsGet("m_ocr","auto");
+  $("regs").value=getRegs().join("\n");$("mailMode").value=lsGet("m_mail","auto");$("ocrMode").value=lsGet("m_ocr","auto");$("gasUrl").value=lsGet("m_gasUrl","");$("gasToken").value=lsGet("m_gasToken","");$("gasSave").checked=lsGet("m_gasSave","1")==="1";
   $("cats").value=getCats().join("\n");
 }
 function lines(s){return s.split("\n").map(function(x){return x.trim()}).filter(Boolean)}
 $("mailMode").onchange=function(){lsSet("m_mail",this.value);msg("setMsg","ok","メールの開き方を保存しました。")};
+function saveGas(){lsSet("m_gasUrl",$("gasUrl").value.trim());lsSet("m_gasToken",$("gasToken").value.trim());lsSet("m_gasSave",$("gasSave").checked?"1":"0")}
+$("gasSaveBtn").onclick=function(){saveGas();msg("setMsg","ok","保存しました。")};
+$("gasTest").onclick=function(){
+  saveGas();msg("setMsg","info",'<span class="spin"></span>接続を確認しています…');
+  gasCall({action:"ping"}).then(function(){msg("setMsg","ok","接続できました。")}).catch(function(e){msg("setMsg","err","接続できません："+esc(e.message))});
+};
 $("saveKey").onclick=function(){
   lsSet("m_ocr",$("ocrMode").value);
   lsSet("m_key",$("apiKey").value.trim());lsSet("m_model",$("model").value.trim()||"claude-sonnet-5-5");
