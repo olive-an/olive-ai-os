@@ -432,7 +432,17 @@ function pickMethod(){
 function gasCall(payload){
   var url=lsGet("m_gasUrl",""),token=lsGet("m_gasToken","");
   if(!url||!token)return Promise.reject(new Error("設定でURLと合言葉を入れてください"));
-  payload.token=token;
+  payload.token=token;payload.rid=uid()+uid();
+  // まず普通の通信。ブラウザに止められたとき（iPhoneのSafariなど）は、隠しフレーム経由に自動で切り替える
+  return gasFetch(url,payload).catch(function(e){
+    if(!e.netfail)throw e;
+    return gasFrame(url,payload).catch(function(e2){
+      if(!e2.netfail)throw e2;
+      throw new Error("通信できません（"+e.message+" ／ 切替後："+e2.message+"）。URLと通信状況を確認してください");
+    });
+  });
+}
+function gasFetch(url,payload){
   return fetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)})
     .then(function(r){
       return r.text().then(function(t){
@@ -444,8 +454,30 @@ function gasCall(payload){
         return j;
       });
     },function(err){
-      throw new Error("通信できません（"+(err&&err.message?err.message:err)+"）。URLと通信状況を確認してください");
+      var e=new Error(err&&err.message?err.message:String(err));e.netfail=true;throw e;
     });
+}
+function gasFrame(url,payload){
+  return new Promise(function(res,rej){
+    var name="gasf_"+payload.rid,done=false;
+    var ifr=document.createElement("iframe");ifr.name=name;ifr.style.display="none";
+    var form=document.createElement("form");form.method="POST";form.action=url;form.target=name;form.style.display="none";
+    var inp=document.createElement("input");inp.type="hidden";inp.name="payload";inp.value=JSON.stringify(payload);form.appendChild(inp);
+    var timer=setTimeout(function(){var te=new Error("応答がありません（120秒）");te.netfail=true;finish(te)},120000);
+    function onMsg(ev){
+      var d=ev.data;
+      if(!d||d.gasrid!==payload.rid)return;
+      if(!/(\.googleusercontent\.com|^https:\/\/script\.google\.com|^null)$/.test(ev.origin))return;
+      finish(null,d.result);
+    }
+    function finish(err,r){
+      if(done)return;done=true;clearTimeout(timer);window.removeEventListener("message",onMsg);
+      if(ifr.parentNode)ifr.parentNode.removeChild(ifr);if(form.parentNode)form.parentNode.removeChild(form);
+      if(err)rej(err);else if(!r||!r.ok)rej(new Error(r&&r.error||"失敗しました"));else res(r);
+    }
+    window.addEventListener("message",onMsg);
+    document.body.appendChild(ifr);document.body.appendChild(form);form.submit();
+  });
 }
 function shared(){return lsGet("m_shared","0")==="1"&&!!lsGet("m_gasUrl","")&&!!lsGet("m_gasToken","")}
 function b64(d){return d.split(",")[1]}
