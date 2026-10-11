@@ -91,12 +91,13 @@ h3{margin:0 0 6px;font-size:16px}
       <h3>名刺を撮影して読み込む</h3>
       <p class="note">名刺の全体が写るように、明るい場所でまっすぐ撮影してください。読み取り後に必ず内容を確認・修正してから保存します。</p>
       <input id="cam" type="file" accept="image/*" capture="environment" class="hide">
-      <input id="pick" type="file" accept="image/*" class="hide">
+      <input id="pick" type="file" accept="image/*" multiple class="hide">
       <div class="row">
         <button class="btn gold" id="btnCam">📷 撮影する</button>
-        <button class="btn ghost" id="btnPick">🖼 写真を選ぶ</button>
+        <button class="btn ghost" id="btnPick">🖼 写真・ドライブから選ぶ（複数可）</button>
       </div>
       <div style="margin-top:10px"><button class="btn ghost" id="btnManual" style="width:100%">画像なしで手入力する</button></div>
+      <p class="note" style="margin-top:12px">すでに撮ってある名刺の写真は、「写真・ドライブから選ぶ」でまとめて取り込めます。Googleドライブの画像は、選択画面で「ファイル」（Androidは「ドライブ」）からGoogleドライブを開いて選んでください。1枚ずつ確認画面が出るので、確認して保存します。</p>
       <div id="addMsg"></div>
     </div>
   </section>
@@ -335,16 +336,17 @@ function openEdit(c,isNew,note){
   h+='<label>分類</label><select data-k="category">'+cats.map(function(n){return '<option'+(c.category===n?" selected":"")+'>'+esc(n)+'</option>'}).join("")+'</select>';
   h+='<label>登録者</label><input data-k="registrant" list="regList" value="'+esc(c.registrant||lsGet("m_lastReg",""))+'"><datalist id="regList">'+regs.map(function(r){return '<option value="'+esc(r)+'">'}).join("")+'</datalist>';
   h+='</div>'+(c.image?'<img class="pic" src="'+c.image+'" alt="名刺画像">':'')+
-     '<div class="row" style="margin-top:16px"><button class="btn gold" id="es">保存</button><button class="btn ghost" id="ec">キャンセル</button></div>';
+     '<div class="row" style="margin-top:16px"><button class="btn gold" id="es">保存</button><button class="btn ghost" id="ec">'+(editDone&&QN>1?"スキップ":"キャンセル")+'</button></div>'+(editDone&&QN>1?'<button class="btn danger pk" id="eq">ここで取り込みをやめる</button>':'');
   $("editIn").innerHTML=h;
-  $("ex").onclick=$("ec").onclick=function(){show("edit",false)};
+  $("ex").onclick=$("ec").onclick=function(){finishEdit(false)};
+  if($("eq"))$("eq").onclick=function(){editDone=null;QN=0;show("edit",false);reload().then(function(){go("list")})};
   $("es").onclick=function(){
     $("editIn").querySelectorAll("[data-k]").forEach(function(e){c[e.dataset.k]=e.value.trim()});
     if(!c.company&&!c.name){alert("会社名か氏名のどちらかは入力してください。");return}
     if(c.registrant)lsSet("m_lastReg",c.registrant);
     if(c.registrant&&getRegs().indexOf(c.registrant)<0){var r=getRegs();r.push(c.registrant);lsSet("m_regs",JSON.stringify(r))}
     if(!c.created)c.created=Date.now();
-    dbPut(c).then(reload).then(function(){show("edit",false);go("list")});
+    dbPut(c).then(reload).then(function(){finishEdit(true)});
   };
   show("edit",true);
   $("editIn").scrollTop=0;
@@ -354,8 +356,30 @@ function blank(){var o={id:uid(),created:Date.now(),category:getCats()[0]};FIELD
 /* ---------- 撮影・読み取り ---------- */
 $("btnCam").onclick=function(){$("cam").click()};
 $("btnPick").onclick=function(){$("pick").click()};
-$("btnManual").onclick=function(){openEdit(blank(),true)};
-$("cam").onchange=$("pick").onchange=function(e){var f=e.target.files[0];e.target.value="";if(f)handleImage(f)};
+$("btnManual").onclick=function(){editDone=null;openEdit(blank(),true)};
+var editDone=null,QN=0;
+function finishEdit(saved){
+  show("edit",false);
+  var cb=editDone;editDone=null;
+  if(cb)cb(saved);else if(saved)go("list");
+}
+function importFiles(files){
+  var list=Array.prototype.slice.call(files).filter(function(f){return /^image\//.test(f.type)||/\.(jpe?g|png|heic|heif|webp)$/i.test(f.name)});
+  if(!list.length){msg("addMsg","err","画像ファイルが選ばれていません。");return}
+  var n=list.length,i=0,saved=0;QN=n;
+  function next(){
+    if(i>=n){
+      editDone=null;QN=0;msg("addMsg","","");
+      reload().then(function(){go("list");toast(saved+"枚を保存しました（選んだ"+n+"枚中）")});
+      return;
+    }
+    var f=list[i++];
+    editDone=function(sv){if(sv)saved++;next()};
+    handleImage(f,n>1?i+" / "+n+"枚目":"");
+  }
+  next();
+}
+$("cam").onchange=$("pick").onchange=function(e){var fs=Array.prototype.slice.call(e.target.files);e.target.value="";if(fs.length)importFiles(fs)};
 
 function loadImg(file){return new Promise(function(res,rej){
   var u=URL.createObjectURL(file),i=new Image();
@@ -367,15 +391,16 @@ function scale(img,max,q){
   c.getContext("2d").drawImage(img,0,0,c.width,c.height);
   return c.toDataURL("image/jpeg",q);
 }
-function handleImage(file){
+function handleImage(file,label){
+  var lb=label?"<b>"+esc(label)+"</b>　":"";
   var mode=lsGet("m_ocr","auto"),key=lsGet("m_key",""),local=mode==="local"||!key;
   if(mode==="none"){
     msg("addMsg","info",'<span class="spin"></span>写真を保存用に整えています…');
     return loadImg(file).then(function(img){
       var c=blank();c.image=scale(img,1000,0.7);c.thumb=scale(img,240,0.7);
       msg("addMsg","","");
-      openEdit(c,true,'<div class="msg info">写真だけを保存します。検索や発信に使うため、会社名・氏名・電話などは下の欄に入力してください。</div>');
-    }).catch(function(err){msg("addMsg","err","写真を開けませんでした："+esc(err.message))});
+      openEdit(c,true,'<div class="msg info">'+lb+'写真だけを保存します。検索や発信に使うため、会社名・氏名・電話などは下の欄に入力してください。</div>');
+    }).catch(function(err){msg("addMsg","err","写真を開けませんでした："+esc(err.message));var cb=editDone;editDone=null;if(cb&&QN>1)cb(false)});
   }
   msg("addMsg","info",'<span class="spin"></span>'+(local?"端末内で読み取り中です。初回は読み取り用データの取得で1分ほどかかります…":"読み取り中です。数秒かかります…"));
   loadImg(file).then(function(img){
@@ -387,10 +412,13 @@ function handleImage(file){
       c.image=image;c.thumb=thumb;
       msg("addMsg","","");
       openEdit(c,true,local
-        ?'<div class="msg info">端末内で読み取りました。精度は低めなので、会社名・氏名・電話番号・メールアドレスを名刺と見比べて必ず直してください。</div>'
-        :'<div class="msg info">読み取り結果です。数字や漢字の読み違いがないか、名刺と見比べて確認してください。</div>');
+        ?'<div class="msg info">'+lb+'端末内で読み取りました。精度は低めなので、会社名・氏名・電話番号・メールアドレスを名刺と見比べて必ず直してください。</div>'
+        :'<div class="msg info">'+lb+'読み取り結果です。数字や漢字の読み違いがないか、名刺と見比べて確認してください。</div>');
     });
-  }).catch(function(err){msg("addMsg","err","読み取りに失敗しました："+esc(err.message))});
+  }).catch(function(err){
+    msg("addMsg","err","読み取りに失敗しました："+esc(err.message));
+    var cb=editDone;editDone=null;if(cb&&QN>1)cb(false);
+  });
 }
 
 /* ---------- キー不要の端末内OCR（Tesseract.js） ---------- */
@@ -550,7 +578,8 @@ $("impFile").onchange=function(e){
 };
 
 function reload(){return dbAll().then(function(a){cards=a;render()})}
-[$("detail"),$("edit"),$("pick2")].forEach(function(s){s.onclick=function(e){if(e.target===s)s.classList.remove("show")}});
+[$("detail"),$("pick2")].forEach(function(s){s.onclick=function(e){if(e.target===s)s.classList.remove("show")}});
+$("edit").onclick=function(e){if(e.target===$("edit"))finishEdit(false)};
 openDB().then(reload).catch(function(){$("list").innerHTML='<div class="empty">この環境では保存機能が使えません（プライベートモードなど）。</div>'});
 </script>
 </body>
