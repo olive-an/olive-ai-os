@@ -81,6 +81,7 @@ h3{margin:0 0 6px;font-size:16px}
       <input id="q" type="search" placeholder="会社名・氏名・電話などで検索" style="flex:2">
       <select id="fReg" style="flex:1"></select>
     </div>
+    <div id="syncRow" class="hide" style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><button class="chip" id="btnSync">🔄 共有データを更新</button><span class="note" id="syncMsg"></span></div>
     <div class="chips" id="chips"></div>
     <div id="list"></div>
   </section>
@@ -110,9 +111,10 @@ h3{margin:0 0 6px;font-size:16px}
       <input id="gasUrl" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
       <label>合言葉</label>
       <input id="gasToken" type="password" autocomplete="off">
-      <label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--text)"><input id="gasSave" type="checkbox" style="width:auto"> 名刺の写真をGoogleドライブにも保存する</label>
-      <p class="note">自分のGoogleアカウントに小さなスクリプトを1回設置すると、Claude APIなしで、Googleの文字認識で名刺を読み取れます。設置手順はリポジトリの meishi-gas/README.md にあります。写真は読み取りのためGoogleに送られます。</p>
+      <label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--text)"><input id="gasShared" type="checkbox" style="width:auto"> 名刺データをスプレッドシートで共有する（写真はGoogleドライブに保存）</label>
+      <p class="note">自分のGoogleアカウントに小さなスクリプトを1回設置すると、Claude APIなしで、Googleの文字認識で名刺を読み取れます。設置手順はリポジトリの meishi-gas/README.md にあります。写真は読み取りのためGoogleに送られます。「共有する」をオンにすると、名刺のデータはあなたのスプレッドシート、写真はドライブに保存され、同じURLと合言葉を入れた人と共有されます。合言葉を知っている人は全員が全名刺を見られます。</p>
       <div class="row"><button class="btn" id="gasSaveBtn">保存</button><button class="btn ghost" id="gasTest">接続テスト</button></div>
+      <button class="btn ghost" id="gasUp" style="width:100%;margin-top:8px">この端末だけにある名刺を共有に送る</button>
     </div>
     <div class="card pad" style="margin-bottom:12px">
       <h3>文字の読み取り方法</h3>
@@ -198,8 +200,8 @@ function dbDel(id){return new Promise(function(res){var q=tx("readwrite").delete
 /* ---------- 設定（localStorage） ---------- */
 function lsGet(k,d){try{var v=localStorage.getItem(k);return v===null?d:v}catch(e){return d}}
 function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
-function getCats(){try{return JSON.parse(lsGet("m_cats",""))||DEF_CATS}catch(e){return DEF_CATS}}
-function getRegs(){try{return JSON.parse(lsGet("m_regs",""))||[]}catch(e){return []}}
+function getCats(){var a=DEF_CATS.slice();try{a=(JSON.parse(lsGet("m_cats",""))||DEF_CATS).slice()}catch(e){}cards.forEach(function(c){if(c.category&&a.indexOf(c.category)<0)a.push(c.category)});return a}
+function getRegs(){var a=[];try{a=JSON.parse(lsGet("m_regs",""))||[]}catch(e){}cards.forEach(function(c){if(c.registrant&&a.indexOf(c.registrant)<0)a.push(c.registrant)});return a}
 
 /* ---------- 共通 ---------- */
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
@@ -220,6 +222,7 @@ document.querySelectorAll("nav button").forEach(function(b){b.onclick=function()
 
 /* ---------- 一覧 ---------- */
 function render(){
+  $("syncRow").classList.toggle("hide",!shared());
   var regs=getRegs(),sel=$("fReg"),cur=sel.value;
   sel.innerHTML='<option value="">登録者：全体</option>'+regs.map(function(r){return '<option>'+esc(r)+'</option>'}).join("");
   sel.value=cur;
@@ -247,6 +250,7 @@ function render(){
   }).join("");
   $("list").querySelectorAll(".item").forEach(function(d){d.onclick=function(){openDetail(d.dataset.id)}});
 }
+$("btnSync").onclick=syncDown;
 $("q").oninput=render;$("fReg").onchange=render;
 
 /* ---------- 詳細 ---------- */
@@ -311,8 +315,8 @@ function openDetail(id){
     row("📞",c.tel,"call")+row("📱",c.mobile,"call")+row("✉️",c.email,"mail")+
     row("📍",[c.postal&&"〒"+c.postal,c.address].filter(Boolean).join(" "),c.address?"map":"")+
     row("🖨",c.fax,"copy",'<small>FAX</small>')+row("🌐",c.url,"url")+
-    row("🏷",c.category)+(c.driveFileId?row("☁️","Googleドライブの写真を開く","drive"):"")+row("👤",c.registrant&&"登録者："+c.registrant)+row("📝",c.memo)+'</div>'+
-    (c.image?'<img class="pic" src="'+c.image+'" alt="名刺画像">':'')+
+    row("🏷",c.category)+row("👤",c.registrant&&"登録者："+c.registrant)+row("📝",c.memo)+'</div>'+
+    '<div id="picBox">'+(c.image?'<img class="pic" src="'+c.image+'" alt="名刺画像">':(c.imageFileId?'<p class="note">写真を読み込み中…</p>':''))+'</div>'+
     '<div class="row" style="margin-top:16px"><button class="btn" id="de">編集</button><button class="btn danger" id="dd">削除</button></div>';
   $("dx").onclick=function(){show("detail",false)};
   if($("bCall"))$("bCall").onclick=function(){
@@ -325,13 +329,20 @@ function openDetail(id){
     if(a==="call")callNum(v);
     else if(a==="mail")mailTo(v);
     else if(a==="copy")copyText(v);
-    else if(a==="drive")window.open("https://drive.google.com/file/d/"+c.driveFileId+"/view","_blank","noopener");
     else if(a==="url")window.open(/^https?:/.test(v)?v:"https://"+v,"_blank","noopener");
     else if(a==="map")window.open("https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(c.address),"_blank","noopener");
   }});
+  if(!c.image&&c.imageFileId&&shared()){
+    gasCall({action:"image",fileId:c.imageFileId}).then(function(j){
+      c.image=j.image;dbPut(c);
+      if($("picBox"))$("picBox").innerHTML='<img class="pic" src="'+j.image+'" alt="名刺画像">';
+    }).catch(function(e){if($("picBox"))$("picBox").innerHTML='<p class="note">写真を読み込めません：'+esc(e.message)+'</p>'});
+  }
   $("de").onclick=function(){show("detail",false);openEdit(c,false)};
   $("dd").onclick=function(){
-    if(confirm("この名刺を削除します。よろしいですか？")){dbDel(c.id).then(reload).then(function(){show("detail",false)})}
+    if(!confirm("この名刺を削除します。よろしいですか？"+(shared()&&c.synced?"\n共有しているので、みんなの一覧からも消えます。":"")))return;
+    var del=shared()&&c.synced?gasCall({action:"delete",id:c.id}):Promise.resolve();
+    del.then(function(){return dbDel(c.id)}).then(reload).then(function(){show("detail",false)}).catch(function(e){alert("削除できませんでした："+e.message)});
   };
   show("detail",true);
 }
@@ -359,7 +370,13 @@ function openEdit(c,isNew,note){
     if(c.registrant)lsSet("m_lastReg",c.registrant);
     if(c.registrant&&getRegs().indexOf(c.registrant)<0){var r=getRegs();r.push(c.registrant);lsSet("m_regs",JSON.stringify(r))}
     if(!c.created)c.created=Date.now();
-    dbPut(c).then(reload).then(function(){finishEdit(true)});
+    var btn=$("es");
+    if(shared()){
+      btn.disabled=true;btn.textContent="共有に保存中…";
+      pushCard(c).then(reload).then(function(){finishEdit(true)}).catch(function(e){
+        btn.disabled=false;btn.textContent="保存";alert("共有に保存できませんでした："+e.message);
+      });
+    }else dbPut(c).then(reload).then(function(){finishEdit(true)});
   };
   show("edit",true);
   $("editIn").scrollTop=0;
@@ -420,9 +437,44 @@ function gasCall(payload){
     .then(function(j){if(!j.ok)throw new Error(j.error||"失敗しました");return j},
       function(){throw new Error("通信できません。URLと通信状況を確認してください")});
 }
+function shared(){return lsGet("m_shared","0")==="1"&&!!lsGet("m_gasUrl","")&&!!lsGet("m_gasToken","")}
+function b64(d){return d.split(",")[1]}
+function cardPayload(c){
+  var o={id:c.id,created:c.created,category:c.category,registrant:c.registrant};
+  FIELDS.forEach(function(f){o[f[0]]=c[f[0]]||""});
+  if(c.thumb&&!c.imageFileId)o.thumb=c.thumb;
+  return o;
+}
+function pushCard(c){
+  var body={action:"save",card:cardPayload(c)};
+  if(c.image&&!c.imageFileId)body.image=b64(c.image);
+  return gasCall(body).then(function(j){
+    c.imageFileId=j.card.imageFileId;c.updated=j.card.updated;c.created=c.created||j.card.created;c.synced=1;
+    return dbPut(c);
+  });
+}
+function syncDown(){
+  if(!shared())return Promise.resolve();
+  $("syncMsg").textContent="共有データを読み込み中…";
+  return gasCall({action:"list"}).then(function(j){
+    var local={};cards.forEach(function(c){local[c.id]=c});
+    var ids={},puts=[];
+    j.cards.forEach(function(sc){
+      ids[sc.id]=1;
+      var old=local[sc.id]||{},c={synced:1};
+      Object.keys(sc).forEach(function(k){c[k]=sc[k]});
+      c.created=Number(sc.created)||Date.now();c.updated=Number(sc.updated)||0;
+      if(old.image&&old.imageFileId===sc.imageFileId)c.image=old.image;
+      puts.push(dbPut(c));
+    });
+    cards.forEach(function(c){if(c.synced&&!ids[c.id])puts.push(dbDel(c.id))});
+    return Promise.all(puts);
+  }).then(function(){$("syncMsg").textContent="共有データを読み込みました（"+new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+"）";return reload()})
+   .catch(function(e){$("syncMsg").textContent="共有に接続できません（この端末に保存済みの内容を表示中）："+e.message});
+}
 function ocrGas(dataUrl){
-  return gasCall({action:"ocr",image:dataUrl.split(",")[1],mime:"image/jpeg",filename:"meishi_"+Date.now()+".jpg",save:lsGet("m_gasSave","1")==="1"})
-    .then(function(j){var d=parseCard(j.text||"");d.driveFileId=j.fileId||"";d._raw=j.text||"";return d});
+  return gasCall({action:"ocr",image:dataUrl.split(",")[1],mime:"image/jpeg",filename:"meishi_"+Date.now()+".jpg"})
+    .then(function(j){return parseCard(j.text||"")});
 }
 function handleImage(file,label){
   var lb=label?"<b>"+esc(label)+"</b>　":"";
@@ -434,7 +486,7 @@ function handleImage(file,label){
   if(method==="none"){
     msg("addMsg","info",'<span class="spin"></span>写真を保存用に整えています…');
     return loadImg(file).then(function(img){
-      var c=blank();c.image=scale(img,1000,0.7);c.thumb=scale(img,240,0.7);
+      var c=blank();c.image=scale(img,1000,0.7);c.thumb=scale(img,200,0.6);
       msg("addMsg","","");
       openEdit(c,true,'<div class="msg info">'+lb+'写真だけを保存します。検索や発信に使うため、会社名・氏名・電話などは下の欄に入力してください。</div>');
     }).catch(function(err){fail(err,"写真を開けませんでした：")});
@@ -447,12 +499,11 @@ function handleImage(file,label){
   };
   msg("addMsg","info",'<span class="spin"></span>'+wait[method]);
   loadImg(file).then(function(img){
-    var big=scale(img,1600,0.85),image=scale(img,1000,0.7),thumb=scale(img,240,0.7);
+    var big=scale(img,1600,0.85),image=scale(img,1000,0.7),thumb=scale(img,200,0.6);
     var job=method==="gas"?ocrGas(big):method==="claude"?ocr(big,lsGet("m_key","")):ocrLocal(img);
     return job.then(function(data){
       var c=blank();
       FIELDS.forEach(function(f){if(data[f[0]])c[f[0]]=String(data[f[0]])});
-      if(data.driveFileId)c.driveFileId=data.driveFileId;
       c.image=image;c.thumb=thumb;
       msg("addMsg","","");
       openEdit(c,true,'<div class="msg info">'+lb+note[method]+'</div>');
@@ -567,16 +618,29 @@ function ocr(dataUrl,key){
 function loadSettings(){
   $("apiKey").value=lsGet("m_key","");
   $("model").value=lsGet("m_model","claude-sonnet-5-5");
-  $("regs").value=getRegs().join("\n");$("mailMode").value=lsGet("m_mail","auto");$("ocrMode").value=lsGet("m_ocr","auto");$("gasUrl").value=lsGet("m_gasUrl","");$("gasToken").value=lsGet("m_gasToken","");$("gasSave").checked=lsGet("m_gasSave","1")==="1";
+  $("regs").value=getRegs().join("\n");$("mailMode").value=lsGet("m_mail","auto");$("ocrMode").value=lsGet("m_ocr","auto");$("gasUrl").value=lsGet("m_gasUrl","");$("gasToken").value=lsGet("m_gasToken","");$("gasShared").checked=lsGet("m_shared","0")==="1";
   $("cats").value=getCats().join("\n");
 }
 function lines(s){return s.split("\n").map(function(x){return x.trim()}).filter(Boolean)}
 $("mailMode").onchange=function(){lsSet("m_mail",this.value);msg("setMsg","ok","メールの開き方を保存しました。")};
-function saveGas(){lsSet("m_gasUrl",$("gasUrl").value.trim());lsSet("m_gasToken",$("gasToken").value.trim());lsSet("m_gasSave",$("gasSave").checked?"1":"0")}
+function saveGas(){lsSet("m_gasUrl",$("gasUrl").value.trim());lsSet("m_gasToken",$("gasToken").value.trim());lsSet("m_shared",$("gasShared").checked?"1":"0");render()}
 $("gasSaveBtn").onclick=function(){saveGas();msg("setMsg","ok","保存しました。")};
 $("gasTest").onclick=function(){
   saveGas();msg("setMsg","info",'<span class="spin"></span>接続を確認しています…');
   gasCall({action:"ping"}).then(function(){msg("setMsg","ok","接続できました。")}).catch(function(e){msg("setMsg","err","接続できません："+esc(e.message))});
+};
+$("gasUp").onclick=function(){
+  saveGas();
+  if(!shared()){msg("setMsg","err","「名刺データをスプレッドシートで共有する」をオンにして、URLと合言葉を入れてから押してください。");return}
+  var todo=cards.filter(function(c){return !c.synced});
+  if(!todo.length){msg("setMsg","ok","共有に送っていない名刺はありません。");return}
+  if(!confirm(todo.length+"件を共有に送ります。よろしいですか？"))return;
+  var i=0,ok=0;
+  (function next(){
+    if(i>=todo.length){reload().then(function(){msg("setMsg","ok",ok+"件を共有に送りました。")});return}
+    msg("setMsg","info",'<span class="spin"></span>'+(i+1)+" / "+todo.length+"件を送っています…");
+    pushCard(todo[i++]).then(function(){ok++;next()},function(e){msg("setMsg","err","途中で止まりました（"+ok+"件送信済み）："+esc(e.message))});
+  })();
 };
 $("saveKey").onclick=function(){
   lsSet("m_ocr",$("ocrMode").value);
@@ -625,7 +689,7 @@ $("impFile").onchange=function(e){
 function reload(){return dbAll().then(function(a){cards=a;render()})}
 [$("detail"),$("pick2")].forEach(function(s){s.onclick=function(e){if(e.target===s)s.classList.remove("show")}});
 $("edit").onclick=function(e){if(e.target===$("edit"))finishEdit(false)};
-openDB().then(reload).catch(function(){$("list").innerHTML='<div class="empty">この環境では保存機能が使えません（プライベートモードなど）。</div>'});
+openDB().then(reload).then(syncDown).catch(function(){$("list").innerHTML='<div class="empty">この環境では保存機能が使えません（プライベートモードなど）。</div>'});
 </script>
 </body>
 </html>
