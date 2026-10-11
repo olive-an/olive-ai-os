@@ -26,23 +26,43 @@ function doGet() {
   return out_({ ok: true, message: '名刺アプリ 稼働中' });
 }
 
+// 名刺アプリからの呼び出しを受ける入口
+//  ・通常の通信（fetch）：本文にJSONが入っている
+//  ・隠しフレーム経由（iPhoneのSafariなどでfetchが止められるとき）：フォームの payload 欄にJSONが入っている
 function doPost(e) {
+  var bridge = !!(e && e.parameter && e.parameter.payload);
+  var req = null;
+  var result;
   try {
     if (TOKEN === 'ここを自分だけの合言葉に書き換える') throw new Error('Code.gs の TOKEN（合言葉）を書き換えてください');
-    var req = JSON.parse(e.postData.contents);
-    if (req.token !== TOKEN) throw new Error('合言葉が違います');
-    switch (req.action) {
-      case 'ping': return out_({ ok: true });
-      case 'ocr': return out_(ocr_(req));
-      case 'list': return out_({ ok: true, cards: list_() });
-      case 'save': return out_(withLock_(function () { return save_(req); }));
-      case 'delete': return out_(withLock_(function () { return delete_(req); }));
-      case 'image': return out_(image_(req));
-    }
-    throw new Error('不明な操作です');
+    req = JSON.parse(bridge ? e.parameter.payload : e.postData.contents);
+    result = handle_(req);
   } catch (err) {
-    return out_({ ok: false, error: String(err && err.message ? err.message : err) });
+    result = { ok: false, error: String(err && err.message ? err.message : err) };
   }
+  return bridge ? bridgeOut_(req && req.rid, result) : out_(result);
+}
+
+function handle_(req) {
+  if (req.token !== TOKEN) throw new Error('合言葉が違います');
+  switch (req.action) {
+    case 'ping': return { ok: true };
+    case 'ocr': return ocr_(req);
+    case 'list': return { ok: true, cards: list_() };
+    case 'save': return withLock_(function () { return save_(req); });
+    case 'delete': return withLock_(function () { return delete_(req); });
+    case 'image': return image_(req);
+  }
+  throw new Error('不明な操作です');
+}
+
+// 隠しフレームの中に結果を書き、親の画面（名刺アプリ）へ postMessage で渡す
+function bridgeOut_(rid, result) {
+  var json = JSON.stringify({ gasrid: rid || '', result: result })
+    .replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  return HtmlService
+    .createHtmlOutput('<!doctype html><meta charset="utf-8"><script>window.top.postMessage(' + json + ',"*");</script>')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 function out_(obj) {
