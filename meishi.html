@@ -349,6 +349,55 @@ function openDetail(id){
 }
 
 /* ---------- 編集 ---------- */
+/* ---------- 郵便番号から住所（番地より前）を自動入力 ---------- */
+var zipCache={};
+function zipLookup(z){
+  if(zipCache[z])return Promise.resolve(zipCache[z]);
+  var base="https://zipcloud.ibsnet.co.jp/api/search?zipcode="+z;
+  function pick(j){
+    if(!j||j.status!==200||!j.results||!j.results.length)throw new Error("該当する住所が見つかりません");
+    var r=j.results[0],pref=r.address1;
+    var addr=pref+r.address2+(r.address3==="以下に掲載がない場合"?"":r.address3);
+    zipCache[z]=addr;return addr;
+  }
+  return fetch(base).then(function(r){return r.json()}).then(pick).catch(function(e){
+    if(e&&e.message==="該当する住所が見つかりません")throw e;
+    // fetchが止められたときは、スクリプト読み込み（JSONP）に切り替える
+    return new Promise(function(res,rej){
+      var cb="zipcb_"+uid(),t=document.createElement("script");
+      var timer=setTimeout(function(){done(new Error("住所の検索に失敗しました"))},8000);
+      function done(err,j){clearTimeout(timer);delete window[cb];if(t.parentNode)t.parentNode.removeChild(t);if(err)rej(err);else{try{res(pick(j))}catch(x){rej(x)}}}
+      window[cb]=function(j){done(null,j)};
+      t.onerror=function(){done(new Error("住所の検索に失敗しました"))};
+      t.src=base+"&callback="+cb;document.head.appendChild(t);
+    });
+  });
+}
+function wireZip(root){
+  var zip=root.querySelector('[data-k="postal"]'),addr=root.querySelector('[data-k="address"]');
+  if(!zip||!addr)return;
+  var hint=document.createElement("div");hint.className="note";hint.style.marginTop="4px";
+  zip.parentNode.insertBefore(hint,zip.nextSibling);
+  var auto=addr.value; // 自動入力した値（手で直したら上書きしない）
+  function run(){
+    var z=zip.value.normalize("NFKC").replace(/[^0-9]/g,"");
+    if(z.length!==7){hint.textContent="";return}
+    var cur=addr.value.trim();
+    if(cur&&cur!==auto&&!/^[^0-9０-９\-－]*$/.test(cur)){hint.textContent="";return} // 番地まで入力済みなら触らない
+    hint.textContent="住所を検索中…";
+    zipLookup(z).then(function(a){
+      var now=addr.value.trim();
+      if(now&&now!==auto&&now.indexOf(a)!==0&&!/^[^0-9０-９\-－]*$/.test(now)){hint.textContent="";return}
+      // 既に番地が続いている場合は、番地部分を残す
+      var rest=now&&now!==auto&&now.indexOf(a)===0?now.slice(a.length):"";
+      addr.value=a+rest;auto=a;hint.textContent="住所を入力しました。番地・建物名を続けて入力してください。";
+    }).catch(function(e){hint.textContent=e.message});
+  }
+  zip.addEventListener("input",run);
+  zip.addEventListener("change",run);
+  if(zip.value&&!addr.value.trim())run();
+}
+
 function openEdit(c,isNew,note){
   var regs=getRegs(),cats=getCats();
   var h='<button class="x" id="ex">×</button><h2>'+(isNew?"内容の確認":"名刺の編集")+'</h2>';
@@ -363,6 +412,7 @@ function openEdit(c,isNew,note){
   h+='</div>'+(c.image?'<img class="pic" src="'+c.image+'" alt="名刺画像">':'')+
      '<div class="row" style="margin-top:16px"><button class="btn gold" id="es">保存</button><button class="btn ghost" id="ec">'+(editDone&&QN>1?"スキップ":"キャンセル")+'</button></div>'+(editDone&&QN>1?'<button class="btn danger pk" id="eq">ここで取り込みをやめる</button>':'');
   $("editIn").innerHTML=h;
+  wireZip($("editIn"));
   $("ex").onclick=$("ec").onclick=function(){finishEdit(false)};
   if($("eq"))$("eq").onclick=function(){editDone=null;QN=0;show("edit",false);reload().then(function(){go("list")})};
   $("es").onclick=function(){
