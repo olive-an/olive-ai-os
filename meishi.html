@@ -356,7 +356,7 @@ function zipLookup(z){
   var base="https://zipcloud.ibsnet.co.jp/api/search?zipcode="+z;
   function pick(j){
     if(!j||j.status!==200||!j.results||!j.results.length)throw new Error("該当する住所が見つかりません");
-    var r=j.results[0],pref=r.address1==="大阪府"?"":r.address1;
+    var r=j.results[0],pref=r.address1;
     var addr=pref+r.address2+(r.address3==="以下に掲載がない場合"?"":r.address3);
     zipCache[z]=addr;return addr;
   }
