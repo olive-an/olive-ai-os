@@ -754,6 +754,7 @@
   .bizBtn .bd{display:block; font-size:10.5px; font-weight:600; color:rgba(255,255,255,.85);
     margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .bizBtn .bg{font-size:17px; font-weight:800; opacity:.85}
+  .bizBtn.cur{box-shadow:0 0 0 3px #bfe6d7, 0 1px 2px rgba(0,0,0,.12)}
   .bizBtn.soon{background:#e7ecef; color:#8d99a3; box-shadow:none; cursor:default}
   .bizBtn.soon .bi{box-shadow:0 0 0 2px #dfe5ea; opacity:.6}
   .bizBtn.soon .bd{color:#9aa5ad}
@@ -799,8 +800,7 @@
     <div class="stage" id="stage">
       <div class="banner" id="banner"></div>
 
-      <!-- 左のメニュー（せまい画面では☰で開く） -->
-      <aside class="navcol" id="navcol"><div id="navList"></div></aside>
+
 
       <!-- 本体：今日みておきたいこと／さいきん使ったもの -->
       <main class="listcol">
@@ -7367,7 +7367,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-18d';
+const AIOS_VER = '2026-10-18e';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
@@ -8891,22 +8891,16 @@ function bizRender(hit){
     bizTab=b.dataset.biz; homeRender(); }));
   const items = HOME_ALL.filter(i=>(bizTab==='ぜんぶ' || i.g===bizTab) && hit(i));
   grid.innerHTML = items.length ? items.map(i=>
-    `<button class="bizBtn${i.fn?'':' soon'}" ${i.fn?`data-open="${i.k}"`:''} title="${hkEsc(i.d)}">
+    `<button class="bizBtn${i.fn?'':' soon'}${homeCur===i.k?' cur':''}" ${i.fn?`data-open="${i.k}"`:''} title="${hkEsc(i.d)}">
       <span class="bi" style="background:${i.fn?aiTileBg(i.k):'#cfd6db'}">${aiTileHtml(i.k,'')}</span>
       <span class="bn">${i.n}<span class="bd">${hkEsc(i.d)}</span></span>
       <span class="bg">${i.fn?'›':'準備中'}</span></button>`).join('')
     : '<div class="bizEmpty">見つかりませんでした。</div>';
 }
 function homeRender(){
-  const nav=document.getElementById('navList'); if(!nav) return;
+  if(!document.getElementById('bizGrid')) return;
   const hit = i => !homeQ || (i.n+i.d+i.g).toLowerCase().includes(homeQ.toLowerCase());
   bizRender(hit);
-  nav.innerHTML = HOME_MENU.map(g=>{
-    const items=g.items.filter(hit); if(!items.length) return '';
-    return `<div class="ng">${g.g}</div>` + items.map(i=>
-      `<button class="ni${i.fn?'':' soon'}${homeCur===i.k?' cur':''}" data-open="${i.k}" title="${hkEsc(i.d)}">
-        <span class="nd" style="background:${aiTileBg(i.k)}">${aiTileHtml(i.k,'')}</span>${i.n}</button>`).join('');
-  }).join('') || '<div class="ng">見つかりません</div>';
 
   const today = homeToday().filter(x=>{ const i=homeItem(x.k)||{};
     return !homeQ || (x.t+x.s+(x.sub||'')+i.n).toLowerCase().includes(homeQ.toLowerCase()); });
