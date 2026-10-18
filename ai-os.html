@@ -179,13 +179,7 @@
     color:var(--ink); font-size:12.5px; font-weight:700; min-height:38px}
   .calBtn:hover{background:var(--olive-l); border-color:var(--olive)}
   .calBtn span{font-size:15px; line-height:1}
-  @media(max-width:620px){
-    .calBtn b{display:none} .calBtn{padding:9px 11px}
-    /* せまい画面：1行目に ☰ と時計とカレンダー、2行目に「さがす」 */
-    .listtop{flex-wrap:wrap}
-    .listtop input{order:3; flex:1 1 100%}
-    .nowBox{margin-left:auto}
-  }
+  @media(max-width:620px){ .calBtn b{display:none} .calBtn{padding:9px 11px} }
   .calWrap{position:relative; width:100%; border:1px solid var(--line); border-radius:6px; overflow:hidden; background:#fff}
   .calWrap iframe{display:block; width:100%; height:min(68vh, 680px); border:0}
   @media(max-width:700px){ .calWrap iframe{height:min(62vh, 560px)} }
@@ -281,8 +275,6 @@
   .cadd input[type=time]{width:110px}
   .cadd input{padding:9px 10px; border:1px solid var(--line); border-radius:6px; font-size:14px}
   .cadd input[type=text]{flex:1; min-width:140px}
-  .burger{display:none; border:1px solid var(--line); background:#fff; border-radius:9px;
-    padding:7px 11px; font-size:15px; cursor:pointer; flex:0 0 auto}
   .listinner{flex:1 1 auto; overflow:auto; padding:14px 14px 22px}
   .listinner .hd{font-size:15px; margin:0 0 4px}
   .listinner .hdsub{font-size:12px; color:#56616b; margin:0 0 12px}
@@ -313,31 +305,19 @@
   /* せまい画面：メニューはいつも左に出したまま（アイコン＋短い名前）。
      ☰を押すと、名前がぜんぶ見える幅に広がります。 */
   @media(max-width:860px){
-    .navcol{width:76px; flex:0 0 76px; padding:6px 0 14px}
-    .navcol .ng{display:none}
+    .navcol{width:84px; flex:0 0 84px; padding:6px 0 14px}
+    .navcol .ng{display:block; font-size:9.5px; margin:11px 6px 2px; text-align:center}
     .navcol .ni{flex-direction:column; gap:3px; padding:7px 2px; text-align:center;
-      font-size:9.5px; line-height:1.15; width:calc(100% - 10px); margin:5px}
+      font-size:10.5px; line-height:1.2; width:calc(100% - 10px); margin:5px}
     .navcol .ni .nd{width:30px; height:30px; flex:0 0 30px; border-radius:8px}
     .navcol .ni.cur{border-color:var(--olive)}
-    /* ☰で広げたとき */
-    .navcol.open{position:absolute; left:0; top:0; bottom:0; z-index:12;
-      width:216px; flex-basis:216px; padding:10px 0 18px; box-shadow:0 0 26px rgba(0,0,0,.35)}
-    .navcol.open .ng{display:block}
-    .navcol.open .ni{flex-direction:row; gap:9px; padding:8px 10px; text-align:left;
-      font-size:13.5px; line-height:1.3; width:calc(100% - 16px); margin:5px 8px}
-    .navcol.open .ni .nd{width:26px; height:26px; flex:0 0 26px}
-    .navcol.open .ni.cur{border-color:var(--olive)}
-    .navmask{display:block; position:absolute; inset:0; background:rgba(0,0,0,.35); z-index:11; opacity:0;
-      pointer-events:none; transition:opacity .2s}
-    .navmask.on{opacity:1; pointer-events:auto}
-    .burger{display:block}
     /* 各AIの画面は、メニューの右側に出します */
     .listtop{padding:9px 10px}
     .listinner{padding:12px 10px 18px}
   }
   @media(max-width:420px){
-    .navcol{width:70px; flex:0 0 70px}
-    .navcol .ni{font-size:9px; padding:6px 1px; width:calc(100% - 8px); margin:4px}
+    .navcol{width:78px; flex:0 0 78px}
+    .navcol .ni{font-size:10px; padding:6px 1px; width:calc(100% - 8px); margin:4px}
     .navcol .ni .nd{width:27px; height:27px; flex:0 0 27px}
   }
   /* 部屋・ゾーン（施設もアプリアイコン風に揃える） */
@@ -748,25 +728,6 @@
     .stage{ aspect-ratio:16/11; min-height:460px }
   }
 
-  /* ☰のメニューは「画面にぴったり重なる引き出し」にする
-     （ページ全体がスクロールするようになったので、途中で切れないように固定します） */
-  .navX{display:none}
-  @media(max-width:900px){
-    .navcol.open{
-      position:fixed; left:0; top:0; bottom:0; height:100dvh; z-index:300;
-      width:min(80vw, 300px); overflow:auto; -webkit-overflow-scrolling:touch;
-      border-right:1px solid var(--line); box-shadow:6px 0 22px rgba(0,0,0,.18);
-      padding-bottom:28px;
-    }
-    .navcol.open .navX{
-      display:block; position:sticky; top:0; z-index:2; width:100%;
-      border:0; border-bottom:1px solid var(--line); background:#fff; color:var(--ink);
-      font-size:13px; font-weight:800; text-align:left; padding:13px 14px; cursor:pointer;
-    }
-    .navmask{position:fixed; inset:0; z-index:299}
-    body.navOpen{overflow:hidden}
-  }
-
   /* 小さめの携帯：ヘッダーを1行に収める（この指定はいちばん後ろ＝最優先） */
   @media(max-width:430px){
     header{ gap:5px; padding:8px 7px }
@@ -794,10 +755,7 @@
       <div class="banner" id="banner"></div>
 
       <!-- 左のメニュー（せまい画面では☰で開く） -->
-      <aside class="navcol" id="navcol">
-        <button class="navX" id="navClose">✕ とじる</button>
-        <div id="navList"></div></aside>
-      <div class="navmask" id="navMask"></div>
+      <aside class="navcol" id="navcol"><div id="navList"></div></aside>
 
       <!-- 本体：今日みておきたいこと／さいきん使ったもの -->
       <main class="listcol">
@@ -810,7 +768,6 @@
           <button class="wpBtn" id="rinenOpen">📝 テキスト版</button>
         </div>
         <div class="listtop">
-          <button class="burger" id="navBurger" title="メニュー">☰</button>
           <input id="homeSearch" type="search" placeholder="さがす（例：車検、シフト、受給者証）" autocomplete="off">
           <button class="calBtn" id="homeCal" title="カレンダーを見る"><span>🗓</span><b>カレンダー</b></button>
         </div>
@@ -7357,7 +7314,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-18b';
+const AIOS_VER = '2026-10-18c';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
@@ -8899,19 +8856,9 @@ function homeRender(){
   });
 }
 /* せまい画面のメニュー開閉（Claudeのアプリのように、左から指でスライドしても開きます）*/
-function homeNav(open){
-  const n=document.getElementById('navcol'), m=document.getElementById('navMask');
-  if(!n) return;
-  n.classList.toggle('open', open); m.classList.toggle('on', open);
-  document.body.classList.toggle('navOpen', open);     // うしろは動かさない
-  if(open) n.scrollTop = 0;                            // いつも上（行政）から出す
-}
+// 左のメニューはいつも出しっぱなしにしたので、開け閉めはしません
+function homeNav(){ /* 何もしません（☰は廃止） */ }
 (()=>{
-  const bg=document.getElementById('navBurger'), mk=document.getElementById('navMask');
-  if(bg) bg.addEventListener('click', ()=>homeNav(!document.getElementById('navcol').classList.contains('open')));
-  if(mk) mk.addEventListener('click', ()=>homeNav(false));
-  const nx=document.getElementById('navClose');
-  if(nx) nx.addEventListener('click', ()=>homeNav(false));
   const q=document.getElementById('homeSearch');
   if(q) aiosBindSearch(q, v=>{ homeQ=(v||'').trim(); homeRender(); });
   const cal=document.getElementById('homeCal');
@@ -8919,29 +8866,6 @@ function homeNav(open){
   aiosInstRender();
   homeRender();
 
-  /* ---- 指でスライドしてメニューを出す／しまう ---- */
-  const stage=document.getElementById('stage');
-  const narrow=()=>window.innerWidth<=860;
-  const isOpen=()=>document.getElementById('navcol').classList.contains('open');
-  let sx=0, sy=0, track=false;
-  if(stage){
-    stage.addEventListener('touchstart', e=>{
-      if(!narrow() || e.touches.length!==1){ track=false; return; }
-      const t=e.touches[0], r=stage.getBoundingClientRect();
-      // 左はしから、またはメニューが開いているときだけ受け付ける
-      track = isOpen() || (t.clientX - r.left) < 95;
-      sx=t.clientX; sy=t.clientY;
-    }, {passive:true});
-    stage.addEventListener('touchmove', e=>{
-      if(!track || e.touches.length!==1) return;
-      const t=e.touches[0], dx=t.clientX-sx, dy=t.clientY-sy;
-      if(Math.abs(dy) > Math.abs(dx)){ track=false; return; }   // 縦の動きは画面スクロール優先
-      if(!isOpen() && dx > 45){ homeNav(true);  track=false; }
-      if( isOpen() && dx < -45){ homeNav(false); track=false; }
-    }, {passive:true});
-    stage.addEventListener('touchend', ()=>{ track=false; }, {passive:true});
-    stage.addEventListener('touchcancel', ()=>{ track=false; }, {passive:true});
-  }
   // 画面を閉じたときに、期限の表示を最新にする
   document.addEventListener('click', ev=>{
     if(ev.target.closest('.sheetHead button') || (ev.target.classList&&ev.target.classList.contains('modal')))
