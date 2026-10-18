@@ -728,6 +728,51 @@
     .stage{ aspect-ratio:16/11; min-height:460px }
   }
 
+  /* ===== 業務メニュー（大きなボタン） ===== */
+  .bizPanel{border:1px solid #cfdae6; border-radius:8px; background:#f7fafd; margin:0 0 18px;
+    overflow:hidden}
+  .bizHead{font-size:13px; font-weight:800; color:#1f4468; background:#e8f1f9;
+    border-bottom:1px solid #cfdae6; padding:9px 14px}
+  .bizTabs{display:flex; gap:0; flex-wrap:wrap; border-bottom:1px solid #cfdae6; background:#fff;
+    padding:0 6px}
+  .bizTabs button{border:0; background:none; cursor:pointer; font-size:12.5px; font-weight:700;
+    color:#55646f; padding:10px 12px; border-bottom:3px solid transparent; white-space:nowrap}
+  .bizTabs button.on{color:#1f4468; border-bottom-color:var(--olive)}
+  .bizTabs button:hover{color:#1f4468; background:#f3f7fb}
+  .bizGrid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; padding:14px}
+  .bizBtn{display:flex; align-items:center; gap:9px; cursor:pointer; text-align:left;
+    min-height:56px; padding:10px 12px; border:0; border-radius:7px;
+    background:var(--olive); color:#fff; font-size:14px; font-weight:800; line-height:1.25;
+    box-shadow:0 1px 2px rgba(0,0,0,.12)}
+  .bizBtn:hover{background:var(--olive-d)}
+  .bizBtn:active{transform:translateY(1px)}
+  .bizBtn .bi{width:32px; height:32px; flex:0 0 32px; border-radius:8px;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 0 0 2px rgba(255,255,255,.65)}
+  .bizBtn .bi svg{width:80%; height:80%}
+  .bizBtn .bn{flex:1 1 auto; min-width:0}
+  .bizBtn .bd{display:block; font-size:10.5px; font-weight:600; color:rgba(255,255,255,.85);
+    margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .bizBtn .bg{font-size:17px; font-weight:800; opacity:.85}
+  .bizBtn.soon{background:#e7ecef; color:#8d99a3; box-shadow:none; cursor:default}
+  .bizBtn.soon .bi{box-shadow:0 0 0 2px #dfe5ea; opacity:.6}
+  .bizBtn.soon .bd{color:#9aa5ad}
+  .bizEmpty{grid-column:1/-1; font-size:12.5px; color:var(--sub); padding:6px 2px}
+  @media(max-width:700px){
+    .bizGrid{gap:8px; padding:10px}
+    .bizBtn{min-height:52px; font-size:13px; padding:9px 10px; gap:8px}
+    .bizBtn .bi{width:28px; height:28px; flex:0 0 28px}
+    .bizTabs button{font-size:11.5px; padding:9px 9px}
+  }
+  /* 2列だと名前が折れてしまう幅では、説明を省く */
+  @media(max-width:700px) and (min-width:561px){ .bizBtn .bd{display:none} }
+  /* 携帯は1列にして、名前も説明もきちんと1行で読めるようにする */
+  @media(max-width:560px){
+    .bizGrid{grid-template-columns:1fr}
+    .bizBtn{min-height:54px}
+    .bizBtn .bd{display:block; white-space:normal}
+  }
+
   /* 小さめの携帯：ヘッダーを1行に収める（この指定はいちばん後ろ＝最優先） */
   @media(max-width:430px){
     header{ gap:5px; padding:8px 7px }
@@ -773,6 +818,14 @@
         </div>
         <div class="listinner">
           <div id="instBox"></div>
+
+          <!-- 業務メニュー（大きなボタンで選ぶ） -->
+          <div class="bizPanel">
+            <div class="bizHead">業務メニュー</div>
+            <div class="bizTabs" id="bizTabs"></div>
+            <div class="bizGrid" id="bizGrid"></div>
+          </div>
+
           <h2 class="hd">今日みておきたいこと</h2>
           <p class="hdsub">期限が近いもの・まだ手がついていないものを、上から順に出します。</p>
           <div id="todayList"></div>
@@ -7314,7 +7367,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-18c';
+const AIOS_VER = '2026-10-18d';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
@@ -8826,9 +8879,28 @@ function homeRowHtml(x){
     <div class="hgo">ひらく ›</div></div>`;
 }
 let homeQ='', homeCur=null;
+let bizTab = 'ぜんぶ';
+/* 業務メニュー：大きなボタンで選ぶ（上のタブで分類をしぼれます） */
+function bizRender(hit){
+  const tabs=document.getElementById('bizTabs'), grid=document.getElementById('bizGrid');
+  if(!tabs || !grid) return;
+  const names=['ぜんぶ', ...HOME_MENU.map(g=>g.g)];
+  tabs.innerHTML = names.map(n=>
+    `<button data-biz="${n}" class="${bizTab===n?'on':''}">${n}</button>`).join('');
+  tabs.querySelectorAll('[data-biz]').forEach(b=>b.addEventListener('click', ()=>{
+    bizTab=b.dataset.biz; homeRender(); }));
+  const items = HOME_ALL.filter(i=>(bizTab==='ぜんぶ' || i.g===bizTab) && hit(i));
+  grid.innerHTML = items.length ? items.map(i=>
+    `<button class="bizBtn${i.fn?'':' soon'}" ${i.fn?`data-open="${i.k}"`:''} title="${hkEsc(i.d)}">
+      <span class="bi" style="background:${i.fn?aiTileBg(i.k):'#cfd6db'}">${aiTileHtml(i.k,'')}</span>
+      <span class="bn">${i.n}<span class="bd">${hkEsc(i.d)}</span></span>
+      <span class="bg">${i.fn?'›':'準備中'}</span></button>`).join('')
+    : '<div class="bizEmpty">見つかりませんでした。</div>';
+}
 function homeRender(){
   const nav=document.getElementById('navList'); if(!nav) return;
   const hit = i => !homeQ || (i.n+i.d+i.g).toLowerCase().includes(homeQ.toLowerCase());
+  bizRender(hit);
   nav.innerHTML = HOME_MENU.map(g=>{
     const items=g.items.filter(hit); if(!items.length) return '';
     return `<div class="ng">${g.g}</div>` + items.map(i=>
