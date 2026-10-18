@@ -748,6 +748,25 @@
     .stage{ aspect-ratio:16/11; min-height:460px }
   }
 
+  /* ☰のメニューは「画面にぴったり重なる引き出し」にする
+     （ページ全体がスクロールするようになったので、途中で切れないように固定します） */
+  .navX{display:none}
+  @media(max-width:900px){
+    .navcol.open{
+      position:fixed; left:0; top:0; bottom:0; height:100dvh; z-index:300;
+      width:min(80vw, 300px); overflow:auto; -webkit-overflow-scrolling:touch;
+      border-right:1px solid var(--line); box-shadow:6px 0 22px rgba(0,0,0,.18);
+      padding-bottom:28px;
+    }
+    .navcol.open .navX{
+      display:block; position:sticky; top:0; z-index:2; width:100%;
+      border:0; border-bottom:1px solid var(--line); background:#fff; color:var(--ink);
+      font-size:13px; font-weight:800; text-align:left; padding:13px 14px; cursor:pointer;
+    }
+    .navmask{position:fixed; inset:0; z-index:299}
+    body.navOpen{overflow:hidden}
+  }
+
   /* 小さめの携帯：ヘッダーを1行に収める（この指定はいちばん後ろ＝最優先） */
   @media(max-width:430px){
     header{ gap:5px; padding:8px 7px }
@@ -775,7 +794,9 @@
       <div class="banner" id="banner"></div>
 
       <!-- 左のメニュー（せまい画面では☰で開く） -->
-      <aside class="navcol" id="navcol"><div id="navList"></div></aside>
+      <aside class="navcol" id="navcol">
+        <button class="navX" id="navClose">✕ とじる</button>
+        <div id="navList"></div></aside>
       <div class="navmask" id="navMask"></div>
 
       <!-- 本体：今日みておきたいこと／さいきん使ったもの -->
@@ -7336,7 +7357,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-18a';
+const AIOS_VER = '2026-10-18b';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
@@ -8880,12 +8901,17 @@ function homeRender(){
 /* せまい画面のメニュー開閉（Claudeのアプリのように、左から指でスライドしても開きます）*/
 function homeNav(open){
   const n=document.getElementById('navcol'), m=document.getElementById('navMask');
-  if(!n) return; n.classList.toggle('open', open); m.classList.toggle('on', open);
+  if(!n) return;
+  n.classList.toggle('open', open); m.classList.toggle('on', open);
+  document.body.classList.toggle('navOpen', open);     // うしろは動かさない
+  if(open) n.scrollTop = 0;                            // いつも上（行政）から出す
 }
 (()=>{
   const bg=document.getElementById('navBurger'), mk=document.getElementById('navMask');
   if(bg) bg.addEventListener('click', ()=>homeNav(!document.getElementById('navcol').classList.contains('open')));
   if(mk) mk.addEventListener('click', ()=>homeNav(false));
+  const nx=document.getElementById('navClose');
+  if(nx) nx.addEventListener('click', ()=>homeNav(false));
   const q=document.getElementById('homeSearch');
   if(q) aiosBindSearch(q, v=>{ homeQ=(v||'').trim(); homeRender(); });
   const cal=document.getElementById('homeCal');
