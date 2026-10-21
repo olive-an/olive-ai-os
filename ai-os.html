@@ -5588,8 +5588,14 @@ const JIN_FIELDS = [
   ['mobile','携帯電話','text'],['tel','電話番号','text'],
   ['mail','メールアドレス','text'], ['zip','郵便番号','text'],
   ['addr','住所','text'],     ['kenpo','けんぽ（社会保険）','text'],
-  ['dbl','ダブルワーク','text'], ['memo','備考','text'],
+  ['dbl','ダブルワーク','text'],
+  ['week','週の契約時間（常勤換算用）','text'],
+  ['zaiseki','在籍区分','text'], ['leave','退職年月日','date'],
+  ['shaIn','社会保険の加入日','date'], ['koyou','雇用保険番号','text'],
+  ['memo','備考','text'],
 ];
+// 在籍区分のえらぶボタン
+const JIN_ZAIS = ['在籍','休職','退職'];
 // ★マイナンバー（個人番号）は取り扱いが特に厳しいので、この名簿では扱いません。
 // よく使う資格・研修（数字＝有効期間の月数。0＝期限なし）
 const JIN_PRESETS = [
@@ -5622,6 +5628,28 @@ const JIN_EMPS  = ['常勤','非常勤'];
 const JIN_SEXES = ['男性','女性'];
 const JIN_SPLIT = /[\s　・\/／、,]+/;                 // 「世話人・事務員」などを分ける
 // いま登録されている内容からも候補を集める（取り込んだ言葉がそのまま選べる）
+// 在籍区分ごとの人数（未記入は、退職日があれば退職・なければ在籍とみなします）
+function jinCountZai(list){
+  const m={};
+  (list||[]).forEach(p=>{ const k=String(p.zaiseki||'').trim() || (p.leave?'退職':'在籍'); m[k]=(m[k]||0)+1; });
+  return Object.entries(m).sort((a,b)=>b[1]-a[1]);   // プルダウンは [名前, 人数] の形で渡します
+}
+// 在籍の人数と、週の契約時間から出した常勤換算のめやす
+function jinZaiLine(list){
+  const zai=(list||[]).filter(p=>(String(p.zaiseki||'').trim() || (p.leave?'退職':'在籍'))==='在籍');
+  const hours=zai.map(p=>parseFloat(String(p.week||'').replace(/[^\d.]/g,''))).filter(n=>!isNaN(n)&&n>0);
+  if(!zai.length) return '';
+  let t=`<br><small>在籍 <b>${zai.length}名</b>`;
+  if(hours.length){
+    const sum=hours.reduce((a,b)=>a+b,0);
+    t += `／週の契約時間の合計 <b>${Math.round(sum*10)/10}時間</b>`
+      +  `（40時間を常勤1人とすると <b>${(sum/40).toFixed(1)}</b>）`
+      +  `　<span style="color:var(--sub)">※${hours.length}名ぶん。めやすです</span>`;
+  }else{
+    t += `　<span style="color:var(--sub)">※「週の契約時間」を入れると、常勤換算のめやすが出ます</span>`;
+  }
+  return t+'</small>';
+}
 function jinChipOptions(){
   const grab=(base, field)=>{
     const set=new Set(base);
@@ -5630,7 +5658,8 @@ function jinChipOptions(){
     return [...set];
   };
   return { job:grab(JIN_JOBS,'job'), home:grab(JIN_HOMES,'home'),
-           emp:grab(JIN_EMPS,'emp'), sex:grab(JIN_SEXES,'sex') };
+           emp:grab(JIN_EMPS,'emp'), sex:grab(JIN_SEXES,'sex'),
+           zaiseki:grab(JIN_ZAIS,'zaiseki') };
 }
 // 入力欄の下に並べる「選ぶボタン」。押すたびに入れる／外すが切り替わります
 function jinChipsHtml(key, opts, multi){
@@ -6580,7 +6609,7 @@ function jinRender(){
 
 // --- 一覧（期限の近い順）---
 let jinQuery = '';
-let jinFHome = '', jinFJob = '', jinFEmp = '';       // 絞り込みプルダウンの選択
+let jinFHome = '', jinFJob = '', jinFEmp = '', jinFZai = '';   // 絞り込みプルダウンの選択
 // 「西九条・九条」のような欄から、ちょうどその言葉が入っているかを見る
 // （「九条」で絞ったときに「西九条」まで出てしまわないように、区切って照合する）
 function jinHasToken(value, want){
@@ -6606,11 +6635,12 @@ function jinRenderList(){
   all.forEach((p,i)=>p._i=i);
   const q = jinQuery.trim();
   const hit = p =>
-       (!q || [p.no,p.name,p.kana,p.home,p.job,p.emp,p.sex,p.ape,p.memo,
+       (!q || [p.no,p.name,p.kana,p.home,p.job,p.emp,p.sex,p.ape,p.memo,p.zaiseki,
                ...(p.quals||[]).map(x=>x.name)].join(' ').includes(q))
     && jinHasToken(p.home, jinFHome)
     && jinHasToken(p.job,  jinFJob)
-    && jinHasToken(p.emp,  jinFEmp);
+    && jinHasToken(p.emp,  jinFEmp)
+    && (!jinFZai || (String(p.zaiseki||'').trim() || (p.leave?'退職':'在籍')) === jinFZai);
   const list = all.filter(hit);
   const soonest = p => Math.min(99999, ...(p.quals||[]).map(x=>{
     const d=shaDays(x.exp); return d===null? 99999 : d; }));
@@ -6638,12 +6668,15 @@ function jinRenderList(){
         + (said?`<span style="opacity:.75"> 聞き取り</span>`:'') + `</span>`;
     }).join(' ');
     const age=jinAge(p.birth), ten=jinTenure(p.hire);
-    const sub=[p.job, p.emp, age!=null?age+'歳':'', ten?'勤続'+ten:''].filter(Boolean).join('　');
+    const zai = String(p.zaiseki||'').trim() || (p.leave?'退職':'');
+    const sub=[p.job, p.emp, p.week?('週'+p.week+'時間'):'', age!=null?age+'歳':'',
+               ten?'勤続'+ten:''].filter(Boolean).join('　');
     return `<div style="border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:8px; background:#fff">
       <div style="display:flex; gap:8px; align-items:baseline; flex-wrap:wrap">
         <b style="font-size:14.5px; color:#1f3a28">${hkEsc(p.name||'（氏名なし）')}</b>
         ${p.kana?`<span style="font-size:10.5px; color:#7a8b80">${hkEsc(p.kana)}</span>`:''}
         ${p.home?`<span style="font-size:10.5px; background:var(--olive); color:#fff; border-radius:999px; padding:2px 9px">${hkEsc(p.home)}</span>`:''}
+        ${(zai && zai!=='在籍')?`<span style="font-size:10.5px; background:#8d99a3; color:#fff; border-radius:999px; padding:2px 9px">${hkEsc(zai)}${p.leave?'（'+hkEsc(shaFmt(p.leave))+'）':''}</span>`:''}
         <span class="grow" style="flex:1"></span>
         <button class="wpBtn" data-edit="${p._i}" style="font-size:11px; padding:3px 9px">編集</button>
       </div>
@@ -6678,12 +6711,14 @@ function jinRenderList(){
       ${jinSelectHtml('jinFHome','拠点', jinCountBy(all,'home'), jinFHome)}
       ${jinSelectHtml('jinFJob','役職',  jinCountBy(all,'job'),  jinFJob)}
       ${jinSelectHtml('jinFEmp','勤務',  jinCountBy(all,'emp'),  jinFEmp)}
-      ${(jinFHome||jinFJob||jinFEmp)?'<button class="wpBtn" id="jinFClear" style="font-size:11px">絞り込みを外す</button>':''}
+      ${jinSelectHtml('jinFZai','在籍',  jinCountZai(all),       jinFZai)}
+      ${(jinFHome||jinFJob||jinFEmp||jinFZai)?'<button class="wpBtn" id="jinFClear" style="font-size:11px">絞り込みを外す</button>':''}
     </div>
     <input id="jinQ" type="search" placeholder="🔍 氏名・カナ・拠点・役職・資格名で探す" value="${hkEsc(jinQuery)}"
       style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin-bottom:8px">
     <div class="wpNote" style="margin-bottom:8px">登録従業員：<b>${all.length}名</b>${
-      (q||jinFHome||jinFJob||jinFEmp)?`　→ <b>${list.length}名</b>に絞り込み`:''}（期限の近い順）</div>
+      (q||jinFHome||jinFJob||jinFEmp||jinFZai)?`　→ <b>${list.length}名</b>に絞り込み`:''}（期限の近い順）
+      ${jinZaiLine(all)}</div>
     ${sorted.length ? sorted.map(card).join('')
       : (all.length? '<p class="wpNote">該当する方が見つかりません。</p>'
                    : '<p class="wpNote">まだ従業員が登録されていません。「＋ 従業員を追加」から登録してください。</p>')}`;
@@ -6691,8 +6726,9 @@ function jinRenderList(){
   const setF=(id,fn)=>{ const el=document.getElementById(id);
     if(el) el.addEventListener('change',()=>{ fn(el.value); jinRenderList(); }); };
   setF('jinFHome', v=>jinFHome=v); setF('jinFJob', v=>jinFJob=v); setF('jinFEmp', v=>jinFEmp=v);
+  setF('jinFZai', v=>jinFZai=v);
   const fc=document.getElementById('jinFClear');
-  if(fc) fc.addEventListener('click',()=>{ jinFHome=jinFJob=jinFEmp=''; jinRenderList(); });
+  if(fc) fc.addEventListener('click',()=>{ jinFHome=jinFJob=jinFEmp=jinFZai=''; jinRenderList(); });
   const qEl=document.getElementById('jinQ');
   aiosBindSearch(qEl, v=>{ const at=qEl.selectionStart; jinQuery=v; jinRenderList(); aiosRefocus('jinQ', at); });
   document.getElementById('jinAdd').addEventListener('click', ()=>jinRenderForm(-1));
@@ -6782,14 +6818,21 @@ function jinRenderForm(idx, draft){
   let quals = draft ? draft.quals : JSON.parse(JSON.stringify(p.quals||[]));
   const OPT = jinChipOptions();
   const CHIP = { job:{opts:OPT.job, multi:true},  home:{opts:OPT.home, multi:true},
-                 emp:{opts:OPT.emp, multi:false}, sex:{opts:OPT.sex,  multi:false} };
+                 emp:{opts:OPT.emp, multi:false}, sex:{opts:OPT.sex,  multi:false},
+                 zaiseki:{opts:OPT.zaiseki, multi:false} };
+  // 入れ方の目安（欄の下に小さく出します）
+  const HINT = { week:'例：40　…1週間に働く約束の時間。常勤換算の計算に使います',
+                 leave:'やめた日。入れると一覧に「退職」と出ます',
+                 shaIn:'社会保険に入った日', koyou:'雇用保険被保険者番号（4桁-6桁-1桁）' };
   const field = ([k,label,type])=>{
     const c = CHIP[k];
     return `
       <label style="display:block; font-size:11.5px; font-weight:700; color:#2b5d8a; margin-top:8px">${label}${
         c&&c.multi?'<span style="font-weight:400; color:#7a8b80">（複数えらべます）</span>':''}</label>
       <input data-k="${k}" type="${type}" value="${hkEsc(p[k]||'')}"
+        ${k==='week'?'inputmode="decimal" placeholder="40"':''}
         style="width:100%; padding:8px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px">
+      ${HINT[k]?`<div style="font-size:10.5px; color:#7a8b80; margin-top:3px">${HINT[k]}</div>`:''}
       ${c ? jinChipsHtml(k, c.opts, c.multi) : ''}`;
   };
   b.innerHTML = `
@@ -7384,7 +7427,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-21a';
+const AIOS_VER = '2026-10-21b';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
