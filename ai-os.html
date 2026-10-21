@@ -198,6 +198,18 @@
   .phCell img{width:100%; height:100%; object-fit:cover; display:block}
   .phCell span{position:absolute; left:4px; bottom:4px; background:rgba(0,0,0,.6); color:#fff;
     font-size:10.5px; font-weight:800; padding:1px 6px; border-radius:999px}
+  /* 開発設計 */
+  .dsgT{width:100%; border-collapse:collapse; font-size:12px; margin:4px 0 2px}
+  .dsgT th{text-align:left; width:38%; background:#f4f7fa; border:1px solid var(--line);
+    padding:7px 9px; font-weight:700; color:#3b4a57; vertical-align:top}
+  .dsgT td{border:1px solid var(--line); padding:7px 9px; color:var(--ink); vertical-align:top;
+    overflow-wrap:anywhere}
+  .dsgBox{border:1px solid var(--line); border-radius:6px; background:#fff; padding:11px 13px;
+    font-size:12.5px; line-height:1.75; white-space:pre-wrap; overflow-wrap:anywhere}
+  .dsgTa{width:100%; min-height:190px; padding:11px 12px; border:1px solid var(--olive);
+    border-radius:6px; font-size:16px; line-height:1.7; font-family:inherit;
+    box-shadow:0 0 0 2px var(--olive-l)}
+  @media(max-width:560px){ .dsgT th{width:44%; font-size:11.5px} .dsgT td{font-size:11.5px} }
   /* 控え（バックアップ） */
   .bkList{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:7px; margin:10px 0 0}
   .bkList div{display:flex; justify-content:space-between; align-items:center; gap:8px;
@@ -1251,6 +1263,11 @@ const AI_ICON = (()=>{
     <circle cx="24" cy="26" r="8" fill="#4a5a6b"/>
     <circle cx="24" cy="26" r="4.4" fill="${W}"/>
     <rect x="33" y="18" width="5" height="3" rx="1.2" fill="#8fa3b7"/>`)},
+  設計: { bg:'#35566e', svg:S(`
+    <rect x="8" y="6" width="32" height="36" rx="3" fill="${W}"/>
+    <path d="M14 13h20M14 19h20M14 25h12" stroke="#9fb4c9" stroke-width="2.4"/>
+    <path d="M26 28l10 10M36 28L26 38" stroke="#35566e" stroke-width="2.6"/>
+    <circle cx="31" cy="33" r="3.6" fill="#35566e"/>`)},
   書類棚: { bg:'#8a6a33', svg:S(`
     <rect x="8" y="6" width="32" height="36" rx="3" fill="${W}"/>
     <rect x="11" y="9" width="26" height="9" rx="1.6" fill="#e6d6b8"/>
@@ -7367,7 +7384,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-18e';
+const AIOS_VER = '2026-10-21a';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
@@ -7748,7 +7765,7 @@ const BK_LAST  = 'aiosBkLastV1';            // 最後に控えを取った日時
 const BK_EXT   = '.aiosbackup';
 // ★このファイルの後ろで決めている名前もあるので、使うときに組み立てます
 const BK_PLAIN_KEYS = ()=> [SHARYOU_PLAIN, SHARYOU_KEY, GIJI_PLAIN, CALEV_KEY, CAL_KEY, CAL_MODE,
-                       CALKIND_KEY, AIOS_HIST, 'aiosRecentV1', 'aiosKoubouUrlV1'];
+                       CALKIND_KEY, AIOS_HIST, 'aiosRecentV1', 'aiosKoubouUrlV1', DESIGN_KEY];
 const BK_SEC_KEYS   = ()=> [JINJI_KEY, RIYOU_KEY];
 const bkLast    = ()=>{ try{ return localStorage.getItem(BK_LAST)||''; }catch(e){ return ''; } };
 const bkSetLast = ()=>{ try{ localStorage.setItem(BK_LAST, new Date().toISOString()); }catch(e){} };
@@ -7965,6 +7982,177 @@ function openDrivePanel(){
       AI-OSの <b>🗄 控え</b> は暗号化されているので、置いてもGoogleには読めません。</small></div>`;
 }
 /* ▲▲▲ Googleドライブのご案内 ここまで ▲▲▲ */
+
+
+/* =========================================================================
+   ▼▼▼ 開発設計（このAI-OSの中身を、ここで見て・直せるようにする） ▼▼▼
+   ・上半分は「いまの状態」。画面の作りから自動で出すので、直す必要はありません。
+   ・下半分は「書きもの」。目的・これから・決めごとなどを、その場で直せます。
+   ★この端末の中だけに保存します（🗄控えにも一緒に入ります）。
+   ========================================================================= */
+const DESIGN_KEY = 'aiosDesignV1';
+const DESIGN_SECS = [
+  ['mokuteki', '① これは何か（目的）',
+`おりーぶ庵の事務を、紙とExcelの行き来なしに進めるための道具。
+総務ひとりでも回せること、現場（iPad・携帯）だけで用が足りることを目指す。`],
+  ['tsukau', '② 使う人・使う端末',
+`・総務（管理）…パソコン。まとめる・Excelに反映する・印刷する
+・現場（世話人・サビ管）…iPad／携帯。見る・書く・資格証や受給者証を撮る
+・シフト希望の入力は、職員へ配った「シフト希望フォーム」が本番。AI-OSは集計する係。`],
+  ['korekara', '③ これからやること',
+`・看護（健康記録・受診予定）
+・請求（国保連）
+・経理（売上と経費）
+・文書（書類の体裁を整える）
+・DX（自動化のしくみ）
+・工房の「にんにく予定アプリ」とつなぐ（URLが決まったら登録）
+・ポチパスの拡張機能に1行足して連携を完成させる`],
+  ['kimegoto', '④ 決めごと・ルール',
+`・Excelや行政様式は、元のファイルを直接書きかえる。罫線・結合・列幅・数式・印刷設定は変えない。
+・利用者・職員の個人情報は、公開されるファイルに入れない。
+・従業員と受給者証は合言葉（5103）で暗号化し、端末の中だけに置く。
+・写真・PDFの添付も暗号化して端末の中だけ。持ち出しファイルには暗号のまま入れる。
+・Googleドライブは個人アカウントで使う。共有しない／2段階認証／端末ロック／不要なら消す。
+・🗄控えは暗号化ずみなので、ドライブに置いてよい。`],
+  ['kiroku', '⑤ 変更の記録',
+`2026-10-21　開発設計の画面を追加（ここ）
+2026-10-18　業務メニュー（大きなボタン）を追加、左のサイドバーを廃止
+2026-10-09　書類の保管をGoogleドライブに変更、🗄控え（ぜんぶまとめて）を追加
+2026-10-08　ホーム画面のアプリ化（更新が止まらないように）、📷写真を追加
+2026-10-07　iPad・携帯で完結できるように（受けわたし・カメラ・編集）`],
+];
+const designRead = ()=>{ try{ return JSON.parse(localStorage.getItem(DESIGN_KEY))||{}; }catch(e){ return {}; } };
+const designSave = o =>{ try{ localStorage.setItem(DESIGN_KEY, JSON.stringify(o)); }catch(e){} };
+const designText = id =>{ const o=designRead();
+  if(o[id]!==undefined) return o[id];
+  const d=DESIGN_SECS.find(x=>x[0]===id); return d?d[2]:''; };
+
+// いまの状態（画面の作りから自動で出します）
+function designNow(){
+  const done=[], soon=[];
+  HOME_ALL.forEach(i=>(i.fn?done:soon).push(i));
+  const grp = g => HOME_MENU.find(x=>x.g===g).items.map(i=>i.n+(i.fn?'':'（準備中）')).join('、');
+  return {
+    ver: AIOS_VER,
+    done: done.map(i=>i.n), soon: soon.map(i=>i.n),
+    groups: HOME_MENU.map(g=>[g.g, grp(g.g)]),
+  };
+}
+function designNowHtml(){
+  const n=designNow();
+  const row=(k,v)=>`<tr><th>${k}</th><td>${v}</td></tr>`;
+  return `<table class="dsgT">
+    ${row('版', hkEsc(n.ver))}
+    ${row('公開先', '<a href="https://olive-an.github.io/olive-ai-os/ai-os.html" target="_blank" rel="noopener">olive-an.github.io/olive-ai-os/ai-os.html</a>')}
+    ${row('シフト希望フォーム（本番）', '<a href="'+SH_FORM_URL+'" target="_blank" rel="noopener">'+hkEsc(SH_FORM_URL)+'</a>')}
+    ${row('書類の置き場所', 'Googleドライブ　マイドライブ / AI-OS2026<br><small>直下＝原本のExcel／書類／バックアップ／控え（AI-OS・暗号化）</small>')}
+    ${row('画面の数', `ぜんぶで ${n.done.length+n.soon.length}（使える ${n.done.length}／準備中 ${n.soon.length}）`)}
+    ${n.groups.map(([g,v])=>row(hkEsc(g), hkEsc(v))).join('')}
+    ${row('端末の中に保存するもの',
+      '従業員（合言葉つき）／受給者証（合言葉つき）／写真・PDFの添付（暗号化）／'
+      +'車両・議事録・予定・この開発設計・作業履歴・設定')}
+    ${row('合言葉', '従業員 5103 ／ 受給者証 5103 ／ 車両・議事録・カレンダー・開発設計はなし')}
+  </table>`;
+}
+let designEdit = null;      // いま直している項目
+function designRender(){
+  const b=document.getElementById('dsgBody'); if(!b) return;
+  b.innerHTML = `<div class="wpNote">
+      📐 <b>このAI-OSの中身・決めごと・これからを、ここで見て直せます。</b><br>
+      <small>上半分の「いまの状態」は画面の作りから自動で出しています（直す必要はありません）。
+      下半分は、その場で書きかえられます。${aiosThis()}の中だけに保存し、🗄控えにも一緒に入ります。</small></div>
+
+    <h3 class="wpH">いまの状態（自動）</h3>
+    ${designNowHtml()}
+
+    ${DESIGN_SECS.map(([id,title])=>{
+      const t = designText(id);
+      if(designEdit===id) return `
+        <h3 class="wpH">${hkEsc(title)}</h3>
+        <textarea class="dsgTa" id="dsgTa">${hkEsc(t)}</textarea>
+        <div class="calBar" style="margin-top:7px">
+          <button class="wpBtn primary" data-dsave="${id}">💾 保存する</button>
+          <button class="wpBtn" data-dcancel="1">やめる</button>
+        </div>`;
+      return `
+        <h3 class="wpH">${hkEsc(title)}
+          <button class="wpBtn" data-dedit="${id}" style="font-size:11px; padding:3px 9px; margin-left:8px">✏ 直す</button></h3>
+        <div class="dsgBox">${hkEsc(t)||'<span style="color:var(--sub)">（まだ何も書かれていません）</span>'}</div>`;
+    }).join('')}
+
+    <div class="calBar" style="margin-top:14px">
+      <button class="wpBtn" id="dsgPrint">🖨 印刷する</button>
+      <button class="wpBtn" id="dsgSaveTxt">📄 テキストで保存</button>
+      <button class="wpBtn" id="dsgReset">↩ 書いた分を元にもどす</button>
+    </div>`;
+
+  b.querySelectorAll('[data-dedit]').forEach(x=>x.addEventListener('click', ()=>{ designEdit=x.dataset.dedit; designRender();
+    const ta=document.getElementById('dsgTa'); if(ta){ ta.focus(); ta.scrollIntoView({block:'center'}); } }));
+  b.querySelectorAll('[data-dcancel]').forEach(x=>x.addEventListener('click', ()=>{ designEdit=null; designRender(); }));
+  b.querySelectorAll('[data-dsave]').forEach(x=>x.addEventListener('click', ()=>{
+    const o=designRead(); o[x.dataset.dsave]=document.getElementById('dsgTa').value;
+    designSave(o); designEdit=null; designRender();
+    banner('📐 開発設計を保存しました');
+    logLine('<b>開発設計</b>：書きかえて保存（この端末のみ）');
+  }));
+  const pr=document.getElementById('dsgPrint');
+  if(pr) pr.addEventListener('click', designPrint);
+  const st=document.getElementById('dsgSaveTxt');
+  if(st) st.addEventListener('click', async ()=>{
+    const blob=new Blob([designPlain()],{type:'text/plain;charset=utf-8'});
+    const d=new Date(), p=n=>('0'+n).slice(-2);
+    await aiosDeliver(blob, `おりーぶ庵AI-OS_開発設計_${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}.txt`, 'dsgBody', null);
+  });
+  const rs=document.getElementById('dsgReset');
+  if(rs) rs.addEventListener('click', ()=>{
+    if(!confirm('書きかえた分を消して、はじめの文にもどします。よろしいですか？')) return;
+    try{ localStorage.removeItem(DESIGN_KEY); }catch(e){}
+    designEdit=null; designRender(); banner('↩ はじめの文にもどしました');
+  });
+}
+function designPlain(){
+  const n=designNow();
+  let t = `おりーぶ庵 AI-OS 開発設計\n（${new Date().toLocaleString('ja-JP')} 時点／版 ${n.ver}）\n\n`;
+  t += `■ いまの状態\n`;
+  t += `公開先：https://olive-an.github.io/olive-ai-os/ai-os.html\n`;
+  t += `シフト希望フォーム（本番）：${SH_FORM_URL}\n`;
+  t += `書類の置き場所：Googleドライブ マイドライブ / AI-OS2026\n`;
+  t += `画面の数：ぜんぶで ${n.done.length+n.soon.length}（使える ${n.done.length}／準備中 ${n.soon.length}）\n`;
+  n.groups.forEach(([g,v])=>{ t += `・${g}：${v}\n`; });
+  t += `\n`;
+  DESIGN_SECS.forEach(([id,title])=>{ t += `■ ${title}\n${designText(id)}\n\n`; });
+  return t;
+}
+function designPrint(){
+  const n=designNow();
+  let html = `<h2 style="margin:0 0 4px">おりーぶ庵 AI-OS 開発設計</h2>
+    <div style="font-size:11px; color:#555; margin-bottom:10px">${new Date().toLocaleString('ja-JP')} 時点／版 ${hkEsc(n.ver)}</div>
+    <h3 style="font-size:13px; margin:12px 0 4px">いまの状態</h3>` + designNowHtml();
+  DESIGN_SECS.forEach(([id,title])=>{
+    html += `<h3 style="font-size:13px; margin:14px 0 4px">${hkEsc(title)}</h3>
+      <div style="font-size:12px; white-space:pre-wrap; line-height:1.7">${hkEsc(designText(id))}</div>`;
+  });
+  const tmp=document.createElement('div'); tmp.className='aiosPrintArea'; tmp.innerHTML=html;
+  document.body.appendChild(tmp);
+  const clean=()=>{ tmp.remove(); window.removeEventListener('afterprint', clean); };
+  window.addEventListener('afterprint', clean);
+  setTimeout(()=>window.print(), 60);
+  logLine('<b>開発設計</b>：印刷');
+}
+function openDesignPanel(){
+  let p=document.getElementById('dsgPanel');
+  if(!p){
+    p=document.createElement('div'); p.className='modal'; p.id='dsgPanel';
+    p.innerHTML=`<div class="sheet" style="max-width:820px">
+      <div class="sheetHead"><b>📐 開発設計</b><span class="grow"></span>
+        <button onclick="document.getElementById('dsgPanel').hidden=true">✕</button></div>
+      <div class="sheetBody" id="dsgBody"></div></div>`;
+    p.addEventListener('click',ev=>{ if(ev.target.id==='dsgPanel') p.hidden=true; });
+    document.body.appendChild(p);
+  }
+  p.hidden=false; designEdit=null; designRender();
+}
+/* ▲▲▲ 開発設計 ここまで ▲▲▲ */
 
 /* ▲▲▲ 控え ここまで ▲▲▲ */
 
@@ -8791,6 +8979,7 @@ const HOME_MENU = [
     {k:'ポチパス', n:'ポチパス',    d:'ポチパスを開く・連携',            fn:()=>openPochiPanel()},
     {k:'控え',     n:'控え（バックアップ）', d:'ぜんぶまとめて保存・もどす',  fn:()=>openBackupPanel()},
     {k:'書類棚',   n:'書類棚',      d:'理念手帳など保管した書類',         fn:()=>openShelfPanel()},
+    {k:'設計',     n:'開発設計',     d:'このAI-OSの中身・決めごと・これから', fn:()=>openDesignPanel()},
     {k:'プリンター', n:'プリンター', d:'印刷メニュー',                   fn:()=>openPrinterPanel()},
     {k:'DX',       n:'DX',      d:'自動化のしくみ'},
   ]},
