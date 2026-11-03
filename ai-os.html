@@ -198,6 +198,30 @@
   .phCell img{width:100%; height:100%; object-fit:cover; display:block}
   .phCell span{position:absolute; left:4px; bottom:4px; background:rgba(0,0,0,.6); color:#fff;
     font-size:10.5px; font-weight:800; padding:1px 6px; border-radius:999px}
+  /* 会社書類 */
+  .kaiRow{display:flex; gap:8px; align-items:center; flex-wrap:wrap; border:1px solid var(--line);
+    border-radius:6px; background:#fff; padding:9px 11px; margin:0 0 6px; font-size:12.5px}
+  .kaiY{display:inline-block; font-size:10.5px; font-weight:800; color:var(--olive-d);
+    background:var(--olive-l); border-radius:999px; padding:1px 8px}
+  .kaiS{font-size:11px; color:#56616b; margin-top:3px; overflow-wrap:anywhere}
+  /* ホームごとの利用者 */
+  .kkHome{border:1px solid var(--line); border-radius:8px; background:#fff; margin:0 0 8px; overflow:hidden}
+  .kkHomeT{background:var(--olive-l); color:var(--olive-d); font-weight:800; font-size:12.5px; padding:7px 11px}
+  .kkHomeT span{font-weight:700; color:#5a7d68; font-size:11px}
+  .kkTbl{width:100%; border-collapse:collapse; font-size:12px}
+  .kkTbl th{background:#f6f8fa; color:#55646f; font-weight:700; text-align:left;
+    border-top:1px solid var(--line); padding:5px 8px; white-space:nowrap}
+  .kkTbl td{border-top:1px solid var(--line); padding:6px 8px; vertical-align:top; overflow-wrap:anywhere}
+  @media(max-width:700px){
+    .kkTbl, .kkTbl tbody, .kkTbl tr, .kkTbl td, .kkTbl th{display:block}
+    .kkTbl tr{border-top:1px solid var(--line); padding:6px 2px}
+    .kkTbl th{display:none}
+    .kkTbl td{border:0; padding:2px 10px}
+    .kkTbl td:nth-child(2)::before{content:'区分：'; color:#7a8b80}
+    .kkTbl td:nth-child(3)::before{content:'受給者証の期限：'; color:#7a8b80}
+    .kkTbl td:nth-child(4)::before{content:'通所先：'; color:#7a8b80}
+    .kkTbl td:nth-child(5)::before{content:'相談員：'; color:#7a8b80}
+  }
   /* 開発設計 */
   .dsgT{width:100%; border-collapse:collapse; font-size:12px; margin:4px 0 2px}
   .dsgT th{text-align:left; width:38%; background:#f4f7fa; border:1px solid var(--line);
@@ -995,6 +1019,7 @@
       <button id="kkClose" title="閉じる">✕</button>
     </div>
     <div class="sheetBody">
+      <div id="kkHomes"></div>
       <div class="wpNote" style="margin-bottom:10px">
         ポチパスの「サービス等個別支援計画（様式1-1）」Excelと連携します。
         <b>①既存Excelを読み込み → ②ここで編集 → ③Excelへ書き出し</b>（様式・罫線は完全保持、ポチパス連携用データ列にも書き込みます）。
@@ -1263,6 +1288,11 @@ const AI_ICON = (()=>{
     <circle cx="24" cy="26" r="8" fill="#4a5a6b"/>
     <circle cx="24" cy="26" r="4.4" fill="${W}"/>
     <rect x="33" y="18" width="5" height="3" rx="1.2" fill="#8fa3b7"/>`)},
+  会社: { bg:'#2f6b5f', svg:S(`
+    <rect x="9" y="7" width="24" height="34" rx="3" fill="${W}"/>
+    <path d="M15 15h13M15 21h13M15 27h9" stroke="#9fb4c9" stroke-width="2.4"/>
+    <circle cx="33" cy="33" r="8" fill="#c9a227"/>
+    <path d="M29.5 33.2l2.6 2.6 5-5.2" stroke="${W}" stroke-width="2.4"/>`)},
   設計: { bg:'#35566e', svg:S(`
     <rect x="8" y="6" width="32" height="36" rx="3" fill="${W}"/>
     <path d="M14 13h20M14 19h20M14 25h12" stroke="#9fb4c9" stroke-width="2.4"/>
@@ -3095,7 +3125,47 @@ const KK_COL_LABEL = {kadai:'解決すべき課題（本人のニーズ）', mok
 function kkVal(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
 function kkSet(id,v){ const el=document.getElementById(id); if(el) el.value=(v==null?'':String(v)); }
 
-function openKeikakuPanel(){ document.getElementById('keikakuPanel').hidden=false; }
+function openKeikakuPanel(){ document.getElementById('keikakuPanel').hidden=false; kkHomesRender(); }
+/* ホームごとの利用者（受給者証の期限・区分・通所先・相談員）
+   ★データは👤利用者と同じものを見ています（二重に持ちません）。 */
+function kkHomesRender(){
+  const el=document.getElementById('kkHomes'); if(!el) return;
+  if(!riyouData){
+    const st=secStored(RIYOU_KEY);
+    el.innerHTML = `<div class="wpNote" style="margin-bottom:10px">
+      🏠 <b>ホームごとの利用者</b>（受給者証の期限・区分・通所先・相談員）<br>
+      <small>${st?`合言葉で保護中（${st.n}名）。`:''}👤利用者をひらくと、ここに出ます。</small>
+      <div style="margin-top:8px"><button class="wpBtn primary" id="kkOpenRiyou">👤 利用者をひらく</button></div></div>`;
+    const b=document.getElementById('kkOpenRiyou');
+    if(b) b.addEventListener('click', ()=>{ document.getElementById('keikakuPanel').hidden=true; openRiyouPanel(); });
+    return;
+  }
+  const homes={};
+  riyouData.forEach((u,i)=>{ const h=String(u.home||'（ホーム未記入）'); (homes[h]=homes[h]||[]).push(Object.assign({_i:i},u)); });
+  const names=Object.keys(homes).sort();
+  const tel = v => v ? `<a href="tel:${hkEsc(String(v).replace(/[^\d+]/g,''))}" style="color:var(--olive-d); white-space:nowrap">${hkEsc(v)}</a>` : '<span style="color:#9aa38c">—</span>';
+  el.innerHTML = `<div style="font-weight:800; font-size:13px; color:#1f3a28; margin:2px 0 6px">
+      🏠 ホームごとの利用者　<span style="font-weight:400; font-size:11.5px; color:var(--sub)">（👤利用者と同じデータです）</span></div>`
+    + names.map(h=>{
+      const us=homes[h].slice().sort((a,b)=>(shaDays(a.limTo)??99999)-(shaDays(b.limTo)??99999));
+      return `<div class="kkHome">
+        <div class="kkHomeT">${hkEsc(h)}　<span>${us.length}名</span></div>
+        <table class="kkTbl">
+          <tr><th>氏名</th><th>区分</th><th>受給者証の期限</th><th>通所先</th><th>相談支援専門員</th></tr>
+          ${us.map(u=>{ const d=shaDays(u.limTo), bg=shaBadge(d);
+            return `<tr>
+              <td><b>${hkEsc(u.name||'')}</b></td>
+              <td>${u.kubun?'区分 '+hkEsc(u.kubun):'<span style="color:#9aa38c">—</span>'}</td>
+              <td>${u.limTo?`${shaFmt(u.limTo)}<br><span style="font-size:10px; color:#fff; background:${bg.color}; border-radius:999px; padding:1px 7px">${bg.txt}</span>`:'<span style="color:#9aa38c">未登録</span>'}</td>
+              <td>${hkEsc(u.tsusho||'')||'<span style="color:#9aa38c">—</span>'}<br>${tel(u.tsushoTel)}</td>
+              <td>${hkEsc(u.soudan||'')||'<span style="color:#9aa38c">—</span>'}<br>${tel(u.soudanTel)}</td>
+            </tr>`; }).join('')}
+        </table></div>`;
+    }).join('')
+    + `<div class="wpNote" style="margin:8px 0 12px"><small>
+        通所先・相談支援専門員は、👤利用者の「編集」から入れられます。
+        電話番号をおすと、そのままかけられます。</small></div>`;
+}
 document.getElementById('kkClose').addEventListener('click', ()=>document.getElementById('keikakuPanel').hidden=true);
 document.getElementById('keikakuPanel').addEventListener('click', ev=>{ if(ev.target.id==='keikakuPanel') ev.target.hidden=true; });
 
@@ -4796,6 +4866,8 @@ const RIYOU_FIELDS = [
   ['no','受給者証番号','text'],      ['home','ホーム','chip'],
   ['limFrom','受給者証の期限（開始）','date'], ['limTo','受給者証の期限（終了）','date'],
   ['birth','誕生日','date'],         ['moveIn','おりーぶ庵入居','date'],
+  ['tsusho','通所先','text'],        ['tsushoTel','通所先の連絡先','text'],
+  ['soudan','相談支援専門員','text'],['soudanTel','相談員の連絡先','text'],
 ];
 const RIYOU_KUBUN = ['1','2','3','4','5','6','非該当'];
 // 入力・編集の画面
@@ -4912,7 +4984,8 @@ function riyouRenderSearch(q){
   const key=(q||'').replace(/[\s　]/g,'');
   list.forEach((u,i)=>u._i=i);                 // 添付の出し入れに使う通し番号
   const hit = list.filter(u=>
-       (!key || u.name.replace(/[\s　]/g,'').includes(key) || String(u.no||'').includes(key) || String(u.home||'').includes(key))
+       (!key || u.name.replace(/[\s　]/g,'').includes(key) || String(u.no||'').includes(key) || String(u.home||'').includes(key)
+             || String(u.tsusho||'').includes(key) || String(u.soudan||'').includes(key))
     && (!riyouFHome  || String(u.home ||'')===riyouFHome)
     && (!riyouFKubun || String(u.kubun||'')===riyouFKubun));
   const card=(u)=>{
@@ -4936,6 +5009,8 @@ function riyouRenderSearch(q){
         ${limRow}
         <tr><td style="color:#7a8b80; padding:2px 0">誕生日</td><td>${riyouFmt(bd)}${bd?`（${riyouWareki(bd)}）　<b>${riyouAge(bd)}歳</b>`:''}</td></tr>
         <tr><td style="color:#7a8b80; padding:2px 0">おりーぶ庵入居</td><td>${riyouFmt(mi)}</td></tr>
+        ${(u.tsusho||u.tsushoTel)?`<tr><td style="color:#7a8b80; padding:2px 0">通所先</td><td>${hkEsc(u.tsusho||'')}${u.tsushoTel?`　<a href="tel:${hkEsc(String(u.tsushoTel).replace(/[^\d+]/g,''))}" style="color:var(--olive-d)">${hkEsc(u.tsushoTel)}</a>`:''}</td></tr>`:''}
+        ${(u.soudan||u.soudanTel)?`<tr><td style="color:#7a8b80; padding:2px 0">相談支援専門員</td><td>${hkEsc(u.soudan||'')}${u.soudanTel?`　<a href="tel:${hkEsc(String(u.soudanTel).replace(/[^\d+]/g,''))}" style="color:var(--olive-d)">${hkEsc(u.soudanTel)}</a>`:''}</td></tr>`:''}
       </table>
       ${riyouAttHtml(u)}</div>`;
   };
@@ -7427,7 +7502,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-10-21b';
+const AIOS_VER = '2026-11-03a';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
@@ -7808,7 +7883,7 @@ const BK_LAST  = 'aiosBkLastV1';            // 最後に控えを取った日時
 const BK_EXT   = '.aiosbackup';
 // ★このファイルの後ろで決めている名前もあるので、使うときに組み立てます
 const BK_PLAIN_KEYS = ()=> [SHARYOU_PLAIN, SHARYOU_KEY, GIJI_PLAIN, CALEV_KEY, CAL_KEY, CAL_MODE,
-                       CALKIND_KEY, AIOS_HIST, 'aiosRecentV1', 'aiosKoubouUrlV1', DESIGN_KEY];
+                       CALKIND_KEY, AIOS_HIST, 'aiosRecentV1', 'aiosKoubouUrlV1', DESIGN_KEY, KAISHA_KEY];
 const BK_SEC_KEYS   = ()=> [JINJI_KEY, RIYOU_KEY];
 const bkLast    = ()=>{ try{ return localStorage.getItem(BK_LAST)||''; }catch(e){ return ''; } };
 const bkSetLast = ()=>{ try{ localStorage.setItem(BK_LAST, new Date().toISOString()); }catch(e){} };
@@ -8195,6 +8270,151 @@ function openDesignPanel(){
   }
   p.hidden=false; designEdit=null; designRender();
 }
+
+/* =========================================================================
+   ▼▼▼ 会社書類（履歴事項全部証明書・決算書などのPDF） ▼▼▼
+   ・しくみは資格証・受給者証の添付と同じものを使っています（統一）。
+     ファイルは合言葉で暗号化して、この端末の中だけに保管します。
+   ・一覧（種類・年度・メモ・ファイル名）は、合言葉なしで見られます。
+   ========================================================================= */
+const KAISHA_KEY  = 'aiosKaishaV1';
+const KAISHA_KINDS = ['履歴事項全部証明書','決算書','定款','就業規則','賃金規程','印鑑証明','納税証明','その他'];
+const kaishaRead  = ()=>{ try{ return JSON.parse(localStorage.getItem(KAISHA_KEY))||[]; }catch(e){ return []; } };
+const kaishaWrite = l =>{ try{ localStorage.setItem(KAISHA_KEY, JSON.stringify(l)); }catch(e){} };
+const kaishaPw    = ()=> secRemembered(KAISHA_KEY) || secRemembered(JINJI_KEY) || '';
+function kaishaRender(){
+  const b=document.getElementById('kaishaBody'); if(!b) return;
+  const list=kaishaRead().map((x,i)=>Object.assign({_i:i},x))
+    .sort((a,c)=>String(c.year||'').localeCompare(String(a.year||'')) || String(a.kind).localeCompare(String(c.kind)));
+  const pw=kaishaPw();
+  b.innerHTML = `<div class="wpNote">
+      🏢 <b>会社の書類（PDF）をここにまとめます。</b><br>
+      <small>履歴事項全部証明書・決算書などを入れておくと、提出や問い合わせのときにすぐ出せます。
+      ファイルは<b>合言葉で暗号化</b>して${aiosThis()}の中だけに置きます（資格証・受給者証と同じしくみ）。</small></div>
+
+    ${pw ? '' : `<div class="wpNote" style="background:#fff6e6; border-color:#e6cfa5; margin-top:9px">
+      🔐 <b>はじめに合言葉を決めてください</b>（1回だけ）<br>
+      <small>ファイルを暗号化するのに使います。人事と同じ合言葉にそろえると覚えやすいです。</small>
+      <div class="calBar" style="margin-top:7px">
+        <input type="password" id="kaishaPwIn" placeholder="4文字以上" autocomplete="new-password"
+          style="flex:1; min-width:140px; padding:10px 12px; border:1px solid var(--line); border-radius:6px; font-size:16px">
+        <button class="wpBtn primary" id="kaishaPwGo">決める</button>
+      </div></div>`}
+
+    <h3 class="wpH">① 何の書類ですか</h3>
+    <div class="phKindRow" id="kaishaKinds">${KAISHA_KINDS.map(k=>
+      `<button class="chip${(b.dataset.kind||KAISHA_KINDS[0])===k?' on':''}" data-kkind="${k}">${k}</button>`).join('')}</div>
+
+    <h3 class="wpH">② 年度・メモ</h3>
+    <div class="calBar">
+      <input type="text" id="kaishaYear" value="${hkEsc(b.dataset.year||'')}" placeholder="例：2026年度／2026-10取得"
+        style="flex:1; min-width:150px; padding:10px 12px; border:1px solid var(--line); border-radius:6px; font-size:16px">
+      <input type="text" id="kaishaMemo" value="${hkEsc(b.dataset.memo||'')}" placeholder="メモ（任意）"
+        style="flex:1; min-width:150px; padding:10px 12px; border:1px solid var(--line); border-radius:6px; font-size:16px">
+    </div>
+
+    <h3 class="wpH">③ PDF・写真を入れる</h3>
+    <div class="calBar">
+      <button class="wpBtn primary" id="kaishaPick" ${pw?'':'disabled'}>📎 PDF・写真をえらぶ</button>
+      <button class="wpBtn" id="kaishaCam" ${pw?'':'disabled'}>📷 撮る（何枚でも）</button>
+    </div>
+    <input type="file" id="kaishaFile" accept="application/pdf,.pdf,image/*" hidden>
+
+    <h3 class="wpH">入っている書類（${list.length}件）</h3>
+    ${list.length ? list.map(x=>`
+      <div class="kaiRow">
+        <div style="min-width:0">
+          <b>${hkEsc(x.kind)}</b>${x.year?`　<span class="kaiY">${hkEsc(x.year)}</span>`:''}
+          <div class="kaiS">${hkEsc(x.file&&x.file.name||'')}${x.file?`（${Math.max(1,Math.round(x.file.size/1024))}KB）`:''}${x.memo?'　'+hkEsc(x.memo):''}</div>
+        </div>
+        <span style="flex:1"></span>
+        <button class="wpBtn" data-kview="${x._i}" style="font-size:11px; padding:4px 9px">表示</button>
+        <button class="wpBtn" data-ksave="${x._i}" style="font-size:11px; padding:4px 9px">⬇ 保存</button>
+        <button class="wpBtn" data-kdel="${x._i}" style="font-size:11px; padding:4px 9px; color:#d0503f; border-color:#e6b3ab">消す</button>
+      </div>`).join('')
+      : '<div class="wpNote">まだ入っていません。上の①②③の順に入れてください。</div>'}`;
+
+  const keep=()=>{ const y=document.getElementById('kaishaYear'), mm=document.getElementById('kaishaMemo');
+    if(y) b.dataset.year=y.value; if(mm) b.dataset.memo=mm.value; };
+  b.querySelectorAll('[data-kkind]').forEach(el=>el.addEventListener('click', ()=>{
+    keep(); b.dataset.kind=el.dataset.kkind; kaishaRender(); }));
+  const pg=document.getElementById('kaishaPwGo');
+  if(pg) pg.addEventListener('click', ()=>{
+    const v=document.getElementById('kaishaPwIn').value.trim();
+    if(v.length<4){ alert('合言葉は4文字以上で入れてください'); return; }
+    secRemember(KAISHA_KEY, v); kaishaRender(); banner('🔐 会社書類の合言葉を決めました');
+  });
+  const add = async (pages, file)=>{
+    keep();                                   // 年度・メモを取りこぼさない
+    const pass=kaishaPw(); if(!pass){ alert('先に合言葉を決めてください'); return; }
+    try{
+      const kind=b.dataset.kind||KAISHA_KINDS[0];
+      const r = pages ? await aiosAttachPages(pages, kind, pass, null, 'c')
+                      : await aiosAttachSave(file, pass, null, 'c');
+      const l=kaishaRead();
+      l.push({kind, year:(b.dataset.year||''), memo:(b.dataset.memo||''), file:r.meta, at:new Date().toISOString()});
+      kaishaWrite(l); b.dataset.memo=''; kaishaRender();
+      banner(`🏢 ${kind}を保存しました`);
+      logLine(`<b>会社書類</b>：${kind}を保管（この端末のみ・暗号化）`);
+    }catch(e){ alert('保存できませんでした：'+(e.message||e)); }
+  };
+  const pk=document.getElementById('kaishaPick');
+  if(pk) pk.addEventListener('click', ()=>{ keep(); document.getElementById('kaishaFile').click(); });
+  document.getElementById('kaishaFile').addEventListener('change', async function(){
+    const f=this.files[0]; this.value=''; if(f) await add(null, f);
+  });
+  const cm=document.getElementById('kaishaCam');
+  if(cm) cm.addEventListener('click', async ()=>{
+    keep();
+    const pages=await aiosCamShoot((b.dataset.kind||'会社書類')+'をとる');
+    if(pages) await add(pages, null);
+  });
+  b.querySelectorAll('[data-kview]').forEach(el=>el.addEventListener('click', ()=>kaishaShow(+el.dataset.kview)));
+  b.querySelectorAll('[data-ksave]').forEach(el=>el.addEventListener('click',
+    ()=>jinFileDownload(kaishaRead()[+el.dataset.ksave].file, kaishaPw())));
+  b.querySelectorAll('[data-kdel]').forEach(el=>el.addEventListener('click', async ()=>{
+    const i=+el.dataset.kdel, l=kaishaRead();
+    if(!confirm(`「${l[i].kind}${l[i].year?'（'+l[i].year+'）':''}」を消します。よろしいですか？`)) return;
+    try{ await jinFileDel(l[i].file.id); }catch(e){}
+    l.splice(i,1); kaishaWrite(l); kaishaRender();
+  }));
+}
+async function kaishaShow(i){
+  const b=document.getElementById('kaishaBody'); const x=kaishaRead()[i]; if(!x) return;
+  b.innerHTML = `<button class="wpBtn" id="kaiBack">← 一覧にもどる</button>
+    <div style="font-weight:800; font-size:14px; color:#1f3a28; margin:10px 0 6px">
+      🏢 ${hkEsc(x.kind)}${x.year?'（'+hkEsc(x.year)+'）':''}</div>
+    <div id="kaiView" class="wpNote">開いています…</div>`;
+  document.getElementById('kaiBack').addEventListener('click', kaishaRender);
+  try{
+    const bytes=await jinFileBytes(x.file, kaishaPw());
+    const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
+    document.getElementById('kaiView').outerHTML=`
+      <iframe src="${url}" style="width:100%; height:58vh; border:1px solid var(--line); border-radius:8px; background:#fff"></iframe>
+      <div class="calBar" style="margin-top:9px">
+        <a class="wpBtn primary" href="${url}" download="${hkEsc(x.file.name)}" style="text-decoration:none">⬇ PDFを保存</a>
+        <a class="wpBtn" href="${url}" target="_blank" rel="noopener" style="text-decoration:none">別のタブで開く</a>
+      </div>`;
+    setTimeout(()=>URL.revokeObjectURL(url), 10*60*1000);
+  }catch(e){
+    const v=document.getElementById('kaiView'); if(v) v.innerHTML='⚠ 開けませんでした：'+hkEsc(e.message);
+  }
+}
+function openKaishaPanel(){
+  let p=document.getElementById('kaishaPanel');
+  if(!p){
+    p=document.createElement('div'); p.className='modal'; p.id='kaishaPanel';
+    p.innerHTML=`<div class="sheet" style="max-width:760px">
+      <div class="sheetHead"><b>🏢 会社書類</b><span class="grow"></span>
+        <button onclick="document.getElementById('kaishaPanel').hidden=true">✕</button></div>
+      <div class="sheetBody" id="kaishaBody"></div></div>`;
+    p.addEventListener('click',ev=>{ if(ev.target.id==='kaishaPanel') p.hidden=true; });
+    document.body.appendChild(p);
+  }
+  p.hidden=false; kaishaRender();
+}
+/* ▲▲▲ 会社書類 ここまで ▲▲▲ */
+
 /* ▲▲▲ 開発設計 ここまで ▲▲▲ */
 
 /* ▲▲▲ 控え ここまで ▲▲▲ */
@@ -9001,32 +9221,33 @@ const HOME_MENU = [
     {k:'監査',   n:'監査',       d:'運営指導チェック・勤務形態一覧表', fn:()=>openKansaMenu()},
     {k:'文書',   n:'文書',       d:'書類の体裁を整える'},
   ]},
-  {g:'人と時間', items:[
+  {g:'労務・経理', items:[
     {k:'シフト', n:'シフト',      d:'シフト希望の集計・Excel反映',     fn:()=>openShiftPanel()},
-    {k:'人事',   n:'人事',       d:'職員名簿・資格や研修の期限',       fn:()=>openJinjiPanel()},
-    {k:'看護',   n:'看護',       d:'健康記録・受診予定'},
-  ]},
-  {g:'お金', items:[
-    {k:'請求',   n:'請求',       d:'国保連の請求データ'},
+    {k:'人事',   n:'人事・労務',   d:'職員名簿・資格や研修の期限',       fn:()=>openJinjiPanel()},
     {k:'経理',   n:'経理',       d:'売上と経費の集計'},
-    {k:'工房',   n:'工房',       d:'工房のアプリ・共有フォルダ',       fn:()=>openKoubouPanel()},
+    {k:'請求',   n:'請求',       d:'国保連の請求データ'},
+    {k:'車両',   n:'車両管理',    d:'車検・自賠責・任意保険の期限',     fn:()=>openSharyouPanel()},
+    {k:'会社',   n:'会社書類',    d:'履歴事項全部証明書・決算書のPDF',  fn:()=>openKaishaPanel()},
   ]},
-  {g:'利用者', items:[
+  {g:'利用者・ホーム', items:[
     {k:'利用者', n:'利用者',      d:'受給者証の照会と期限',            fn:()=>openRiyouPanel()},
-    {k:'ホーム', n:'ホーム管理',   d:'個別支援計画・空室状況',          fn:()=>openKeikakuPanel()},
+    {k:'ホーム', n:'ホーム管理',   d:'ホームごとの利用者・個別支援計画',  fn:()=>openKeikakuPanel()},
     {k:'会議室', n:'会議室・議事録', d:'議事録の保管・検索・要約',        fn:()=>openGijiPanel()},
+    {k:'看護',   n:'看護',       d:'健康記録・受診予定'},
     {k:'写真',   n:'写真',       d:'受給者証・資格証を撮ってパソコンへ渡す', fn:()=>openPhotoPanel()},
   ]},
-  {g:'設備', items:[
-    {k:'車両',     n:'車両',     d:'車検・自賠責・任意保険の期限',     fn:()=>openSharyouPanel()},
+  {g:'そのほか', items:[
+    {k:'工房',     n:'工房',     d:'工房のアプリ・共有フォルダ',       fn:()=>openKoubouPanel()},
     {k:'ポチパス', n:'ポチパス',    d:'ポチパスを開く・連携',            fn:()=>openPochiPanel()},
     {k:'控え',     n:'控え（バックアップ）', d:'ぜんぶまとめて保存・もどす',  fn:()=>openBackupPanel()},
     {k:'書類棚',   n:'書類棚',      d:'理念手帳など保管した書類',         fn:()=>openShelfPanel()},
-    {k:'設計',     n:'開発設計',     d:'このAI-OSの中身・決めごと・これから', fn:()=>openDesignPanel()},
     {k:'プリンター', n:'プリンター', d:'印刷メニュー',                   fn:()=>openPrinterPanel()},
+    {k:'設計',     n:'開発設計',     d:'このAI-OSの中身・決めごと・これから', fn:()=>openDesignPanel()},
     {k:'DX',       n:'DX',      d:'自動化のしくみ'},
   ]},
 ];
+// よく使うもの（はじめに出すタブ）
+const HOME_FAV = ['シフト','人事','利用者','ホーム','写真','車両'];
 const HOME_ALL = HOME_MENU.reduce((a,g)=>a.concat(g.items.map(i=>Object.assign({g:g.g}, i))), []);
 const homeItem = k => HOME_ALL.find(i=>i.k===k);
 
@@ -9111,17 +9332,20 @@ function homeRowHtml(x){
     <div class="hgo">ひらく ›</div></div>`;
 }
 let homeQ='', homeCur=null;
-let bizTab = 'ぜんぶ';
+let bizTab = 'よく使う';
 /* 業務メニュー：大きなボタンで選ぶ（上のタブで分類をしぼれます） */
 function bizRender(hit){
   const tabs=document.getElementById('bizTabs'), grid=document.getElementById('bizGrid');
   if(!tabs || !grid) return;
-  const names=['ぜんぶ', ...HOME_MENU.map(g=>g.g)];
+  const names=['よく使う', ...HOME_MENU.map(g=>g.g), 'ぜんぶ'];
   tabs.innerHTML = names.map(n=>
     `<button data-biz="${n}" class="${bizTab===n?'on':''}">${n}</button>`).join('');
   tabs.querySelectorAll('[data-biz]').forEach(b=>b.addEventListener('click', ()=>{
     bizTab=b.dataset.biz; homeRender(); }));
-  const items = HOME_ALL.filter(i=>(bizTab==='ぜんぶ' || i.g===bizTab) && hit(i));
+  const items = HOME_ALL.filter(i=>(
+      bizTab==='ぜんぶ' ? true :
+      bizTab==='よく使う' ? HOME_FAV.includes(i.k) : i.g===bizTab) && hit(i))
+    .sort((a,b)=> bizTab==='よく使う' ? HOME_FAV.indexOf(a.k)-HOME_FAV.indexOf(b.k) : 0);
   grid.innerHTML = items.length ? items.map(i=>
     `<button class="bizBtn${i.fn?'':' soon'}${homeCur===i.k?' cur':''}" ${i.fn?`data-open="${i.k}"`:''} title="${hkEsc(i.d)}">
       <span class="bi" style="background:${i.fn?aiTileBg(i.k):'#cfd6db'}">${aiTileHtml(i.k,'')}</span>
@@ -9132,6 +9356,7 @@ function bizRender(hit){
 function homeRender(){
   if(!document.getElementById('bizGrid')) return;
   const hit = i => !homeQ || (i.n+i.d+i.g).toLowerCase().includes(homeQ.toLowerCase());
+  if(homeQ) bizTab='ぜんぶ';          // さがすときは、ぜんぶの中から
   bizRender(hit);
 
   const today = homeToday().filter(x=>{ const i=homeItem(x.k)||{};
