@@ -6604,7 +6604,16 @@ function openJinjiPanel(){
     p.innerHTML=`<div class="sheet" style="max-width:720px">
       <div class="sheetHead"><b>🤝 人事AI（従業員名簿・資格の期限管理）</b><span class="grow"></span>
         <button onclick="document.getElementById('jinjiPanel').hidden=true">✕</button></div>
-      <div class="sheetBody" id="jinBody"></div></div>`;
+      <div class="sheetBody">
+        <!-- 従業員名簿アプリ（閲覧専用・別ページ）。名簿の中身はこのページに入れず、合言葉でGoogleスプレッドシートから読む -->
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 12px; margin-bottom:10px; background:#eef6ea; border:1px solid #cfe3c4; border-radius:10px">
+          <div style="flex:1; min-width:180px; font-size:12.5px; line-height:1.6; color:#2f4a2a">
+            <b>👥 従業員名簿（閲覧アプリ）</b><br>
+            在籍者・退職者の一覧と詳細。スマホからも見られます（合言葉が要ります）。</div>
+          <a class="wpBtn primary" href="https://olive-an.github.io/olive-anshift/roster.html" target="_blank" rel="noopener"
+             style="text-decoration:none; white-space:nowrap">🔗 名簿アプリを開く</a>
+        </div>
+        <div id="jinBody"></div></div></div>`;
     p.addEventListener('click',ev=>{ if(ev.target.id==='jinjiPanel') p.hidden=true; });
     document.body.appendChild(p);
   }
@@ -7502,7 +7511,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-11-03a';
+const AIOS_VER = '2026-11-05a';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
