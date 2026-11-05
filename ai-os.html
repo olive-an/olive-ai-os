@@ -6777,6 +6777,7 @@ function jinRenderList(){
       <button class="wpBtn" id="jinImport">📗 従業員名簿Excelから取り込む</button>
       ${aiosBookBtn('jinBook')}
       <button class="wpBtn" id="jinExport">📤 Excelへ書き出す（別名）</button>
+      <button class="wpBtn" id="jinToRoster">🔼 資格を名簿アプリへ送る</button>
       <button class="wpBtn" id="jinOut">${aiosOutLbl()}</button>
       <button class="wpBtn" id="jinIn">${aiosInLbl()}</button>
       <span class="grow" style="flex:1"></span>
@@ -6825,6 +6826,7 @@ function jinRenderList(){
     jinjiData=[]; await jinPersist(); await jinGC(); jinRenderList();
   });
   document.getElementById('jinImport').addEventListener('click',()=>document.getElementById('jinFile').click());
+  document.getElementById('jinToRoster').addEventListener('click',()=>jinRenderSend());
   document.getElementById('jinFile').addEventListener('change', async function(){
     const f=this.files[0]; this.value=''; if(!f) return;
     try{
@@ -7133,6 +7135,121 @@ async function jinFileBytes(meta, pass){
   if(!rec) throw new Error('この端末に添付が見つかりません');
   return await jinDecBytes(rec, pass || jinjiPass);
 }
+
+/* ---------------------------------------------------------------
+   資格を、名簿アプリ（Googleスプレッドシート）へ送る
+   ・このAI-OSの人事AIにある資格（日付か資格証が入っているもの）を、
+     名簿アプリのGAS（olive-anshift の roster.html と同じもの）へ送ります。
+   ・資格証のPDFは、この端末で復号して送り、ドライブのフォルダに保存されます。
+   ・名簿アプリに同じ資格（氏名・資格名・取得年月日が同じ）があれば、送りません。
+   ・この端末のデータは消しません。
+   --------------------------------------------------------------- */
+const ROSTER_GAS_URL = 'https://script.google.com/macros/s/AKfycbw-9rRr_B2ieY_fv3uYIBWgqeFaPPxjTKJW5Oe_JO0p8evT1YDJKVXimr_XDhgV3SmM-g/exec';
+function jinRosterJsonp(params){
+  return new Promise((ok,ng)=>{
+    const cb='jinRosterCb_'+Date.now()+'_'+Math.floor(Math.random()*1e6);
+    const sc=document.createElement('script'); let done=false;
+    const fin=(f,v)=>{ if(done) return; done=true; clearTimeout(tm); delete window[cb]; sc.remove(); f(v); };
+    const tm=setTimeout(()=>fin(ng,new Error('時間内に届きませんでした。通信を確認してください。')),30000);
+    window[cb]=r=>fin(ok,r);
+    sc.onerror=()=>fin(ng,new Error('名簿アプリに接続できませんでした。'));
+    sc.src=ROSTER_GAS_URL+'?'+Object.keys(params).map(k=>k+'='+encodeURIComponent(params[k])).join('&')+'&callback='+cb+'&_='+Date.now();
+    document.head.appendChild(sc);
+  });
+}
+const jinQKey=(name,title,acq)=>String(name||'').replace(/[\s　]+/g,'')+'|'+String(title||'').trim()+'|'+String(acq||'');
+const jinYmdOk=v=>/^\d{4}-\d{2}-\d{2}$/.test(String(v||''))?String(v):'';
+function jinB64(u8){ let s=''; for(let i=0;i<u8.length;i+=0x8000) s+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000)); return btoa(s); }
+// 送る対象：資格名があり、日付か資格証が入っているもの（「聞き取り」だけのものは名簿のExcelにすでにあるので送らない）
+function jinSendItems(){
+  const out=[];
+  (jinjiData||[]).forEach(p=>(p.quals||[]).forEach(q=>{
+    if(q.name && String(q.name).trim() && (q.date||q.exp||(q.file&&q.file.id))) out.push({p,q});
+  }));
+  return out;
+}
+function jinRenderSend(){
+  const b=document.getElementById('jinBody');
+  const items=jinSendItems();
+  const withPdf=items.filter(x=>x.q.file&&x.q.file.id).length;
+  b.innerHTML=`<button class="wpBtn" id="jsBack">← 名簿にもどる</button>
+    <div style="font-weight:800; font-size:14px; color:#1f3a28; margin:10px 0 6px">🔼 資格を名簿アプリへ送る</div>
+    <div class="wpNote">この端末の人事AIにある資格のうち、日付か資格証が入っているもの
+      <b>${items.length}件</b>（資格証PDF付き<b>${withPdf}件</b>）を、名簿アプリのスプレッドシートへ送ります。<br>
+      ・「聞き取り」だけで日付も資格証もないものは、送りません（名簿のExcelにすでにあります）。<br>
+      ・名簿アプリにすでにある同じ資格は、送りません。<br>
+      ・この端末のデータは、消しません。</div>
+    <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a; margin-top:10px">名簿アプリの合言葉</label>
+    <input id="jsPass" type="password" autocomplete="off" placeholder="名簿アプリを開くときの合言葉"
+      style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 8px">
+    <button class="wpBtn primary" id="jsCheck" style="width:100%; padding:11px" ${items.length?'':'disabled'}>① 確認する（まだ送りません）</button>
+    <div id="jsInfo" style="margin-top:10px"></div>`;
+  document.getElementById('jsBack').addEventListener('click', ()=>jinRenderList());
+  document.getElementById('jsCheck').addEventListener('click', ()=>jinSendCheck(items));
+}
+async function jinSendCheck(items){
+  const info=document.getElementById('jsInfo'), btn=document.getElementById('jsCheck');
+  const pass=document.getElementById('jsPass').value.trim();
+  if(!pass){ info.innerHTML='<div class="wpNote" style="background:#fdf3f3">合言葉を入れてください。</div>'; return; }
+  btn.disabled=true; info.innerHTML='<div class="wpNote">名簿アプリを確認しています…</div>';
+  try{
+    const res=await jinRosterJsonp({action:'roster', pass});
+    if(!res || !res.ok) throw new Error((res&&res.error)||'合言葉が違います。');
+    const have=new Set((res.quals||[]).map(q=>jinQKey(q.name,q.title,q.acquired)));
+    const plan=items.filter(x=>!have.has(jinQKey(x.p.name,x.q.name,jinYmdOk(x.q.date))));
+    const planPdf=plan.filter(x=>x.q.file&&x.q.file.id).length;
+    const dup=items.length-plan.length;
+    info.innerHTML=`<div class="wpNote" style="background:#eef7f0">
+        送る：<b>${plan.length}件</b>（資格証PDF付き<b>${planPdf}件</b>）／すでにあるので送らない：<b>${dup}件</b></div>
+      ${plan.length?`<button class="wpBtn primary" id="jsGo" style="width:100%; padding:11px; margin-top:8px">② この内容で送る</button>`:''}
+      <div id="jsLog" style="margin-top:8px; font-size:12px; line-height:1.7"></div>`;
+    if(plan.length) document.getElementById('jsGo').addEventListener('click', ()=>jinSendRun(plan, pass));
+  }catch(e){
+    info.innerHTML=`<div class="wpNote" style="background:#fdf3f3">${hkEsc(e.message)}</div>`;
+  }finally{ btn.disabled=false; }
+}
+async function jinSendRun(plan, pass){
+  const go=document.getElementById('jsGo'), log=document.getElementById('jsLog');
+  go.disabled=true; document.getElementById('jsCheck').disabled=true;
+  let okN=0, unknown=[], failed=[], noPdf=[];
+  for(let i=0;i<plan.length;i++){
+    const {p,q}=plan[i];
+    log.textContent=`送っています… ${i+1} / ${plan.length}　${p.name}　${q.name}`;
+    const body={action:'qualAdd', pass, name:p.name, no:p.no||'', title:String(q.name).trim(),
+                acquired:jinYmdOk(q.date), renew:jinYmdOk(q.exp)};
+    if(q.file && q.file.id){
+      try{ body.pdf=jinB64(await jinFileBytes(q.file, jinjiPass)); }
+      catch(e){ noPdf.push(`${p.name}　${q.name}`); }
+    }
+    let result=null;
+    try{
+      const r=await fetch(ROSTER_GAS_URL,{method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(body)});
+      result=await r.json();
+    }catch(e){ result=null; }
+    if(result && result.ok) okN++;
+    else if(result) failed.push(`${p.name}　${q.name}（${result.error||'送れませんでした'}）`);
+    else unknown.push({p,q});
+  }
+  // 結果が読めなかったものは、名簿アプリを読み直して、入っているかで確かめる
+  let missing=[];
+  if(unknown.length){
+    try{
+      const res=await jinRosterJsonp({action:'roster', pass});
+      const have=new Set(((res&&res.quals)||[]).map(x=>jinQKey(x.name,x.title,x.acquired)));
+      unknown.forEach(x=>{
+        if(have.has(jinQKey(x.p.name,x.q.name,jinYmdOk(x.q.date)))) okN++;
+        else missing.push(`${x.p.name}　${x.q.name}`);
+      });
+    }catch(e){ missing=unknown.map(x=>`${x.p.name}　${x.q.name}`); }
+  }
+  const list=a=>a.length?'<br>'+a.map(hkEsc).join('<br>'):'';
+  log.innerHTML=`<div class="wpNote" style="background:${(failed.length||missing.length)?'#fff8e6':'#eef7f0'}">
+      送れた：<b>${okN}件</b> ／ 送れなかった・確認できなかった：<b>${failed.length+missing.length}件</b>
+      ${failed.length||missing.length?`<br><b>送れなかったもの</b>${list(failed.concat(missing))}<br>もう一度「① 確認する」から行うと、残りだけ送れます。`:''}
+      ${noPdf.length?`<br><b>この端末にPDFが見つからず、PDFなしで送ったもの</b>${list(noPdf)}`:''}</div>`;
+  document.getElementById('jsCheck').disabled=false;
+}
+
 async function jinFileDownload(meta, pass){
   try{
     const bytes=await jinFileBytes(meta, pass);
@@ -7511,7 +7628,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-11-05a';
+const AIOS_VER = '2026-11-05b';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
