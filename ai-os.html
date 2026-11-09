@@ -6773,20 +6773,10 @@ function jinRenderList(){
 
   b.innerHTML = `
     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px">
-      <button class="wpBtn primary" id="jinAdd">＋ 従業員を追加</button>
-      <button class="wpBtn" id="jinImport">📗 従業員名簿Excelから取り込む</button>
-      ${aiosBookBtn('jinBook')}
-      <button class="wpBtn" id="jinExport">📤 Excelへ書き出す（別名）</button>
       <button class="wpBtn" id="jinToRoster">🔼 資格を名簿アプリへ送る</button>
-      <button class="wpBtn" id="jinOut">${aiosOutLbl()}</button>
-      <button class="wpBtn" id="jinIn">${aiosInLbl()}</button>
       <span class="grow" style="flex:1"></span>
       <button class="wpBtn" id="jinLock" style="font-size:11px">🔒 閉じる</button>
       <button class="wpBtn" id="jinClear" style="font-size:11px; color:#d0503f; border-color:#e6b3ab">🗑 全部消す</button>
-      <input type="file" id="jinHandFile" accept=".aiosdata,application/json" hidden>
-      <div style="width:100%">${aiosHandoffNote('従業員情報')}</div>
-      <input type="file" id="jinFile" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden>
-      <input type="file" id="jinExpFile" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden>
     </div>
     ${alerts.length ? `<div class="wpNote" style="background:#fdf3f3; border-color:#e6b3ab; margin-bottom:10px">
         ⚠ <b>期限が近い資格・研修（90日以内）</b><br>${alerts.map(a=>
@@ -6799,14 +6789,12 @@ function jinRenderList(){
       ${jinSelectHtml('jinFZai','在籍',  jinCountZai(all),       jinFZai)}
       ${(jinFHome||jinFJob||jinFEmp||jinFZai)?'<button class="wpBtn" id="jinFClear" style="font-size:11px">絞り込みを外す</button>':''}
     </div>
-    <input id="jinQ" type="search" placeholder="🔍 氏名・カナ・拠点・役職・資格名で探す" value="${hkEsc(jinQuery)}"
-      style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin-bottom:8px">
     <div class="wpNote" style="margin-bottom:8px">登録従業員：<b>${all.length}名</b>${
       (q||jinFHome||jinFJob||jinFEmp||jinFZai)?`　→ <b>${list.length}名</b>に絞り込み`:''}（期限の近い順）
       ${jinZaiLine(all)}</div>
     ${sorted.length ? sorted.map(card).join('')
       : (all.length? '<p class="wpNote">該当する方が見つかりません。</p>'
-                   : '<p class="wpNote">まだ従業員が登録されていません。「＋ 従業員を追加」から登録してください。</p>')}`;
+                   : '<p class="wpNote">この端末には、人事AIの従業員が登録されていません。名簿は、上の「名簿アプリを開く」から見られます。</p>')}`;
 
   const setF=(id,fn)=>{ const el=document.getElementById(id);
     if(el) el.addEventListener('change',()=>{ fn(el.value); jinRenderList(); }); };
@@ -6814,9 +6802,6 @@ function jinRenderList(){
   setF('jinFZai', v=>jinFZai=v);
   const fc=document.getElementById('jinFClear');
   if(fc) fc.addEventListener('click',()=>{ jinFHome=jinFJob=jinFEmp=jinFZai=''; jinRenderList(); });
-  const qEl=document.getElementById('jinQ');
-  aiosBindSearch(qEl, v=>{ const at=qEl.selectionStart; jinQuery=v; jinRenderList(); aiosRefocus('jinQ', at); });
-  document.getElementById('jinAdd').addEventListener('click', ()=>jinRenderForm(-1));
   b.querySelectorAll('[data-edit]').forEach(btn=>btn.addEventListener('click',()=>jinRenderForm(+btn.dataset.edit)));
   document.getElementById('jinLock').addEventListener('click', ()=>{
     jinjiData=null; jinjiPass=null; secForget(JINJI_KEY); jinRender();
@@ -6825,74 +6810,7 @@ function jinRenderList(){
     if(!confirm('登録した従業員名簿を'+aiosThis()+'からすべて消します。よろしいですか？')) return;
     jinjiData=[]; await jinPersist(); await jinGC(); jinRenderList();
   });
-  document.getElementById('jinImport').addEventListener('click',()=>document.getElementById('jinFile').click());
   document.getElementById('jinToRoster').addEventListener('click',()=>jinRenderSend());
-  document.getElementById('jinFile').addEventListener('change', async function(){
-    const f=this.files[0]; this.value=''; if(!f) return;
-    try{
-      if(typeof XLSX==='undefined') throw new Error('Excelライブラリを読み込めませんでした');
-      const wb=XLSX.read(await f.arrayBuffer(),{type:'array', cellDates:true});
-      await jinImportFromWorkbook(wb);
-    }catch(e){ alert('取り込みエラー：'+e.message); }
-  });
-  const expBtn=document.getElementById('jinExport');
-  if(expBtn) expBtn.addEventListener('click', async ()=>{
-    if(!(jinjiData||[]).length){ alert('先に従業員名簿を取り込んでください。'); return; }
-    try{
-      let wb=null, bytes=null, fname='従業員名簿.xlsx';
-      const f = await aiosBookFile(true);                 // 覚えているExcelがあればそれを使う
-      if(f){ bytes=new Uint8Array(await f.arrayBuffer()); fname=f.name; }
-      else {
-        const picked = await new Promise(res=>{
-          const inp=document.getElementById('jinExpFile');
-          inp.onchange=function(){ const x=this.files[0]; this.value=''; res(x||null); };
-          inp.click();
-        });
-        if(!picked) return;
-        bytes=new Uint8Array(await picked.arrayBuffer()); fname=picked.name;
-      }
-      if(typeof XLSX==='undefined') throw new Error('Excelライブラリを読み込めませんでした');
-      wb = XLSX.read(bytes,{type:'array', cellDates:true});
-      const sheet = await xlsChoose(document.getElementById('jinBody'), wb, XLS_JIN);
-      if(!sheet){ jinRenderList(); return; }
-      const loc = jinLocate(wb, sheet);
-      const diff = jinDiff(loc, jinjiData);
-      aiosExportConfirm(diff, bytes, sheet, fname, {
-        bodyId:'jinBody', back:jinRenderList, tag:'人事AI', unit:'人',
-        notes:'<b>個人番号（マイナンバー）の列はさわりません。</b>年齢・在籍期間・数式のセルも書き換えません。'});
-    }catch(e){ if(e.name!=='AbortError') alert('書き出せませんでした：'+e.message); jinRenderList(); }
-  });
-  const bookBtn=document.getElementById('jinBook');
-  if(bookBtn) bookBtn.addEventListener('click', async ()=>{
-    try{ await jinImportFromWorkbook(await aiosBookWorkbook()); }
-    catch(e){ if(e.name!=='AbortError') alert('読み込めませんでした：'+e.message); jinRenderList(); }
-  });
-  const jinOut=document.getElementById('jinOut');
-  if(jinOut) jinOut.addEventListener('click', async ()=>{
-    const blob = await aiosHandoffBlob(JINJI_KEY, ['j','f'], 'jinji');
-    if(!blob){ alert('持ち出すデータがありません。先に従業員名簿を取り込んでください。'); return; }
-    const r = await aiosDeliver(blob, `従業員情報_持ち出し_${aiosHandoffDate()}${AIOS_HANDOFF_EXT}`, 'jinBody', null);
-    if(r && r.aborted) return;
-    banner(`📲 ${(jinjiData||[]).length}名ぶん（写真・PDFも一緒）／${aiosSizeText(blob.size)} を保存しました`);
-  });
-  const jinIn=document.getElementById('jinIn');
-  if(jinIn) jinIn.addEventListener('click', ()=>document.getElementById('jinHandFile').click());
-  const jinHF=document.getElementById('jinHandFile');
-  if(jinHF) jinHF.addEventListener('change', async function(){
-    const f=this.files[0]; this.value=''; if(!f) return;
-    try{
-      const got = await aiosHandoffRead(f, jinjiPass || secRemembered(JINJI_KEY));
-      const nf = got.__files || 0;
-      const how = await aiosHandoffAsk('jinBody', jinjiData||[], got, nf, '従業員情報', jinRenderList);
-      if(!how) return;
-      const m = how==='merge' ? aiosMergePeople(jinjiData||[], got)
-                              : {list:got.slice(), add:got.length, upd:0, keep:0};
-      jinjiData = m.list; await jinPersist(); await jinGC(); jinRenderList();
-      const msg = how==='merge' ? `🔀 合わせました（新しく${m.add}名・直した${m.upd}名）` : `📥 ${jinjiData.length}名を読み込みました`;
-      banner(msg+(nf?`／添付${nf}件`:''));
-      logLine(`<b>人事AI</b>：引き継ぎファイルを${how==='merge'?'合わせ':'読み込み'}（${jinjiData.length}名`+(nf?`・添付${nf}件`:'')+`）`);
-    }catch(e){ alert('読み込めませんでした：'+(e.message||e)); }
-  });
   aiosShareBar('jin', /従業員|職員|名簿|スタッフ|master|マスタ/i, 'jinBody', '従業員名簿',
     wb=>jinImportFromWorkbook(wb));
 }
@@ -7628,7 +7546,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-11-05b';
+const AIOS_VER = '2026-11-09a';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
