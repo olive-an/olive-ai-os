@@ -6602,14 +6602,14 @@ function openJinjiPanel(){
   if(!p){
     p=document.createElement('div'); p.className='modal'; p.id='jinjiPanel';
     p.innerHTML=`<div class="sheet" style="max-width:720px">
-      <div class="sheetHead"><b>🤝 人事AI（従業員名簿・資格の期限管理）</b><span class="grow"></span>
+      <div class="sheetHead"><b>👥 人事・労務（従業員名簿）</b><span class="grow"></span>
         <button onclick="document.getElementById('jinjiPanel').hidden=true">✕</button></div>
       <div class="sheetBody">
         <!-- 従業員名簿アプリ（閲覧専用・別ページ）。名簿の中身はこのページに入れず、合言葉でGoogleスプレッドシートから読む -->
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 12px; margin-bottom:10px; background:#eef6ea; border:1px solid #cfe3c4; border-radius:10px">
           <div style="flex:1; min-width:180px; font-size:12.5px; line-height:1.6; color:#2f4a2a">
-            <b>👥 従業員名簿（閲覧アプリ）</b><br>
-            在籍者・退職者の一覧と詳細。スマホからも見られます（合言葉が要ります）。</div>
+            <b>👥 従業員名簿アプリ</b><br>
+            在籍者・退職者の一覧と詳細、資格書のPDFの保存とプレビュー。パソコン・iPad・スマホのどれからも使えます（合言葉が要ります）。</div>
           <a class="wpBtn primary" href="https://olive-an.github.io/olive-anshift/roster.html" target="_blank" rel="noopener"
              style="text-decoration:none; white-space:nowrap">🔗 名簿アプリを開く</a>
         </div>
@@ -6635,32 +6635,7 @@ function jinRender(){
     });
     return;
   }
-  if(!st){                                       // 初回：合言葉を決めるだけで始められます
-    b.innerHTML = jinNote() + `
-      <div style="font-weight:800; font-size:13px; color:#1f3a28; margin:12px 0 6px">はじめの設定（1回だけ）</div>
-      <div style="font-size:12.5px; line-height:1.8; color:#5a6f60; margin-bottom:8px">
-        合言葉を決めると、すぐに使い始められます。<br>
-        従業員はこの画面から1人ずつ登録できますし、従業員名簿のExcelからまとめて取り込むこともできます。</div>
-      <label style="display:block; font-size:12px; font-weight:700; color:#2b5d8a">合言葉（4文字以上）</label>
-      <input id="jinPass" type="password" autocomplete="new-password" placeholder="4文字以上"
-        style="width:100%; padding:9px; border:1px solid #cfe0ee; border-radius:8px; font-size:13px; margin:4px 0 2px">
-      ${secRememberBox('jinRem')}
-      <button class="wpBtn primary" id="jinStart" style="width:100%; padding:11px" disabled>🔐 はじめる</button>
-      <div id="jinMsg" style="margin-top:8px"></div>`;
-    const pw=document.getElementById('jinPass');
-    pw.addEventListener('input',()=>{ document.getElementById('jinStart').disabled = pw.value.trim().length<4; });
-    const start=async ()=>{
-      if(pw.value.trim().length<4) return;
-      jinjiPass = pw.value.trim(); jinjiData = [];
-      await jinPersist();
-      if(document.getElementById('jinRem').checked) secRemember(JINJI_KEY, jinjiPass);
-      jinRenderList();
-      banner('🤝 従業員名簿をはじめました');
-    };
-    document.getElementById('jinStart').addEventListener('click', start);
-    pw.addEventListener('keydown', e=>{ if(e.key==='Enter') start(); });
-    return;
-  }
+  if(!st){ b.innerHTML=''; return; }              // この端末に古いデータがなければ、名簿アプリの入口だけを出す
   // 2回目以降：合言葉で解錠
   b.innerHTML = jinNote() + `
     <div style="font-size:12.5px; color:#5a6f60; margin:12px 0 6px">
@@ -6772,6 +6747,8 @@ function jinRenderList(){
   };
 
   b.innerHTML = `
+    <div class="wpNote" style="background:#fff8e6; border-color:#ecd9a0; margin:0 0 10px">
+      📦 この端末には、以前の人事AIのデータが残っています。資格を名簿アプリへ送り終えたら、不要になります。</div>
     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px">
       <button class="wpBtn" id="jinToRoster">🔼 資格を名簿アプリへ送る</button>
       <span class="grow" style="flex:1"></span>
@@ -9267,7 +9244,7 @@ const HOME_MENU = [
   ]},
   {g:'労務・経理', items:[
     {k:'シフト', n:'シフト',      d:'シフト希望の集計・Excel反映',     fn:()=>openShiftPanel()},
-    {k:'人事',   n:'人事・労務',   d:'職員名簿・資格や研修の期限',       fn:()=>openJinjiPanel()},
+    {k:'人事',   n:'人事・労務',   d:'従業員名簿アプリ・資格書のPDF',     fn:()=>openJinjiPanel()},
     {k:'経理',   n:'経理',       d:'売上と経費の集計'},
     {k:'請求',   n:'請求',       d:'国保連の請求データ'},
     {k:'車両',   n:'車両管理',    d:'車検・自賠責・任意保険の期限',     fn:()=>openSharyouPanel()},
