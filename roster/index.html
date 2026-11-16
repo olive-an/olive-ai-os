@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="app-ver" content="2026-11-16a">
+<meta name="app-ver" content="2026-11-16b">
 <meta http-equiv="Cache-Control" content="no-cache">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
@@ -41,6 +41,9 @@ button{font:inherit;cursor:pointer}
 .login-box label{display:block;font-weight:700;font-size:14px;margin-bottom:6px}
 .login-box input{width:100%;padding:13px 12px;font-size:17px;border:1.5px solid var(--line);border-radius:10px}
 .login-box input:focus,.tools input:focus,.tools select:focus{outline:none;border-color:var(--green)}
+.remember{display:flex;align-items:flex-start;gap:10px;margin-top:14px;font-size:15px;line-height:1.5}
+.remember input{width:22px;height:22px;margin-top:2px;flex:none;accent-color:var(--green)}
+.remember-note{margin:6px 0 0 32px;font-size:12px;color:var(--sub);line-height:1.5}
 .btn{display:block;width:100%;border:0;border-radius:10px;padding:13px;font-weight:700;font-size:16px;margin-top:12px}
 .btn-pri{background:var(--green);color:#fff}
 .btn-pri:disabled{opacity:.6}
@@ -163,6 +166,8 @@ dl{margin:14px 0 0}
     <p>おりーぶ庵株式会社（管理者用）</p>
     <label for="pass">合言葉</label>
     <input id="pass" type="password" autocomplete="current-password" required>
+    <label class="remember"><input type="checkbox" id="rememberChk"><span>この端末では、次回から合言葉を入れない</span></label>
+    <div class="remember-note">自分専用の端末だけに、してください。合言葉は、この端末の中に、そのまま保存されます。30日使わないと、忘れます。「閉じる」を押しても、忘れます。</div>
     <button class="btn btn-pri" id="loginBtn" type="submit">開く</button>
     <button class="btn btn-sub" id="demoBtn" type="button">サンプルデータで試す</button>
     <div class="msg" id="loginMsg" role="alert"></div>
@@ -211,6 +216,21 @@ dl{margin:14px 0 0}
 const GAS_URL = "https://script.google.com/macros/s/AKfycbw-9rRr_B2ieY_fv3uYIBWgqeFaPPxjTKJW5Oe_JO0p8evT1YDJKVXimr_XDhgV3SmM-g/exec";
 
 const PASS_KEY = "roster-pass";   // タブを閉じると消える sessionStorage にだけ置く
+// 「この端末では、次回から合言葉を入れない」を選んだときだけ、この端末（localStorage）にも置く。
+// 使うたびに日付を新しくし、30日使わないと忘れる。「閉じる」でも忘れる。
+const REMEMBER_KEY = "roster-pass-keep", REMEMBER_DAYS = 30;
+const keep = {
+  get(){
+    try{
+      const o = JSON.parse(localStorage.getItem(REMEMBER_KEY) || "null");
+      if (!o || !o.p) return "";
+      if (Date.now() - o.t > REMEMBER_DAYS * 86400000){ localStorage.removeItem(REMEMBER_KEY); return ""; }
+      return o.p;
+    }catch(e){ return ""; }
+  },
+  set(p){ try{ localStorage.setItem(REMEMBER_KEY, JSON.stringify({ p: p, t: Date.now() })); }catch(e){} },
+  del(){ try{ localStorage.removeItem(REMEMBER_KEY); }catch(e){} }
+};
 const TIMEOUT_MS = 20000;
 
 const $ = (id) => document.getElementById(id);
@@ -277,21 +297,28 @@ function fetchGas(params){
 }
 function fetchRoster(pass){ return fetchGas({ action: "roster", pass: pass }); }
 
-async function openRoster(pass, silent){
+// remember: true＝この端末に覚える／false＝覚えない（覚えていたものも消す）／未指定＝いまの設定のまま（日付だけ新しくする）
+async function openRoster(pass, silent, remember){
   const btn = $("loginBtn");
   btn.disabled = true; $("loginMsg").textContent = "";
   try{
     if (!GAS_URL || GAS_URL === "YOUR_ROSTER_GAS_URL")
       throw new Error("名簿用GASのURLが未設定です。設定するまでは「サンプルデータで試す」だけ使えます。");
     const res = await fetchRoster(pass);
-    if (!res || !res.ok) throw new Error((res && res.error) || "合言葉が違います。");
+    if (!res || !res.ok){ const err = new Error((res && res.error) || "合言葉が違います。"); err.auth = true; throw err; }
     DATA = pickData(res);
     demo = false;
     store.set(PASS_KEY, pass);
+    if (remember === true) keep.set(pass);
+    else if (remember === false) keep.del();
+    else if (keep.get()) keep.set(pass);
     showApp();
   }catch(e){
     store.del(PASS_KEY);
-    if (silent) { showLogin(); } else { $("loginMsg").textContent = e.message; }
+    if (e.auth) keep.del();          // 合言葉が合わなかったら、覚えていたものも消す（通信のエラーのときは、消さない）
+    $("rememberChk").checked = !!keep.get();
+    if (silent) { showLogin(); $("loginMsg").textContent = e.auth ? "合言葉が変わったようです。もう一度、入れてください。" : "通信できませんでした。電波を確認して、このページを開き直してください。"; }
+    else { $("loginMsg").textContent = e.message; }
   }finally{
     btn.disabled = false;
   }
@@ -307,7 +334,7 @@ function showLogin(){
   $("app").classList.add("hidden"); $("login").classList.remove("hidden");
   $("pass").value = ""; closeSheet();
 }
-function logout(){ store.del(PASS_KEY); DATA = { active: [], left: [], quals: [] }; demo = false; showLogin(); }
+function logout(){ store.del(PASS_KEY); keep.del(); $("rememberChk").checked = false; DATA = { active: [], left: [], quals: [] }; demo = false; showLogin(); }
 
 /* ---------- 一覧 ---------- */
 function uniq(list, key){
@@ -920,7 +947,7 @@ function sampleData(){
 }
 
 /* ---------- イベント ---------- */
-$("loginForm").addEventListener("submit", (e) => { e.preventDefault(); openRoster($("pass").value.trim(), false); });
+$("loginForm").addEventListener("submit", (e) => { e.preventDefault(); openRoster($("pass").value.trim(), false, $("rememberChk").checked); });
 $("demoBtn").addEventListener("click", () => { DATA = sampleData(); demo = true; showApp(); });
 $("logoutBtn").addEventListener("click", logout);
 $("reloadBtn").addEventListener("click", async () => {
@@ -976,7 +1003,8 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) chec
 checkNewVersion();
 
 // 同じタブで開き直したときは合言葉を覚えているので、そのまま開く
-const savedPass = store.get(PASS_KEY);
+const savedPass = store.get(PASS_KEY) || keep.get();
+$("rememberChk").checked = !!keep.get();
 if (savedPass) openRoster(savedPass, true);
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
