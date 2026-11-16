@@ -97,6 +97,9 @@
 - **Netlifyは使わない**（2026-10-09に連携解除。netlify.toml も削除した）。
   netlify.app のURLは案内しないこと。
 - シフト希望フォーム本番は別リポジトリ `olive-an/olive-anshift`（index.html）。本リポジトリからは触らない。
+- 従業員名簿アプリは、`roster/` フォルダ（`roster/index.html`）。ai-os.html とは独立した別アプリで、公開URLは https://olive-an.github.io/olive-ai-os/roster/ 。
+  名簿のデータは、このリポジトリに入れない（公開のため）。合言葉で、GASから、Googleスプレッドシートを読む。設定の手順は `roster/従業員名簿アプリGAS.md`。
+  ai-os.html の「人事・労務」は、この名簿アプリをひらくだけ。
 - 利用者・職員の実個人情報を、公開されるファイル（ai-os.html等）やサンプルに埋め込まない。
 
 ## 書類の保管場所（2026-10-09 路線変更）

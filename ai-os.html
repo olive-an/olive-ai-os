@@ -1320,7 +1320,7 @@ function aiTileHtml(key, fallback){
 function aiTileBg(key){ const ic=AI_ICON[key]; return ic ? ic.bg : ''; }
 
 // 従業員名簿は、名簿アプリ（別ページ）に集約した。人事・労務のボタンは、そこへ直接ひらく。
-const ROSTER_APP_URL = 'https://olive-an.github.io/olive-anshift/roster.html';
+const ROSTER_APP_URL = 'https://olive-an.github.io/olive-ai-os/roster/';
 function openRosterApp(){ window.open(ROSTER_APP_URL, '_blank', 'noopener'); }
 
 const STAFF = [
@@ -6368,7 +6368,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-11-12a';
+const AIOS_VER = '2026-11-16a';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
