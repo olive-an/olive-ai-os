@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="app-ver" content="2026-11-16c">
+<meta name="app-ver" content="2026-11-16d">
 <meta http-equiv="Cache-Control" content="no-cache">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
@@ -146,6 +146,25 @@ dl{margin:14px 0 0}
 .site-btn small{display:block;font-size:12px;opacity:.75;margin-top:2px}
 .site-btn.on{background:var(--green-l);border-color:var(--green);outline:2px solid var(--green);font-weight:700}
 .chip.home{color:#222}
+.q-sec{margin-top:14px}
+.q-sec h4{margin:0 0 6px;font-size:14px;color:var(--green-d)}
+.q-pick{display:flex;gap:8px;flex-wrap:wrap}
+.q-pick label.q-btn{display:inline-block;margin:0;padding:11px 14px;font-size:15px;cursor:pointer}
+.q-pick input[type=file]{display:none}
+.q-thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.q-thumb{position:relative;width:calc(50% - 4px)}
+.q-thumb img{display:block;width:100%;border-radius:8px;border:1px solid var(--line)}
+.q-thumb .x{position:absolute;top:4px;right:4px;width:30px;height:30px;font-size:16px;background:rgba(255,255,255,.92)}
+.q-file{display:flex;align-items:center;gap:8px;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:8px;font-size:14px;word-break:break-all}
+.q-chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
+.q-chip{border:1.5px solid var(--line);background:#fff;border-radius:999px;padding:7px 12px;font-size:14px;color:var(--ink)}
+.q-chip.on{background:var(--green-l);border-color:var(--green);color:var(--green-d);font-weight:700}
+.q-confirm{margin-top:14px;border:1.5px solid var(--green);border-radius:10px;padding:10px 12px;background:#fff}
+.q-confirm .sum{font-size:14px;line-height:1.7;color:var(--ink)}
+.q-confirm .sum b{color:var(--green-d)}
+.q-confirm label.chk{display:flex;align-items:flex-start;gap:10px;margin:10px 0 0;font-size:15px;line-height:1.5;font-weight:400}
+.q-confirm label.chk input{width:22px;height:22px;margin:0;flex:none;accent-color:var(--green)}
+.q-confirm .who{font-size:18px;font-weight:700;color:var(--warn)}
 .ver{font-size:11px;font-weight:400;opacity:.8;margin-left:6px}
 .upd-bar{background:#fff3cd;color:#7a5a00;padding:8px 16px;text-align:center;font-size:14px}
 .upd-bar button{margin-left:8px;border:0;background:#7a5a00;color:#fff;border-radius:8px;padding:5px 12px;font-weight:700}
@@ -782,7 +801,11 @@ function leftDateForm(box, p){
 
 /* ---------- 資格書（PDFの保存とプレビュー） ---------- */
 const PDF_MAX_BYTES = 10 * 1024 * 1024;   // GAS側の上限（base64で約14MB）に収まる大きさ
-const QUAL_NAMES = ["介護福祉士", "実務者研修", "初任者研修", "ヘルパー２級", "看護師", "強度行動障害養成研修（基礎）", "強度行動障害養成研修（実践）", "重度訪問介護従事者養成研修", "同行援護従業者養成研修", "行動援護従業者養成研修"];
+// 資格名は、この一覧から選んで入れる（打ち間違い・誤字を防ぐ）。一覧にないものだけ、手で入れる
+const QUAL_NAMES = ["介護福祉士", "実務者研修", "初任者研修", "ヘルパー２級", "看護師", "准看護師", "保健師", "社会福祉士", "精神保健福祉士", "介護支援専門員",
+  "強度行動障害養成研修（基礎）", "強度行動障害養成研修（実践）", "重度訪問介護従事者養成研修", "同行援護従業者養成研修", "行動援護従業者養成研修",
+  "移動支援従事者", "知的障がい者外出介護従事者", "喀痰吸引等研修（第3号）", "普通救命講習"];
+const PHOTO_MAX_PAGES = 6;
 
 function nameKey(s){ return String(s || "").replace(/[\s　]+/g, ""); }
 function qualsOf(p){
@@ -831,47 +854,190 @@ function renderQuals(box, p, notice){
   box.appendChild(el("div", "q-note", "PDFは、保存先のフォルダを共有しているGoogleアカウントでログインしていると見られます。"));
 }
 
+// 写真を縮小して、JPEGにする（向きは、撮った向きに直す）
+async function shrinkPhoto(file, maxSide, q){
+  maxSide = maxSide || 1600; q = q || 0.72;
+  let bmp;
+  try{ bmp = await createImageBitmap(file, { imageOrientation: "from-image" }); }
+  catch(e){ bmp = await createImageBitmap(file); }
+  const k = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+  const w = Math.max(1, Math.round(bmp.width * k)), h = Math.max(1, Math.round(bmp.height * k));
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  c.getContext("2d").drawImage(bmp, 0, 0, w, h);
+  const blob = await new Promise((r) => c.toBlob(r, "image/jpeg", q));
+  if (!blob) throw new Error("写真を読み取れませんでした。");
+  return { bytes: new Uint8Array(await blob.arrayBuffer()), w: w, h: h, url: URL.createObjectURL(blob) };
+}
+// 撮った写真（複数枚）を、1つのPDFにまとめる（外部ライブラリなし。AI-OSの写真のPDF化と同じ方式）
+function photosToPdf(pages){
+  const A4W = 595.28, A4H = 841.89;
+  const enc = (s) => { const a = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i) & 0xff; return a; };
+  const parts = []; let len = 0; const off = [];
+  const push = (u8) => { parts.push(u8); len += u8.length; };
+  const pushS = (s) => push(enc(s));
+  const obj = (n, dict, stream) => {
+    off[n] = len; pushS(n + " 0 obj\n" + dict + "\n");
+    if (stream){ pushS("stream\n"); push(stream); pushS("\nendstream\n"); }
+    pushS("endobj\n");
+  };
+  pushS("%PDF-1.4\n");
+  obj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+  obj(2, "<< /Type /Pages /Kids [" + pages.map((_, i) => (3 + i * 3) + " 0 R").join(" ") + "] /Count " + pages.length + " >>");
+  pages.forEach((pg, i) => {
+    const n = 3 + i * 3, nImg = n + 1, nCon = n + 2;
+    const k = Math.min(A4W / pg.w, A4H / pg.h);
+    const pw = Math.round(pg.w * k), ph = Math.round(pg.h * k);
+    obj(n, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + pw + " " + ph + "] /Resources << /XObject << /Im0 " + nImg + " 0 R >> >> /Contents " + nCon + " 0 R >>");
+    obj(nImg, "<< /Type /XObject /Subtype /Image /Width " + pg.w + " /Height " + pg.h + " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " + pg.bytes.length + " >>", pg.bytes);
+    const cs = enc("q " + pw + " 0 0 " + ph + " 0 0 cm /Im0 Do Q");
+    obj(nCon, "<< /Length " + cs.length + " >>", cs);
+  });
+  const last = 2 + pages.length * 3, size = last + 1, xref = len;
+  let x = "xref\n0 " + size + "\n0000000000 65535 f \n";
+  for (let i = 1; i <= last; i++) x += String(off[i] || 0).padStart(10, "0") + " 00000 n \n";
+  pushS(x);
+  pushS("trailer\n<< /Size " + size + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF\n");
+  const out = new Uint8Array(len); let at = 0;
+  for (const a of parts){ out.set(a, at); at += a.length; }
+  return out;
+}
+function bytesToBase64(u8){ let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
+
 function qualForm(p, box){
   const f = el("details", "q-form");
   f.appendChild(el("summary", "", "＋ 資格を追加"));
-  const dl = el("datalist"); dl.id = "qualNames";
-  QUAL_NAMES.forEach((n) => dl.appendChild(new Option(n)));
-  f.appendChild(dl);
-  const field = (label, type, attrs) => {
-    f.appendChild(el("label", "", label));
-    const i = el("input"); i.type = type; Object.keys(attrs || {}).forEach((k) => i.setAttribute(k, attrs[k]));
-    f.appendChild(i); return i;
-  };
-  const title = field("資格名（必須）", "text", { list: "qualNames", maxlength: "100", placeholder: "例：介護福祉士" });
-  const acq = field("取得年月日", "date");
-  const ren = field("更新日（更新のある資格だけ）", "date");
-  const pdf = field("資格書のPDF", "file", { accept: "application/pdf,.pdf" });
+  const pages = [];          // 撮った写真（縮小ずみ）
+  let pdfFile = null;        // 選んだPDF（写真とは、どちらか一方）
+
+  // ① 写真
+  const s1 = el("div", "q-sec"); s1.appendChild(el("h4", "", "① 資格書の写真（またはPDF）"));
+  const pick = el("div", "q-pick");
+  const mkInput = (attrs) => { const i = el("input"); i.type = "file"; Object.keys(attrs).forEach((k) => i.setAttribute(k, attrs[k])); return i; };
+  const cam = mkInput({ accept: "image/*", capture: "environment" });
+  const gal = mkInput({ accept: "image/*,application/pdf,.pdf" });
+  const camBtn = el("label", "q-btn pri", "📷 写真を撮る"); camBtn.appendChild(cam);
+  const galBtn = el("label", "q-btn", "🖼 写真・PDFを選ぶ"); galBtn.appendChild(gal);
+  pick.appendChild(camBtn); pick.appendChild(galBtn); s1.appendChild(pick);
+  s1.appendChild(el("div", "q-note", "撮ると、すぐ下に出ます。表と裏など、続けて何枚でも撮れます（" + PHOTO_MAX_PAGES + "枚まで）。写真は、ドライブにPDFで保存されます。"));
+  const thumbs = el("div", "q-thumbs"); s1.appendChild(thumbs);
+  f.appendChild(s1);
+
+  // ② 資格名（一覧から選ぶ）
+  const s2 = el("div", "q-sec"); s2.appendChild(el("h4", "", "② 資格名（一覧から選ぶ）"));
+  const chips = el("div", "q-chips"); s2.appendChild(chips);
+  const title = el("input"); title.type = "text"; title.maxLength = 100; title.placeholder = "一覧にないときは、ここに入力";
+  s2.appendChild(title); f.appendChild(s2);
+
+  // ③ 日付
+  const s3 = el("div", "q-sec"); s3.appendChild(el("h4", "", "③ 日付"));
+  s3.appendChild(el("label", "", "取得年月日"));
+  const acq = el("input"); acq.type = "date"; s3.appendChild(acq);
+  s3.appendChild(el("label", "", "更新日（更新のある資格だけ）"));
+  const ren = el("input"); ren.type = "date"; s3.appendChild(ren);
+  f.appendChild(s3);
+
+  // ④ 確認
+  const conf = el("div", "q-confirm");
+  const ch = el("h4", "", "④ 保存の前の、確認"); ch.style.margin = "0 0 6px"; conf.appendChild(ch);
+  const sum = el("div", "sum"); conf.appendChild(sum);
+  const mkChk = () => { const l = el("label", "chk"); const c = el("input"); c.type = "checkbox"; l.appendChild(c); const sp = el("span"); l.appendChild(sp); return { l: l, c: c, sp: sp }; };
+  const chk1 = mkChk();
+  chk1.sp.appendChild(document.createTextNode("写真（PDF）に写っている氏名は、"));
+  chk1.sp.appendChild(el("span", "who", p.name || ""));
+  chk1.sp.appendChild(document.createTextNode(" さんです。別の人ではありません。"));
+  const chk2 = mkChk(); chk2.sp.textContent = "資格名と日付が、写真と合っています。";
+  conf.appendChild(chk1.l); conf.appendChild(chk2.l);
+  f.appendChild(conf);
+
   const save = el("button", "q-btn pri", "保存する"); save.type = "button"; save.style.marginTop = "12px"; save.style.width = "100%";
   const msg = el("div", "q-msg"); msg.setAttribute("role", "alert");
   f.appendChild(save); f.appendChild(msg);
 
+  const names = QUAL_NAMES.slice();
+  (DATA.quals || []).forEach((q) => { if (q.title && names.indexOf(q.title) < 0) names.push(q.title); });
+  const hasFile = () => pages.length > 0 || !!pdfFile;
+  function refresh(){
+    chips.querySelectorAll(".q-chip").forEach((c) => c.classList.toggle("on", c.dataset.v === title.value.trim()));
+    const t = title.value.trim();
+    const fileText = pdfFile ? "PDF（" + pdfFile.name + "）" : pages.length ? "写真 " + pages.length + " 枚" : "なし（記録のみ）";
+    sum.innerHTML = "";
+    [["氏名", p.name || ""], ["資格名", t || "（まだ選んでいません）"], ["取得年月日", acq.value ? wareki(acq.value) : "（なし）"], ["更新日", ren.value ? wareki(ren.value) : "（なし）"], ["資格書", fileText]].forEach((r) => {
+      const d = el("div"); d.appendChild(document.createTextNode(r[0] + "：")); d.appendChild(el("b", "", r[1])); sum.appendChild(d);
+    });
+    chk1.l.classList.toggle("hidden", !hasFile()); chk2.l.classList.toggle("hidden", !hasFile());
+    save.disabled = !t || (hasFile() && !(chk1.c.checked && chk2.c.checked));
+  }
+  names.forEach((n) => {
+    const b = el("button", "q-chip", n); b.type = "button"; b.dataset.v = n;
+    b.addEventListener("click", () => { title.value = (title.value.trim() === n) ? "" : n; chk2.c.checked = false; refresh(); });
+    chips.appendChild(b);
+  });
+  [title, acq, ren].forEach((i) => i.addEventListener("input", () => { chk2.c.checked = false; refresh(); }));
+  [chk1.c, chk2.c].forEach((c) => c.addEventListener("change", refresh));
+
+  function drawThumbs(){
+    thumbs.innerHTML = "";
+    pages.forEach((pg, i) => {
+      const w = el("div", "q-thumb"); const img = el("img"); img.src = pg.url; img.alt = (i + 1) + "枚目"; w.appendChild(img);
+      const x = el("button", "x", "×"); x.type = "button"; x.setAttribute("aria-label", "この写真を消す");
+      x.addEventListener("click", () => { URL.revokeObjectURL(pg.url); pages.splice(i, 1); chk1.c.checked = chk2.c.checked = false; drawThumbs(); });
+      w.appendChild(x); thumbs.appendChild(w);
+    });
+    if (pdfFile){
+      const r = el("div", "q-file"); r.appendChild(el("span", "", "📄 " + pdfFile.name));
+      const x = el("button", "x", "×"); x.type = "button"; x.style.marginLeft = "auto";
+      x.addEventListener("click", () => { pdfFile = null; chk1.c.checked = chk2.c.checked = false; drawThumbs(); });
+      r.appendChild(x); thumbs.appendChild(r);
+    }
+    refresh();
+  }
+  async function take(files){
+    setMsg(msg, "");
+    for (const file of Array.from(files || [])){
+      try{
+        if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)){
+          if (file.size > PDF_MAX_BYTES) throw new Error("PDFが大きすぎます（10MBまで）。");
+          pages.forEach((pg) => URL.revokeObjectURL(pg.url)); pages.length = 0; pdfFile = file;
+        } else {
+          if (pages.length >= PHOTO_MAX_PAGES) throw new Error("写真は、" + PHOTO_MAX_PAGES + "枚までです。");
+          pdfFile = null; pages.push(await shrinkPhoto(file));
+        }
+        chk1.c.checked = chk2.c.checked = false;
+      }catch(e){ setMsg(msg, e.message, "err"); }
+    }
+    drawThumbs();
+  }
+  cam.addEventListener("change", () => { const fs = Array.from(cam.files); cam.value = ""; take(fs); });
+  gal.addEventListener("change", () => { const fs = Array.from(gal.files); gal.value = ""; take(fs); });
+
   save.addEventListener("click", async () => {
     const t = title.value.trim();
-    const file = pdf.files[0];
-    if (!t) return setMsg(msg, "資格名を入れてください。", "err");
-    if (file && file.size > PDF_MAX_BYTES) return setMsg(msg, "PDFが大きすぎます（10MBまで）。", "err");
-    if (file && !/\.pdf$/i.test(file.name) && file.type !== "application/pdf") return setMsg(msg, "PDFファイルを選んでください。", "err");
-    save.disabled = true; setMsg(msg, file ? "保存しています…（PDFが大きいと少し時間がかかります）" : "保存しています…");
+    if (!t) return setMsg(msg, "資格名を選ぶか、入力してください。", "err");
+    if (hasFile() && !(chk1.c.checked && chk2.c.checked)) return setMsg(msg, "確認の2つに、チェックを入れてください。", "err");
+    // 同じ人に、同じ資格が、すでにあるときは、重ねて登録しない（日付が同じ、または、どちらかが空のとき）
+    const dup = qualsOf(p).find((q) => q.title === t && (!q.acquired || !acq.value || q.acquired === acq.value));
+    if (dup) return setMsg(msg, "「" + t + "」は、すでに登録されています。更新日だけを変えるときは、その資格の「更新日を変更」を使ってください。", "err");
+    save.disabled = true; setMsg(msg, hasFile() ? "保存しています…（写真が多いと、少し時間がかかります）" : "保存しています…");
     try{
       const body = { action: "qualAdd", pass: store.get(PASS_KEY) || "", name: p.name, no: p.no || "", title: t, acquired: acq.value, renew: ren.value };
+      let bytes = null;
+      if (pages.length) bytes = photosToPdf(pages);
+      if (bytes && bytes.length > PDF_MAX_BYTES) throw new Error("写真が大きすぎます。枚数を減らしてください。");
       if (demo){
         DATA.quals.push({ row: 0, name: p.name, no: p.no || "", title: t, acquired: acq.value, renew: ren.value, pdf: "" });
       } else {
-        if (file) body.pdf = await fileToBase64(file);
+        if (bytes) body.pdf = bytesToBase64(bytes);
+        else if (pdfFile) body.pdf = await fileToBase64(pdfFile);
         await postQual(body, p);
       }
+      pages.forEach((pg) => URL.revokeObjectURL(pg.url));
       renderQuals(box, p, demo ? "追加しました（サンプルのため、PDFは保存されません）。" : "保存しました。");
     }catch(e){
       setMsg(msg, e.message, "err");
-    }finally{
-      save.disabled = false;
+      refresh();
     }
   });
+  refresh();
   return f;
 }
 
