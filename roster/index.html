@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="app-ver" content="2026-11-16b">
+<meta name="app-ver" content="2026-11-16c">
 <meta http-equiv="Cache-Control" content="no-cache">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
@@ -41,6 +41,7 @@ button{font:inherit;cursor:pointer}
 .login-box label{display:block;font-weight:700;font-size:14px;margin-bottom:6px}
 .login-box input{width:100%;padding:13px 12px;font-size:17px;border:1.5px solid var(--line);border-radius:10px}
 .login-box input:focus,.tools input:focus,.tools select:focus{outline:none;border-color:var(--green)}
+.kbd-toggle{display:block;margin:8px 0 0;padding:6px 0;border:0;background:none;color:var(--green-d);font-size:14px;text-decoration:underline}
 .remember{display:flex;align-items:flex-start;gap:10px;margin-top:14px;font-size:15px;line-height:1.5}
 .remember input{width:22px;height:22px;margin-top:2px;flex:none;accent-color:var(--green)}
 .remember-note{margin:6px 0 0 32px;font-size:12px;color:var(--sub);line-height:1.5}
@@ -165,7 +166,8 @@ dl{margin:14px 0 0}
     <h1>従業員名簿</h1>
     <p>おりーぶ庵株式会社（管理者用）</p>
     <label for="pass">合言葉</label>
-    <input id="pass" type="password" autocomplete="current-password" required>
+    <input id="pass" type="password" inputmode="numeric" autocomplete="current-password" enterkeyhint="go" required>
+    <button class="kbd-toggle" id="kbdToggle" type="button">文字のキーボードに切り替える</button>
     <label class="remember"><input type="checkbox" id="rememberChk"><span>この端末では、次回から合言葉を入れない</span></label>
     <div class="remember-note">自分専用の端末だけに、してください。合言葉は、この端末の中に、そのまま保存されます。30日使わないと、忘れます。「閉じる」を押しても、忘れます。</div>
     <button class="btn btn-pri" id="loginBtn" type="submit">開く</button>
@@ -948,6 +950,13 @@ function sampleData(){
 
 /* ---------- イベント ---------- */
 $("loginForm").addEventListener("submit", (e) => { e.preventDefault(); openRoster($("pass").value.trim(), false, $("rememberChk").checked); });
+// 合言葉の欄は、はじめは数字のキーパッド。文字が入った合言葉のときは、切り替えて入れる
+$("kbdToggle").addEventListener("click", () => {
+  const i = $("pass"), toNum = i.inputMode !== "numeric";
+  i.inputMode = toNum ? "numeric" : "text";
+  $("kbdToggle").textContent = toNum ? "文字のキーボードに切り替える" : "数字のキーパッドに切り替える";
+  i.blur(); i.focus();
+});
 $("demoBtn").addEventListener("click", () => { DATA = sampleData(); demo = true; showApp(); });
 $("logoutBtn").addEventListener("click", logout);
 $("reloadBtn").addEventListener("click", async () => {
