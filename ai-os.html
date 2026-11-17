@@ -37,7 +37,9 @@
     --olive-d:#16304f;      /* もっと濃い紺（押したとき） */
     --olive-l:#e9eef6;      /* うすい紺（選択中の背景） */
     --navy:#22406b;         /* アイコンの濃紺 */
-    --navy-l:#3c618f;       /* 読みにくいときの、うすい紺 */
+    --navy-l:#3c618f;       /* すこし明るい紺 */
+    --navy-p:#d9e3f2;       /* 項目（ボタン）の地：うすい紺。黒い文字が読めるように */
+    --navy-p2:#c8d6ea;      /* 押したとき・さわったとき */
     --ink:#121619;          /* ふだんの文字＝黒 */
     --paper:#ffffff;        /* 紙＝白 */
     --line:#dfe3e8;         /* 枠線（うすいグレー） */
@@ -780,20 +782,20 @@
   .bizTabs button:hover{color:var(--ink); background:#f1f5fa}
   .bizGrid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; padding:14px}
   .bizBtn{display:flex; align-items:center; gap:9px; cursor:pointer; text-align:left;
-    min-height:56px; padding:10px 12px; border:1px solid var(--line); border-left:5px solid var(--navy);
-    border-radius:7px; background:#fff; color:var(--ink); font-size:14px; font-weight:800; line-height:1.25;
+    min-height:56px; padding:10px 12px; border:1px solid #b9c8de; border-left:5px solid var(--navy);
+    border-radius:7px; background:var(--navy-p); color:var(--ink); font-size:14px; font-weight:800; line-height:1.25;
     box-shadow:0 1px 2px rgba(0,0,0,.06)}
-  .bizBtn:hover{background:var(--olive-l); border-color:var(--navy-l); border-left-color:var(--navy)}
+  .bizBtn:hover{background:var(--navy-p2); border-color:var(--navy-l)}
   .bizBtn:active{transform:translateY(1px)}
   .bizBtn .bi{width:32px; height:32px; flex:0 0 32px; border-radius:8px;
     display:flex; align-items:center; justify-content:center}
   .bizBtn .bi svg{width:80%; height:80%}
   .bizBtn .bn{flex:1 1 auto; min-width:0}
-  .bizBtn .bd{display:block; font-size:10.5px; font-weight:600; color:var(--sub);
+  .bizBtn .bd{display:block; font-size:10.5px; font-weight:600; color:#3c4a59;
     margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-  .bizBtn .bg{font-size:17px; font-weight:800; color:var(--navy-l)}
-  .bizBtn.cur{border-color:var(--navy); box-shadow:0 0 0 2px var(--olive-l)}
-  .bizBtn.soon{background:#f1f3f5; color:#8d99a3; border-left-color:#c3cad2; cursor:default}
+  .bizBtn .bg{font-size:17px; font-weight:800; color:var(--navy)}
+  .bizBtn.cur{border-color:var(--navy); box-shadow:0 0 0 2px var(--navy)}
+  .bizBtn.soon{background:#eef0f3; color:#79838d; border-color:#dde1e6; border-left-color:#c3cad2; cursor:default}
   .bizBtn.soon .bi{opacity:.45}
   .bizBtn.soon .bd{color:#9aa5ad}
   .bizBtn.soon .bg{color:#9aa5ad; font-size:12px}
@@ -6374,7 +6376,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-11-17a';
+const AIOS_VER = '2026-11-17b';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
