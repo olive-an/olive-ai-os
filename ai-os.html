@@ -32,17 +32,19 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root{
-    /* Backlog のような、白ベース＋ミントグリーンの配色 */
-    --olive:#2cab86;        /* 主役のみどり（ボタン・強調） */
-    --olive-d:#1f8f70;      /* 濃いみどり（文字・押したとき） */
-    --olive-l:#e6f5f0;      /* うすいみどり（選択中の背景） */
-    --ink:#2a2f36;          /* ふだんの文字（黒に近いグレー） */
+    /* 白ベース＋濃紺（アイコン）／文字は黒 */
+    --olive:#24436e;        /* 主役の濃紺（ボタン・強調） */
+    --olive-d:#16304f;      /* もっと濃い紺（押したとき） */
+    --olive-l:#e9eef6;      /* うすい紺（選択中の背景） */
+    --navy:#22406b;         /* アイコンの濃紺 */
+    --navy-l:#3c618f;       /* 読みにくいときの、うすい紺 */
+    --ink:#121619;          /* ふだんの文字＝黒 */
     --paper:#ffffff;        /* 紙＝白 */
-    --line:#e3e6e8;         /* 枠線（うすいグレー） */
-    --bg:#f4f5f7;           /* 画面の下地 */
-    --sub:#5d6873;          /* 補足の文字 */
+    --line:#dfe3e8;         /* 枠線（うすいグレー） */
+    --bg:#f3f5f8;           /* 画面の下地 */
+    --sub:#4a5560;          /* 補足の文字（濃いめのグレー） */
     --gold:#e8a33d;
-    --sea:#2cab86;
+    --sea:#24436e;
     /* 状態カラー */
     --s-idle:#9aa38c; --s-move:#3d78c9; --s-work:#3a9d5d;
     --s-talk:#8a5cc9; --s-done:#c99a2e; --s-rest:#2ea3a3; --s-err:#d0503f;
@@ -765,35 +767,36 @@
   }
 
   /* ===== 業務メニュー（大きなボタン） ===== */
-  .bizPanel{border:1px solid #cfdae6; border-radius:8px; background:#f7fafd; margin:0 0 18px;
+  .bizPanel{border:1px solid #ccd6e3; border-radius:8px; background:#f7f9fc; margin:0 0 18px;
     overflow:hidden}
-  .bizHead{font-size:13px; font-weight:800; color:#1f4468; background:#e8f1f9;
-    border-bottom:1px solid #cfdae6; padding:9px 14px}
+  .bizHead{font-size:13px; font-weight:800; color:var(--ink); background:#e6ecf5;
+    border-bottom:1px solid #ccd6e3; padding:9px 14px}
   .bizTabs{display:flex; gap:0; flex-wrap:wrap; border-bottom:1px solid #cfdae6; background:#fff;
     padding:0 6px}
   .bizTabs button{border:0; background:none; cursor:pointer; font-size:12.5px; font-weight:700;
     color:#55646f; padding:10px 12px; border-bottom:3px solid transparent; white-space:nowrap}
-  .bizTabs button.on{color:#1f4468; border-bottom-color:var(--olive)}
-  .bizTabs button:hover{color:#1f4468; background:#f3f7fb}
+  .bizTabs button{color:#4a5560}
+  .bizTabs button.on{color:var(--ink); border-bottom-color:var(--navy)}
+  .bizTabs button:hover{color:var(--ink); background:#f1f5fa}
   .bizGrid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; padding:14px}
   .bizBtn{display:flex; align-items:center; gap:9px; cursor:pointer; text-align:left;
-    min-height:56px; padding:10px 12px; border:0; border-radius:7px;
-    background:var(--olive); color:#fff; font-size:14px; font-weight:800; line-height:1.25;
-    box-shadow:0 1px 2px rgba(0,0,0,.12)}
-  .bizBtn:hover{background:var(--olive-d)}
+    min-height:56px; padding:10px 12px; border:1px solid var(--line); border-left:5px solid var(--navy);
+    border-radius:7px; background:#fff; color:var(--ink); font-size:14px; font-weight:800; line-height:1.25;
+    box-shadow:0 1px 2px rgba(0,0,0,.06)}
+  .bizBtn:hover{background:var(--olive-l); border-color:var(--navy-l); border-left-color:var(--navy)}
   .bizBtn:active{transform:translateY(1px)}
   .bizBtn .bi{width:32px; height:32px; flex:0 0 32px; border-radius:8px;
-    display:flex; align-items:center; justify-content:center;
-    box-shadow:0 0 0 2px rgba(255,255,255,.65)}
+    display:flex; align-items:center; justify-content:center}
   .bizBtn .bi svg{width:80%; height:80%}
   .bizBtn .bn{flex:1 1 auto; min-width:0}
-  .bizBtn .bd{display:block; font-size:10.5px; font-weight:600; color:rgba(255,255,255,.85);
+  .bizBtn .bd{display:block; font-size:10.5px; font-weight:600; color:var(--sub);
     margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-  .bizBtn .bg{font-size:17px; font-weight:800; opacity:.85}
-  .bizBtn.cur{box-shadow:0 0 0 3px #bfe6d7, 0 1px 2px rgba(0,0,0,.12)}
-  .bizBtn.soon{background:#e7ecef; color:#8d99a3; box-shadow:none; cursor:default}
-  .bizBtn.soon .bi{box-shadow:0 0 0 2px #dfe5ea; opacity:.6}
+  .bizBtn .bg{font-size:17px; font-weight:800; color:var(--navy-l)}
+  .bizBtn.cur{border-color:var(--navy); box-shadow:0 0 0 2px var(--olive-l)}
+  .bizBtn.soon{background:#f1f3f5; color:#8d99a3; border-left-color:#c3cad2; cursor:default}
+  .bizBtn.soon .bi{opacity:.45}
   .bizBtn.soon .bd{color:#9aa5ad}
+  .bizBtn.soon .bg{color:#9aa5ad; font-size:12px}
   .bizEmpty{grid-column:1/-1; font-size:12.5px; color:var(--sub); padding:6px 2px}
   @media(max-width:700px){
     .bizGrid{gap:8px; padding:10px}
@@ -1317,7 +1320,10 @@ function aiTileHtml(key, fallback){
   if(!ic) return `<span class="tileEmoji">${fallback||''}</span>`;
   return ic.svg;
 }
-function aiTileBg(key){ const ic=AI_ICON[key]; return ic ? ic.bg : ''; }
+/* アイコンの下地は、ぜんぶ濃紺にそろえます。
+   （もとの色にもどしたいときは、この1行を ic.bg を返す形にもどすだけです） */
+const AI_TILE_NAVY = '#22406b';
+function aiTileBg(key){ const ic=AI_ICON[key]; return ic ? AI_TILE_NAVY : ''; }
 
 // 従業員名簿は、名簿アプリ（別ページ）に集約した。人事・労務のボタンは、そこへ直接ひらく。
 const ROSTER_APP_URL = 'https://olive-an.github.io/olive-ai-os/roster/';
@@ -6368,7 +6374,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-11-16a';
+const AIOS_VER = '2026-11-17a';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
