@@ -847,7 +847,7 @@
     --st-wait:#92400E;     /* 確認待ち */
     --st-done:#166534;     /* 完了 */
     /* 文字サイズ */
-    --fs-sys:28px; --fs-h1:24px; --fs-menu:21px; --fs-base:18px; --fs-sub:16px;
+    --fs-sys:26px; --fs-h1:21px; --fs-menu:19px; --fs-base:17px; --fs-sub:15px;
   }
   body{ font-size:var(--fs-base); color:var(--ink); background:var(--bg); line-height:1.6 }
   /* キーボードで選んでいる場所を、はっきり見せる */
@@ -949,12 +949,15 @@
     font-size:var(--fs-sub); min-height:48px }
 
   /* --- 今日の行動指針のバー --- */
-  .rinenBar{ background:var(--head-bg); border-bottom:1px solid var(--line); padding:12px 16px }
-  .rinenBar .rt{ font-size:var(--fs-sub); color:var(--title) }
-  .rinenBar b{ font-size:20px; color:var(--ink) }
-  .rinenBar .rno{ font-size:var(--fs-sub); background:#fff; color:var(--title) }
-  .rinenBar .rs{ font-size:14px; color:var(--sub) }
-  .rinenBar .wpBtn{ font-size:var(--fs-sub); min-height:44px; padding:8px 14px }
+  .rinenBar{ background:var(--head-bg); border-bottom:1px solid var(--line);
+    padding:6px 14px; gap:8px; flex-wrap:nowrap }
+  .rinenBar .rt{ font-size:13px; color:var(--title) }
+  .rinenBar b{ font-size:16px; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .rinenBar .rno{ font-size:12.5px; background:#fff; color:var(--title); padding:2px 8px; margin-right:6px }
+  .rinenBar .rs{ font-size:12.5px; color:var(--sub) }
+  @media(max-width:900px){ .rinenBar .rs{ display:none } }
+  .rinenBar .wpBtn{ font-size:13px; min-height:32px; padding:5px 10px; white-space:nowrap }
+  .rinenBar .wShort{ display:none }
 
   /* --- いちばん下の設定バー --- */
   .toolbar{ font-size:var(--fs-sub); color:var(--sub) }
@@ -966,7 +969,7 @@
   /* --- パソコンは2列、スマートフォンは1列 --- */
   @media(min-width:701px){ .bizGrid{ grid-template-columns:repeat(2,1fr) } }
   @media(max-width:700px){
-    :root{ --fs-sys:24px; --fs-h1:22px; --fs-menu:20px; --fs-base:18px; --fs-sub:16px }
+    :root{ --fs-sys:22px; --fs-h1:20px; --fs-menu:18px; --fs-base:16.5px; --fs-sub:14.5px }
     .bizGrid{ grid-template-columns:1fr; gap:12px; padding:12px }
     .bizBtn{ min-height:68px }
     .bizBtn .bd{ display:block }
@@ -976,6 +979,12 @@
     .hrow .hgo{ font-size:0 } .hrow .hgo::after{ content:'›'; font-size:26px }
     .bizHead{ font-size:19px; padding:10px 12px }
     .bizTabs button{ min-height:48px; padding:0 11px; font-size:15px }
+    .rinenBar{ padding:5px 10px; gap:5px 6px; flex-wrap:wrap }
+    .rinenBar .rt{ display:none }
+    .rinenBar .rs{ display:none }
+    .rinenBar b{ font-size:15px; width:100%; white-space:normal; line-height:1.4 }
+    .rinenBar .wpBtn{ font-size:12.5px; min-height:30px; padding:4px 9px }
+    .rinenBar .wLong{ display:inline } .rinenBar .wShort{ display:none }
     .listtop{ padding:10px; gap:9px }
     header{ padding:9px 12px; gap:8px }
     header .logo{ font-size:22px }
@@ -994,8 +1003,9 @@
   }
   @media(max-width:380px){
     /* 320px級のせまい画面。文字はできるだけ縮めず、題字と余白だけ詰めます */
-    :root{ --fs-sys:20px; --fs-h1:21px; --fs-menu:19px; --fs-base:17px; --fs-sub:15.5px }
+    :root{ --fs-sys:19px; --fs-h1:19px; --fs-menu:17px; --fs-base:15.5px; --fs-sub:14px }
     .bizBtn{ padding:10px } .bizGrid{ padding:10px }
+    .rinenBar .wLong{ display:none } .rinenBar .wShort{ display:inline }
     header .logo img{ display:none }
     header .logo{ font-size:17px }
   }
@@ -1025,8 +1035,8 @@
           <b id="rinenToday"></b>
           <span class="rs">2026年標語「温かい瞬間を作る」</span>
           <span style="flex:1"></span>
-          <a class="wpBtn" href="rinen.html">📖 手帳をめくって読む</a>
-          <button class="wpBtn" id="rinenOpen">📝 テキスト版</button>
+          <a class="wpBtn" href="rinen.html">📖 <span class="wLong">手帳をめくって読む</span><span class="wShort">手帳</span></a>
+          <button class="wpBtn" id="rinenOpen">📝 <span class="wLong">テキスト版</span><span class="wShort">文字</span></button>
         </div>
         <div class="listtop">
           <input id="homeSearch" type="search" placeholder="さがす（例：車検、シフト、受給者証）" autocomplete="off">
@@ -6551,7 +6561,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-11-18a';
+const AIOS_VER = '2026-11-18b';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
