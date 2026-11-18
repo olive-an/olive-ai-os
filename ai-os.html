@@ -6230,10 +6230,16 @@ async function jinFileDownload(meta, pass){
    ========================================================================= */
 const KOUBOU_DIR = '\\\\192.168.10.100\\kyoutsu\\工房';
 const KOUBOU_APPS = [
-  {key:'ninniku', label:'🧄 にんにく予定アプリ', note:'植付け・収穫・出荷の予定'},
+  {key:'ninniku', label:'🧄 にんにく予定アプリ', note:'植付け・収穫・出荷の予定',
+   url:'https://olive-an.github.io/olive-koutei/'},
   {key:'app2',    label:'🧺 工房アプリ（予備）', note:'あとから登録できます'},
 ];
-const kbUrl    = k => { try{ return localStorage.getItem('aiosKoubou_'+k)||''; }catch(e){ return ''; } };
+/* 最初から入っているURL（登録しなくても、どの端末でもすぐ開けます） */
+const kbDefUrl = k => (KOUBOU_APPS.find(a=>a.key===k)||{}).url || '';
+const kbUrl    = k => {
+  try{ const v=localStorage.getItem('aiosKoubou_'+k); if(v) return v; }catch(e){}
+  return kbDefUrl(k);
+};
 const kbSetUrl = (k,v) => { try{ v ? localStorage.setItem('aiosKoubou_'+k, v) : localStorage.removeItem('aiosKoubou_'+k); }catch(e){} };
 
 function kbRender(){
@@ -6253,7 +6259,7 @@ function kbRender(){
           <input data-kb="${a.key}" placeholder="https://…" value="${hkEsc(u)}"
                  style="flex:1 1 220px; min-width:0; padding:8px; border:1px solid #cfd6de; border-radius:8px; font-size:13px">
           <button class="wpBtn" data-kbsave="${a.key}">覚える</button>
-          ${u?`<button class="wpBtn" data-kbclear="${a.key}" style="font-size:11px">消す</button>`:''}
+          ${u?`<button class="wpBtn" data-kbclear="${a.key}" style="font-size:11px">${kbDefUrl(a.key)?'もとに戻す':'消す'}</button>`:''}
         </div>
       </div>`;
     }).join('')}
@@ -6561,7 +6567,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-11-18b';
+const AIOS_VER = '2026-11-18c';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
@@ -7181,7 +7187,7 @@ const DESIGN_SECS = [
 ・経理（売上と経費）
 ・文書（書類の体裁を整える）
 ・DX（自動化のしくみ）
-・工房の「にんにく予定アプリ」とつなぐ（URLが決まったら登録）
+・工房の「にんにく予定アプリ」は登録済み（工房AI→開く）。受注・工賃の計算をAI-OS側でやるかは今後
 ・ポチパスの拡張機能に1行足して連携を完成させる`],
   ['kimegoto', '④ 決めごと・ルール',
 `・Excelや行政様式は、元のファイルを直接書きかえる。罫線・結合・列幅・数式・印刷設定は変えない。
