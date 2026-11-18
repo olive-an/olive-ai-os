@@ -824,6 +824,181 @@
     header .tiles{ gap:5px }
     header .tiles button{ padding:0 8px; font-size:11px; gap:4px }
   }
+
+  /* ============================================================
+     画面デザインの統一（2026-11-18 指示書）
+     白に近い背景＋濃いネイビーの見出し＋黒文字
+     ★見た目だけの指定です。しくみ・保存データには触れていません。
+     ★この指定はスタイルのいちばん後ろに置いてあるので、
+       ここを消せば、前の見た目にもどります。
+     ============================================================ */
+  :root{
+    --bg:#F4F7FB;          /* 画面全体の背景 */
+    --paper:#FFFFFF;       /* カード・業務メニュー背景 */
+    --ink:#111111;         /* メイン文字 */
+    --sub:#374151;         /* 補足文字 */
+    --title:#123F75;       /* タイトルバー */
+    --head-bg:#DCEBFA;     /* 見出し背景・選択中の背景 */
+    --navy:#155AA0;        /* メニュー枠線・アイコン・主要操作ボタン */
+    --navy-l:#155AA0; --navy-p:#DCEBFA; --navy-p2:#c7e0f7;
+    --olive:#155AA0; --olive-d:#123F75; --olive-l:#DCEBFA; --sea:#155AA0;
+    --line:#C8D7E6;
+    --st-over:#B42318;     /* 期限超過 */
+    --st-wait:#92400E;     /* 確認待ち */
+    --st-done:#166534;     /* 完了 */
+    /* 文字サイズ */
+    --fs-sys:28px; --fs-h1:24px; --fs-menu:21px; --fs-base:18px; --fs-sub:16px;
+  }
+  body{ font-size:var(--fs-base); color:var(--ink); background:var(--bg); line-height:1.6 }
+  /* キーボードで選んでいる場所を、はっきり見せる */
+  a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
+  textarea:focus-visible, [tabindex]:focus-visible{
+    outline:3px solid var(--navy); outline-offset:2px; border-radius:6px }
+
+  /* --- 題字（システム名） --- */
+  header{ padding:10px 16px }
+  header .logo{ font-size:var(--fs-sys); font-weight:800; color:var(--ink) }
+  header .logo img{ height:34px !important }
+  header .tag{ font-size:var(--fs-sub); color:var(--sub); background:var(--head-bg); padding:3px 10px }
+  header .tiles button{ min-height:48px; padding:0 16px; font-size:var(--fs-sub); color:var(--ink);
+    border:1px solid var(--navy); background:#fff }
+  header .tiles button:hover{ background:var(--head-bg) }
+
+  /* --- 大見出し・補足 --- */
+  .listinner .hd{ font-size:var(--fs-h1); font-weight:800; color:var(--ink); margin:0 0 6px }
+  .listinner .hdsub{ font-size:var(--fs-sub); color:var(--sub); margin:0 0 14px }
+  .wpNote{ font-size:var(--fs-sub); color:var(--sub); line-height:1.7; border-color:var(--line) }
+  .wpNote small{ font-size:var(--fs-sub) }
+  .hempty{ font-size:var(--fs-sub); color:var(--sub) }
+  .bizEmpty{ font-size:var(--fs-sub); color:var(--sub) }
+
+  /* --- 業務メニュー --- */
+  .bizPanel{ background:var(--paper); border:1px solid var(--line); border-radius:10px; margin:0 0 22px }
+  .bizHead{ background:var(--head-bg); color:var(--ink); font-size:var(--fs-h1); font-weight:800;
+    padding:12px 16px; border-bottom:1px solid var(--line) }
+  .bizTabs{ padding:0 8px; background:var(--paper) }
+  .bizTabs button{ font-size:var(--fs-sub); font-weight:700; color:var(--sub);
+    min-height:52px; padding:0 14px; border-bottom:4px solid transparent }
+  .bizTabs button.on{ color:var(--ink); border-bottom-color:var(--navy) }
+  .bizTabs button:hover{ color:var(--ink); background:var(--head-bg) }
+  .bizGrid{ gap:14px; padding:16px }
+  .bizBtn{ background:var(--paper); color:var(--ink);
+    border:2px solid var(--navy); border-left:2px solid var(--navy); border-radius:10px;
+    min-height:76px; padding:12px 14px; gap:14px; font-size:var(--fs-menu); font-weight:800;
+    box-shadow:none }
+  .bizBtn:hover{ background:var(--head-bg); border-color:var(--navy) }
+  .bizBtn .bi{ width:40px; height:40px; flex:0 0 40px; border-radius:9px; background:var(--navy) !important }
+  .bizBtn .bd{ display:block; font-size:var(--fs-sub); font-weight:500; color:var(--sub);
+    margin-top:4px; white-space:normal }
+  .bizBtn .bg{ font-size:24px; color:var(--navy) }
+  .bizBtn.cur{ border-color:var(--title); box-shadow:0 0 0 3px var(--head-bg) }
+  /* 準備中：押せないことをはっきり出す */
+  .bizBtn.soon, .bizBtn:disabled{ background:#F3F4F6; color:#6B7280;
+    border:2px dashed #9CA3AF; cursor:not-allowed; box-shadow:none }
+  .bizBtn.soon .bi{ background:#9CA3AF !important; opacity:.8 }
+  .bizBtn.soon .bd{ color:#6B7280 }
+  .bizBtn.soon .bg{ font-size:var(--fs-sub); font-weight:800; color:#6B7280 }
+
+  /* --- 今日みておきたいこと・さいきん使ったもの --- */
+  .hrow{ background:var(--paper); border:1px solid var(--line); border-radius:10px;
+    min-height:76px; padding:12px 14px; gap:14px; margin-bottom:10px }
+  .hrow:hover{ background:var(--head-bg); border-color:var(--navy) }
+  .hrow .hnd{ width:40px; height:40px; flex:0 0 40px; border-radius:9px; background:var(--navy) !important }
+  .hrow .ht{ font-size:var(--fs-menu); font-weight:800; color:var(--ink) }
+  .hrow .hs{ font-size:var(--fs-sub); color:var(--sub); -webkit-line-clamp:2 }
+  .hrow .hgo{ font-size:var(--fs-sub); font-weight:700; color:var(--navy) }
+  .hrow .hbar{ width:8px; flex:0 0 8px }
+  /* 状態の文字（色だけに頼らない） */
+  .stTag{ display:inline-block; font-size:14px; font-weight:800; color:#fff;
+    border-radius:6px; padding:2px 9px; margin-right:9px; vertical-align:2px }
+  .stTag.st-red{ background:var(--st-over) } .stTag.st-orange{ background:var(--st-wait) }
+  .stTag.st-green{ background:var(--st-done) } .stTag.st-gray{ background:#4B5563 }
+  .lv-red{ background:var(--st-over) } .lv-orange{ background:var(--st-wait) }
+  .lv-green{ background:var(--st-done) } .lv-gray{ background:#4B5563 }
+
+  /* --- さがす欄・カレンダー --- */
+  .listtop{ padding:14px; gap:12px }
+  .listtop input{ font-size:var(--fs-base); min-height:56px; padding:12px 14px;
+    border:2px solid var(--line); border-radius:8px }
+  .listtop input:focus{ border-color:var(--navy); box-shadow:0 0 0 3px var(--head-bg) }
+  .calBtn{ min-height:56px; padding:0 16px; font-size:var(--fs-sub); font-weight:700;
+    border:2px solid var(--navy); color:var(--ink) }
+  .calBtn span{ font-size:22px }
+  .calBtn:hover{ background:var(--head-bg) }
+
+  /* --- 画面（パネル）のタイトルバー --- */
+  .sheetHead{ background:var(--title); color:#fff; border-bottom:0; padding:14px 16px }
+  .sheetHead b{ font-size:var(--fs-h1); color:#fff }
+  .sheetHead .real-badge{ background:#fff; color:var(--title) }
+  .sheetHead button{ min-height:48px; padding:0 16px; font-size:var(--fs-sub); font-weight:800;
+    background:#fff; color:var(--title); border:1px solid #fff }
+  .sheetHead button:hover{ background:var(--head-bg) }
+  .sheetBody{ padding:16px; font-size:var(--fs-base) }
+
+  /* --- ボタン・入力欄（全画面共通） --- */
+  .wpBtn, .wpControls button{ font-size:var(--fs-sub); font-weight:700; color:var(--ink);
+    min-height:48px; padding:10px 16px; border:1px solid var(--navy); border-radius:8px }
+  .wpBtn:hover, .wpControls button:hover{ background:var(--head-bg) }
+  .wpBtn.primary{ background:var(--navy); color:#fff; border-color:var(--navy) }
+  .wpBtn.primary:hover{ background:var(--title); border-color:var(--title) }
+  .wpBtn:disabled, .wpBtn.primary:disabled{ background:#F3F4F6; color:#6B7280;
+    border:1px dashed #9CA3AF; cursor:not-allowed }
+  input[type=text], input[type=search], input[type=password], input[type=date],
+  input[type=time], input[type=number], select, textarea{ font-size:var(--fs-base) }
+  .wpControls input[type=date], .wpControls input[type=number], .wpControls button{
+    font-size:var(--fs-sub); min-height:48px }
+
+  /* --- 今日の行動指針のバー --- */
+  .rinenBar{ background:var(--head-bg); border-bottom:1px solid var(--line); padding:12px 16px }
+  .rinenBar .rt{ font-size:var(--fs-sub); color:var(--title) }
+  .rinenBar b{ font-size:20px; color:var(--ink) }
+  .rinenBar .rno{ font-size:var(--fs-sub); background:#fff; color:var(--title) }
+  .rinenBar .rs{ font-size:14px; color:var(--sub) }
+  .rinenBar .wpBtn{ font-size:var(--fs-sub); min-height:44px; padding:8px 14px }
+
+  /* --- いちばん下の設定バー --- */
+  .toolbar{ font-size:var(--fs-sub); color:var(--sub) }
+  .toolbar button{ font-size:var(--fs-sub); min-height:44px; padding:8px 14px;
+    border:1px solid var(--navy); color:var(--ink); background:#fff; border-radius:8px }
+  .toolbar button:hover{ background:var(--head-bg) }
+  #dirLabel{ color:var(--sub) }
+
+  /* --- パソコンは2列、スマートフォンは1列 --- */
+  @media(min-width:701px){ .bizGrid{ grid-template-columns:repeat(2,1fr) } }
+  @media(max-width:700px){
+    :root{ --fs-sys:24px; --fs-h1:22px; --fs-menu:20px; --fs-base:18px; --fs-sub:16px }
+    .bizGrid{ grid-template-columns:1fr; gap:12px; padding:12px }
+    .bizBtn{ min-height:68px }
+    .bizBtn .bd{ display:block }
+    .bizBtn .bi{ width:36px; height:36px; flex:0 0 36px }
+    .hrow{ min-height:68px }
+    .hrow .hnd{ width:36px; height:36px; flex:0 0 36px }
+    .hrow .hgo{ font-size:0 } .hrow .hgo::after{ content:'›'; font-size:26px }
+    .bizHead{ font-size:19px; padding:10px 12px }
+    .bizTabs button{ min-height:48px; padding:0 11px; font-size:15px }
+    .listtop{ padding:10px; gap:9px }
+    header{ padding:9px 12px; gap:8px }
+    header .logo{ font-size:22px }
+    header .logo img{ height:28px !important }
+    header .tag{ display:none }
+    header .tiles button{ min-height:44px; padding:0 10px; font-size:15px }
+    .sheetBody{ padding:12px }
+  }
+  @media(max-width:460px){
+    /* ヘッダーは一行のまま。システム名が途中で切れないよう字とボタンを詰めます */
+    header{ padding:8px 10px; gap:6px }
+    header .logo{ font-size:18px }
+    header .logo img{ height:22px !important; margin-right:5px !important; padding:2px 4px !important }
+    header .tag{ display:none }
+    header .tiles button{ min-height:44px; padding:0 8px; font-size:13.5px; gap:4px }
+  }
+  @media(max-width:380px){
+    /* 320px級のせまい画面。文字はできるだけ縮めず、題字と余白だけ詰めます */
+    :root{ --fs-sys:20px; --fs-h1:21px; --fs-menu:19px; --fs-base:17px; --fs-sub:15.5px }
+    .bizBtn{ padding:10px } .bizGrid{ padding:10px }
+    header .logo img{ display:none }
+    header .logo{ font-size:17px }
+  }
 </style>
 
 <header>
@@ -6376,7 +6551,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '2026-11-17c';
+const AIOS_VER = '2026-11-18a';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
@@ -8182,12 +8357,16 @@ function homeToday(){
   return out.sort((a,b)=>rank[a.lv]-rank[b.lv]);
 }
 
+/* 状態は、色だけでなく必ず文字でも出します（指示書6） */
+const HOME_LV_TEXT = { red:'期限超過', orange:'確認待ち', green:'通常業務', gray:'確認待ち' };
 function homeRowHtml(x){
   const it=homeItem(x.k)||{};
-  return `<div class="hrow" data-open="${x.k}">
+  const st=HOME_LV_TEXT[x.lv]||'通常業務';
+  return `<div class="hrow" data-open="${x.k}" role="button" tabindex="0">
     <div class="hbar lv-${x.lv}"></div>
     <span class="hnd" style="background:${aiTileBg(x.k)}">${aiTileHtml(x.k,'')}</span>
-    <div style="min-width:0"><div class="ht">${hkEsc(x.t)}</div>
+    <div style="min-width:0">
+      <div class="ht"><span class="stTag st-${x.lv}">${st}</span>${hkEsc(x.t)}</div>
       <div class="hs">${hkEsc(x.s)}${x.sub?'　'+hkEsc(x.sub):''}</div></div>
     <div class="hgo">ひらく ›</div></div>`;
 }
@@ -8210,7 +8389,7 @@ function bizRender(hit){
     .sort((a,b)=> bizTab==='よく使う' ? HOME_FAV.indexOf(a.k)-HOME_FAV.indexOf(b.k) : 0);
   const soonN = HOME_ALL.filter(i=>!i.fn).length;
   grid.innerHTML = (items.length ? items.map(i=>
-    `<button class="bizBtn${i.fn?'':' soon'}${homeCur===i.k?' cur':''}" ${i.fn?`data-open="${i.k}"`:''} title="${hkEsc(i.d)}">
+    `<button class="bizBtn${i.fn?'':' soon'}${homeCur===i.k?' cur':''}" ${i.fn?`data-open="${i.k}"`:'disabled aria-disabled="true"'} title="${hkEsc(i.d)}">
       <span class="bi" style="background:${i.fn?aiTileBg(i.k):'#cfd6db'}">${aiTileHtml(i.k,'')}</span>
       <span class="bn">${i.n}<span class="bd">${hkEsc(i.d)}</span></span>
       <span class="bg">${i.fn?'›':'準備中'}</span></button>`).join('')
@@ -8236,7 +8415,7 @@ function homeRender(){
         <span class="hnd" style="background:${aiTileBg(i.k)}">${aiTileHtml(i.k,'')}</span>
         <div style="min-width:0"><div class="ht">${i.n}</div><div class="hs">${hkEsc(i.d)}</div></div>
         <div class="hgo">ひらく ›</div></div>`).join('')
-      : '<div class="hempty">まだありません。左のメニューから選んでください。</div>';
+      : '<div class="hempty">まだありません。上の「業務メニュー」から選んでください。</div>';
 
   document.querySelectorAll('[data-open]').forEach(el=>{
     if(el.dataset.bound) return; el.dataset.bound='1';
