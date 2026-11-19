@@ -1034,6 +1034,7 @@
   header .tiles button{ color:#fff; background:transparent; border:1px solid rgba(255,255,255,.65) }
   header .tiles button:hover{ background:rgba(255,255,255,.16) }
   header .tiles button:focus-visible{ outline:3px solid #fff; outline-offset:2px }
+  .nBadge[hidden]{ display:none }
   .nBadge{ display:inline-block; min-width:20px; margin-left:5px; padding:0 5px;
     background:#fff; color:#B42318; border-radius:999px; font-size:12px; font-weight:800; line-height:19px }
   /* 利用者メニュー（ヘッダー右） */
@@ -1122,6 +1123,7 @@
         <div class="uHead">権限：<b id="uRole">管理者</b></div>
         <button id="aiosUpd" title="画面を最新のものに入れ替えます（入れた情報は消えません）">🔄 更新（最新にする）</button>
         <button id="histBtn" title="これまでの作業の履歴を月ごとに見る">📜 これまでの履歴</button>
+        <button id="uRoleBtn" title="権限を切り替える">🔑 権限を切り替える</button>
       </div>
     </div>
   </div>
@@ -6691,7 +6693,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '試作 2026-11-18n1';
+const AIOS_VER = '試作 2026-11-19n2';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
@@ -8405,42 +8407,42 @@ async function printRinen(){
    ========================================================================= */
 const HOME_MENU = [
   {g:'勤怠管理', items:[
-    {k:'勤怠',   n:'勤怠管理',    d:'出退勤の記録・集計（準備中）'},
+    {k:'勤怠',   n:'勤怠管理',    d:'出退勤の記録・集計（準備中）', lv:'all'},
   ]},
   {g:'シフト管理', items:[
-    {k:'シフト', n:'シフト',      d:'シフト希望の集計・Excel反映',     fn:()=>openShiftPanel()},
+    {k:'シフト', n:'シフト',      d:'シフト希望の集計・Excel反映',     fn:()=>openShiftPanel(), lv:'all'},
   ]},
   {g:'書類管理', items:[
-    {k:'会社',   n:'会社書類',    d:'履歴事項全部証明書・決算書のPDF',  fn:()=>openKaishaPanel()},
-    {k:'書類棚', n:'書類棚',      d:'理念手帳など保管した書類',         fn:()=>openShelfPanel()},
-    {k:'会議室', n:'会議室・議事録', d:'議事録の保管・検索・要約',        fn:()=>openGijiPanel()},
-    {k:'写真',   n:'写真',       d:'受給者証・資格証を撮ってパソコンへ渡す', fn:()=>openPhotoPanel()},
-    {k:'プリンター', n:'プリンター', d:'印刷メニュー',                   fn:()=>openPrinterPanel()},
-    {k:'文書',   n:'文書',       d:'書類の体裁を整える（準備中）'},
+    {k:'会社',   n:'会社書類',    d:'履歴事項全部証明書・決算書のPDF',  fn:()=>openKaishaPanel(), lv:'honbu'},
+    {k:'書類棚', n:'書類棚',      d:'理念手帳など保管した書類',         fn:()=>openShelfPanel(), lv:'all'},
+    {k:'会議室', n:'会議室・議事録', d:'議事録の保管・検索・要約',        fn:()=>openGijiPanel(), lv:'all'},
+    {k:'写真',   n:'写真',       d:'受給者証・資格証を撮ってパソコンへ渡す', fn:()=>openPhotoPanel(), lv:'all'},
+    {k:'プリンター', n:'プリンター', d:'印刷メニュー',                   fn:()=>openPrinterPanel(), lv:'all'},
+    {k:'文書',   n:'文書',       d:'書類の体裁を整える（準備中）', lv:'all'},
   ]},
   {g:'期限管理', items:[
-    {k:'利用者', n:'利用者',      d:'受給者証の照会と期限',            fn:()=>openRiyouPanel()},
-    {k:'車両',   n:'車両管理',    d:'車検・自賠責・任意保険の期限',     fn:()=>openSharyouPanel()},
+    {k:'利用者', n:'利用者',      d:'受給者証の照会と期限',            fn:()=>openRiyouPanel(), lv:'all'},
+    {k:'車両',   n:'車両管理',    d:'車検・自賠責・任意保険の期限',     fn:()=>openSharyouPanel(), lv:'honbu'},
   ]},
   {g:'職員管理', items:[
-    {k:'人事',   n:'人事・労務',   d:'従業員名簿アプリをひらく',         fn:()=>openRosterApp()},
+    {k:'人事',   n:'人事・労務',   d:'従業員名簿アプリをひらく',         fn:()=>openRosterApp(), lv:'honbu'},
   ]},
   {g:'申請・届出', items:[
-    {k:'行政',   n:'行政',       d:'変更届・付表12をつくる',          fn:()=>openGyouseiMenu()},
+    {k:'行政',   n:'行政',       d:'変更届・付表12をつくる',          fn:()=>openGyouseiMenu(), lv:'honbu'},
   ]},
   {g:'運営・監査管理', items:[
-    {k:'監査',   n:'監査',       d:'運営指導チェック・勤務形態一覧表', fn:()=>openKansaMenu()},
-    {k:'ホーム', n:'ホーム管理',   d:'ホームごとの利用者・個別支援計画',  fn:()=>openKeikakuPanel()},
-    {k:'看護',   n:'看護',       d:'健康記録・受診予定（準備中）'},
+    {k:'監査',   n:'監査',       d:'運営指導チェック・勤務形態一覧表', fn:()=>openKansaMenu(), lv:'honbu'},
+    {k:'ホーム', n:'ホーム管理',   d:'ホームごとの利用者・個別支援計画',  fn:()=>openKeikakuPanel(), lv:'all'},
+    {k:'看護',   n:'看護',       d:'健康記録・受診予定（準備中）', lv:'all'},
   ]},
   {g:'法人設定', items:[
-    {k:'控え',   n:'控え（バックアップ）', d:'ぜんぶまとめて保存・もどす',  fn:()=>openBackupPanel()},
-    {k:'工房',   n:'工房',       d:'工房のアプリ・共有フォルダ',       fn:()=>openKoubouPanel()},
-    {k:'ポチパス', n:'ポチパス',    d:'ポチパスを開く・連携',            fn:()=>openPochiPanel()},
-    {k:'設計',   n:'開発設計',     d:'このAI-OSの中身・決めごと・これから', fn:()=>openDesignPanel()},
-    {k:'経理',   n:'経理',       d:'売上と経費の集計（準備中）'},
-    {k:'請求',   n:'請求',       d:'国保連の請求データ（準備中）'},
-    {k:'DX',     n:'DX',       d:'自動化のしくみ（準備中）'},
+    {k:'控え',   n:'控え（バックアップ）', d:'ぜんぶまとめて保存・もどす',  fn:()=>openBackupPanel(), lv:'admin'},
+    {k:'工房',   n:'工房',       d:'工房のアプリ・共有フォルダ',       fn:()=>openKoubouPanel(), lv:'all'},
+    {k:'ポチパス', n:'ポチパス',    d:'ポチパスを開く・連携',            fn:()=>openPochiPanel(), lv:'honbu'},
+    {k:'設計',   n:'開発設計',     d:'このAI-OSの中身・決めごと・これから', fn:()=>openDesignPanel(), lv:'admin'},
+    {k:'経理',   n:'経理',       d:'売上と経費の集計（準備中）', lv:'honbu'},
+    {k:'請求',   n:'請求',       d:'国保連の請求データ（準備中）', lv:'honbu'},
+    {k:'DX',     n:'DX',       d:'自動化のしくみ（準備中）', lv:'admin'},
   ]},
 ];
 
@@ -8458,6 +8460,7 @@ function homePush(k){
 }
 function homeOpen(k){
   const it=homeItem(k); if(!it) return;
+  if(!aiosCanSee(it)){ banner(`${it.n} は、いまの権限（${aiosRole()}）では開けません`); return; }
   if(!it.fn){ banner(`${it.n} はまだ準備中です`); return; }
   homeCur=k; homePush(k); it.fn(); homeRender();
   setTimeout(()=>{ if(window.aiosPanelSync) window.aiosPanelSync(); }, 40);
@@ -8526,7 +8529,8 @@ let bizTab = 'よく使う';
 function bizRender(hit){
   const tabs=document.getElementById('bizTabs'), grid=document.getElementById('bizGrid');
   if(!tabs || !grid) return;
-  const names=['よく使う', ...HOME_MENU.map(g=>g.g), 'ぜんぶ'];
+  const names=['よく使う', ...HOME_MENU.filter(g=>g.items.some(i=>aiosCanSee(i))).map(g=>g.g), 'ぜんぶ'];
+  if(!names.includes(bizTab)) bizTab='よく使う';
   const short={'勤怠管理':'勤怠','シフト管理':'シフト','書類管理':'書類','期限管理':'期限',
                '職員管理':'職員','申請・届出':'申請','運営・監査管理':'監査','法人設定':'設定'};
   tabs.innerHTML = names.map(n=>
@@ -8536,12 +8540,12 @@ function bizRender(hit){
   tabs.querySelectorAll('[data-biz]').forEach(b=>b.addEventListener('click', ()=>{
     bizTab=b.dataset.biz; homeRender(); }));
   // 使える画面だけを出します（まだの画面は「ぜんぶ」のときだけ出します）
-  const items = HOME_ALL.filter(i=>(
+  const items = HOME_ALL.filter(i=> aiosCanSee(i) && (
       bizTab==='ぜんぶ' ? true :
       bizTab==='よく使う' ? HOME_FAV.includes(i.k) : i.g===bizTab)
     && (bizTab==='ぜんぶ' || i.fn) && hit(i))
     .sort((a,b)=> bizTab==='よく使う' ? HOME_FAV.indexOf(a.k)-HOME_FAV.indexOf(b.k) : 0);
-  const soonN = HOME_ALL.filter(i=>!i.fn).length;
+  const soonN = HOME_ALL.filter(i=>!i.fn && aiosCanSee(i)).length;
   grid.innerHTML = (items.length ? items.map(i=>
     `<button class="bizBtn${i.fn?'':' soon'}${homeCur===i.k?' cur':''}" ${i.fn?`data-open="${i.k}"`:'disabled aria-disabled="true"'} title="${hkEsc(i.d)}">
       <span class="bi" style="background:${i.fn?aiTileBg(i.k):'#cfd6db'}">${aiTileHtml(i.k,'')}</span>
@@ -8558,6 +8562,7 @@ function homeRender(){
   bizRender(hit);
 
   const today = homeToday().filter(x=>{ const i=homeItem(x.k)||{};
+    if(!aiosCanSee(i)) return false;
     return !homeQ || (x.t+x.s+(x.sub||'')+i.n).toLowerCase().includes(homeQ.toLowerCase()); });
   document.getElementById('todayList').innerHTML =
     today.length ? today.map(homeRowHtml).join('')
@@ -8565,7 +8570,7 @@ function homeRender(){
 
   try{ aiosTopRender(today); }catch(e){}
 
-  const rec = homeRecent().map(homeItem).filter(Boolean).filter(hit);
+  const rec = homeRecent().map(homeItem).filter(Boolean).filter(aiosCanSee).filter(hit);
   document.getElementById('recentList').innerHTML =
     rec.length ? rec.map(i=>`<div class="hrow" data-open="${i.k}">
         <span class="hnd" style="background:${aiTileBg(i.k)}">${aiTileHtml(i.k,'')}</span>
@@ -8882,6 +8887,9 @@ function aiosTopRender(today){
     document.addEventListener('click',e=>{ if(!drop.hidden && !drop.contains(e.target)) close(); });
     document.addEventListener('keydown',e=>{ if(e.key==='Escape') close(); });
   }
+  const rb=document.getElementById('uRoleBtn');
+  if(rb) rb.addEventListener('click',()=>{ if(drop) drop.hidden=true; openRolePanel(); });
+  try{ aiosRoleBadge(); }catch(e){}
   const nb=document.getElementById('aiosNoti');
   if(nb) nb.addEventListener('click',()=>{
     const t=document.getElementById('todayList');
@@ -8889,4 +8897,120 @@ function aiosTopRender(today){
   });
 })();
 /* ▲▲▲ 法人システム版（試作）ここまで ▲▲▲ */
+
+/* =========================================================================
+   ▼▼▼ 権限（一般職員／本部事務／管理者） ▼▼▼
+   ・合言葉はこのファイルには書きません。岩久保さんが決めたものを
+     暗号化した「鍵合わせ用の小さなデータ」として、この端末に保存します
+   ・いまの権限も、この端末のブラウザにだけ覚えます
+   ========================================================================= */
+function ROLE_KEY(){ return 'aiosRoleV1'; }
+function ROLE_LOCK(r){ return 'aiosRoleLockV1:' + r; }
+function ROLE_LIST(){ return [
+  {r:'一般職員',  d:'日々の業務だけを見ます', lv:'all'},
+  {r:'本部事務',  d:'人事・行政・監査・経理も見ます', lv:'honbu'},
+  {r:'管理者',    d:'すべて見られます（控え・開発設計をふくむ）', lv:'admin'},
+]; }
+/* いまの権限。管理者の合言葉がまだ決まっていないうちは「管理者」で始めます */
+function aiosRole(){
+  try{
+    const v=localStorage.getItem(ROLE_KEY());
+    if(v && ROLE_LIST().some(x=>x.r===v)) return v;
+  }catch(e){}
+  return secStored(ROLE_LOCK('管理者')) ? '一般職員' : '管理者';
+}
+function aiosRoleSet(r){ try{ localStorage.setItem(ROLE_KEY(), r); }catch(e){} }
+/* この項目を、いまの権限で見てよいか */
+function aiosCanSee(i){
+  const need=(i&&i.lv)||'all', r=aiosRole();
+  if(need==='all') return true;
+  if(need==='honbu') return r==='本部事務' || r==='管理者';
+  return r==='管理者';
+}
+/* 合言葉を確かめる（まだ決まっていなければ、それを初回の合言葉にします） */
+async function aiosRoleTry(r, pw){
+  const k=ROLE_LOCK(r);
+  if(!secStored(k)){ await secSave(k, {ok:1, r}, pw); return 'new'; }
+  try{ await secLoad(k, pw); return 'ok'; }catch(e){ return 'ng'; }
+}
+function aiosRoleBadge(){
+  const el=document.getElementById('uRole'); if(el) el.textContent=aiosRole();
+}
+
+/* 権限の切り替え画面 */
+function openRolePanel(){
+  let p=document.getElementById('rolePanel');
+  if(!p){
+    p=document.createElement('div'); p.className='modal'; p.id='rolePanel';
+    p.innerHTML=`<div class="sheet" style="max-width:520px">
+      <div class="sheetHead"><b>🔑 権限の切り替え</b><span class="grow"></span>
+        <button onclick="document.getElementById('rolePanel').hidden=true">✕</button></div>
+      <div class="sheetBody" id="roleBody"></div></div>`;
+    p.addEventListener('click',ev=>{ if(ev.target.id==='rolePanel') p.hidden=true; });
+    document.body.appendChild(p);
+  }
+  p.hidden=false; roleRender();
+}
+function roleRender(msg){
+  const b=document.getElementById('roleBody'); if(!b) return;
+  const now=aiosRole();
+  const adminSet=!!secStored(ROLE_LOCK('管理者')), honbuSet=!!secStored(ROLE_LOCK('本部事務'));
+  b.innerHTML = `
+    ${msg?`<div class="wpNote" style="margin:0 0 10px">${msg}</div>`:''}
+    <div class="wpNote" style="margin:0 0 12px">
+      いまの権限は <b style="color:var(--title)">${now}</b> です（${aiosThis()}）。<br>
+      <small>権限は端末ごとに覚えます。職員の方の端末は「一般職員」のままにしてください。</small>
+    </div>
+    ${ROLE_LIST().map(x=>{
+      const set = x.r==='一般職員' ? true : !!secStored(ROLE_LOCK(x.r));
+      return `<div style="border:1px solid var(--line-s); border-radius:10px; padding:11px 13px; margin-bottom:9px;
+                  background:${now===x.r?'var(--head-bg)':'#fff'}">
+        <div style="font-weight:800; font-size:var(--fs-base); color:var(--ink)">${x.r}
+          ${now===x.r?'<span style="font-size:13px; color:var(--title)">（いまこれ）</span>':''}</div>
+        <div style="font-size:var(--fs-sub); color:var(--sub); margin:3px 0 8px">${x.d}</div>
+        ${x.r==='一般職員'
+          ? `<button class="wpBtn" data-role="${x.r}">これにする</button>`
+          : `<div style="display:flex; gap:6px; flex-wrap:wrap">
+               <input type="password" data-rpw="${x.r}" placeholder="${set?'合言葉を入れる':'合言葉を決める（初回）'}"
+                 style="flex:1 1 180px; min-width:0; padding:10px; border:1px solid var(--line-s);
+                        border-radius:8px; font-size:16px; min-height:44px; box-sizing:border-box">
+               <button class="wpBtn primary" data-role="${x.r}">${set?'これにする':'合言葉を決めて、これにする'}</button>
+             </div>
+             <div style="font-size:13px; color:var(--sub); margin-top:5px">
+               ${set?'合言葉は設定済みです。':'まだ決まっていません。最初に入れたものが合言葉になります。'}</div>`}
+      </div>`;
+    }).join('')}
+    ${now==='管理者' && (adminSet||honbuSet) ? `
+      <div class="wpNote" style="margin-top:12px">
+        <b>合言葉をやり直す</b>（管理者のみ）<br>
+        <small>忘れたときはここで消して、決め直してください。中のデータは消えません。</small>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:7px">
+          ${adminSet?'<button class="wpBtn" data-rclr="管理者">管理者の合言葉を消す</button>':''}
+          ${honbuSet?'<button class="wpBtn" data-rclr="本部事務">本部事務の合言葉を消す</button>':''}
+        </div></div>` : ''}
+    <div class="wpNote" style="margin-top:12px">
+      ℹ️ この切り替えは<b>画面の出し分け</b>です。人事・利用者のデータそのものは、
+      これまでどおり別の合言葉で暗号化されていて、合言葉を知らない人には開けません。
+    </div>`;
+
+  b.querySelectorAll('[data-role]').forEach(btn=>btn.addEventListener('click', async ()=>{
+    const r=btn.dataset.role;
+    if(r==='一般職員'){ aiosRoleSet(r); aiosRoleBadge(); homeRender(); roleRender('一般職員に切り替えました。'); return; }
+    const inp=b.querySelector(`[data-rpw="${r}"]`); const pw=(inp&&inp.value||'').trim();
+    if(!pw){ roleRender('合言葉を入れてください。'); return; }
+    btn.disabled=true;
+    const res=await aiosRoleTry(r, pw);
+    btn.disabled=false;
+    if(res==='ng'){ roleRender('⚠️ 合言葉がちがいます。'); return; }
+    aiosRoleSet(r); aiosRoleBadge(); homeRender();
+    roleRender(res==='new' ? `✅ ${r}の合言葉を決めて、${r}に切り替えました。` : `✅ ${r}に切り替えました。`);
+  }));
+  b.querySelectorAll('[data-rclr]').forEach(btn=>btn.addEventListener('click', ()=>{
+    const r=btn.dataset.rclr;
+    if(!confirm(`${r}の合言葉を消します。よろしいですか。`)) return;
+    try{ localStorage.removeItem(ROLE_LOCK(r)); }catch(e){}
+    roleRender(`${r}の合言葉を消しました。次に切り替えるとき、決め直せます。`);
+  }));
+}
+/* ▲▲▲ 権限 ここまで ▲▲▲ */
 </script>
