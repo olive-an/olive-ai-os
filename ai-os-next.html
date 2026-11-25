@@ -1110,6 +1110,44 @@
     .statCard{ padding:8px } .statCard .sv{ font-size:20px }
     .statCard .sl{ font-size:13px }
   }
+
+  /* ===========================================================
+     ランチャー型の業務メニュー（アイコンを上、名前を下に置いたタイル）
+     ・説明文はタイルには出さず、長押し／マウスを重ねると出ます
+     =========================================================== */
+  .bizGrid{ display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); grid-auto-rows:1fr; gap:12px; padding:16px }
+  @media(max-width:1180px){ .bizGrid{ grid-template-columns:repeat(4,minmax(0,1fr)) } }
+  .bizBtn{ display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; min-height:122px; padding:16px 8px 13px; gap:11px;
+    background:#fff; border:1px solid var(--line-s); border-radius:14px; box-shadow:none }
+  .bizBtn:hover{ background:var(--head-bg); border-color:var(--navy) }
+  .bizBtn.cur{ border:2px solid var(--navy); box-shadow:none }
+  .bizBtn .bi{ width:54px; height:54px; flex:0 0 auto; border-radius:15px; margin:0 }
+  .bizBtn .bi svg{ width:36px; height:36px }
+  .bizBtn .bn{ display:block; font-size:var(--fs-sub); font-weight:700; color:var(--ink);
+    line-height:1.35; min-width:0; width:100%; overflow-wrap:anywhere }
+  .bizBtn .bd{ display:none }
+  .bizBtn .bg{ display:none }
+  /* 準備中：点線・灰色・「準備中」の札 */
+  .bizBtn.soon{ background:#F3F4F6; border:1px dashed #9CA3AF; cursor:not-allowed }
+  .bizBtn.soon .bn{ color:#4B5563 }
+  .bizBtn.soon .bg{ display:block; font-size:12px; font-weight:800; color:#374151;
+    background:#E5E7EB; border-radius:999px; padding:1px 9px; margin-top:-4px }
+  @media(max-width:700px){
+    .bizGrid{ grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; padding:12px }
+    .bizBtn{ min-height:108px; padding:13px 4px 11px; gap:9px; border-radius:13px }
+    .bizBtn .bi{ width:48px; height:48px; flex:0 0 auto; border-radius:13px }
+    .bizBtn .bi svg{ width:32px; height:32px }
+    .bizBtn .bn{ font-size:15px }
+    .bizBtn .bd{ display:none }
+  }
+  @media(max-width:380px){
+    .bizGrid{ gap:7px; padding:10px }
+    .bizBtn{ min-height:100px; padding:11px 3px 10px; gap:8px }
+    .bizBtn .bi{ width:44px; height:44px; flex:0 0 auto }
+    .bizBtn .bi svg{ width:30px; height:30px }
+    .bizBtn .bn{ font-size:14px }
+  }
 </style>
 
 <header>
@@ -1518,6 +1556,10 @@ const AI_ICON = (()=>{
     <circle cx="33" cy="31" r="8.5" fill="none" stroke="${W}" stroke-width="3.2"/>
     <path d="M39 37l5 5" stroke="${W}" stroke-width="3.6"/>`)},
   /* --- 人と時間（緑） --- */
+  勤怠: { bg:'#087C83', svg:S(`
+    <circle cx="24" cy="26" r="15" fill="${W}"/>
+    <path d="M24 17v9l6 4" stroke="#4B5563" stroke-width="3.4"/>
+    <path d="M19 6h10" stroke="${W}" stroke-width="3.4"/>`)},
   シフト: { bg:'#2e7d46', svg:S(`
     ${paper(8,10,32,30,4)}
     <path d="M8 18h32" stroke="#d3e3d6" stroke-width="2.4"/>
@@ -6693,7 +6735,7 @@ function openCalPanel(){
 /* この画面の版（直したときに書きかえます）
    ★iPad・携帯のブラウザは古い画面をしまいこむことがあるので、
      「🔄 最新にする」でキャッシュを通さずに読み直せるようにしています。 */
-const AIOS_VER = '試作 2026-11-19n2';
+const AIOS_VER = '試作 2026-11-25n3';
 // ホーム画面のアイコンから開いているか（＝アプリとして使っているか）
 const aiosApp = ()=> (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
                    || navigator.standalone === true;
@@ -8415,7 +8457,7 @@ const HOME_MENU = [
   {g:'書類管理', items:[
     {k:'会社',   n:'会社書類',    d:'履歴事項全部証明書・決算書のPDF',  fn:()=>openKaishaPanel(), lv:'honbu'},
     {k:'書類棚', n:'書類棚',      d:'理念手帳など保管した書類',         fn:()=>openShelfPanel(), lv:'all'},
-    {k:'会議室', n:'会議室・議事録', d:'議事録の保管・検索・要約',        fn:()=>openGijiPanel(), lv:'all'},
+    {k:'会議室', n:'会議室・議事録', tn:'議事録', d:'議事録の保管・検索・要約',        fn:()=>openGijiPanel(), lv:'all'},
     {k:'写真',   n:'写真',       d:'受給者証・資格証を撮ってパソコンへ渡す', fn:()=>openPhotoPanel(), lv:'all'},
     {k:'プリンター', n:'プリンター', d:'印刷メニュー',                   fn:()=>openPrinterPanel(), lv:'all'},
     {k:'文書',   n:'文書',       d:'書類の体裁を整える（準備中）', lv:'all'},
@@ -8436,7 +8478,7 @@ const HOME_MENU = [
     {k:'看護',   n:'看護',       d:'健康記録・受診予定（準備中）', lv:'all'},
   ]},
   {g:'法人設定', items:[
-    {k:'控え',   n:'控え（バックアップ）', d:'ぜんぶまとめて保存・もどす',  fn:()=>openBackupPanel(), lv:'admin'},
+    {k:'控え',   n:'控え（バックアップ）', tn:'バックアップ', d:'ぜんぶまとめて保存・もどす',  fn:()=>openBackupPanel(), lv:'admin'},
     {k:'工房',   n:'工房',       d:'工房のアプリ・共有フォルダ',       fn:()=>openKoubouPanel(), lv:'all'},
     {k:'ポチパス', n:'ポチパス',    d:'ポチパスを開く・連携',            fn:()=>openPochiPanel(), lv:'honbu'},
     {k:'設計',   n:'開発設計',     d:'このAI-OSの中身・決めごと・これから', fn:()=>openDesignPanel(), lv:'admin'},
@@ -8549,11 +8591,11 @@ function bizRender(hit){
   grid.innerHTML = (items.length ? items.map(i=>
     `<button class="bizBtn${i.fn?'':' soon'}${homeCur===i.k?' cur':''}" ${i.fn?`data-open="${i.k}"`:'disabled aria-disabled="true"'} title="${hkEsc(i.d)}">
       <span class="bi" style="background:${i.fn?aiTileBg(i.k):'#cfd6db'}">${aiTileHtml(i.k,'')}</span>
-      <span class="bn">${i.n}<span class="bd">${hkEsc(i.d)}</span></span>
+      <span class="bn">${i.tn||i.n}<span class="bd">${hkEsc(i.d)}</span></span>
       <span class="bg">${i.fn?'›':'準備中'}</span></button>`).join('')
     : '<div class="bizEmpty">見つかりませんでした。</div>')
     + (bizTab==='ぜんぶ'||!soonN ? ''
-       : `<div class="bizEmpty">※ 準備中の${soonN}つ（文書・看護・請求・経理・DX）は、「ぜんぶ」でご覧になれます。</div>`);
+       : `<div class="bizEmpty">※ 準備中の${soonN}つ（${HOME_ALL.filter(i=>!i.fn && aiosCanSee(i)).map(i=>i.n).join('・')}）は、「ぜんぶ」でご覧になれます。</div>`);
 }
 function homeRender(){
   if(!document.getElementById('bizGrid')) return;
